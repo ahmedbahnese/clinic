@@ -9,22 +9,22 @@ export async function POST(
   try {
     const { id } = await params;
     const body = await req.json().catch(() => ({}));
-    const { reason, phoneNumber } = body;
+    const { reason } = body;
 
     const authHeader = req.headers.get('authorization') || '';
     const token = authHeader.replace('Bearer ', '').trim();
     const staffUser = token ? await AuthService.verifySession(token) : null;
 
-    if (!staffUser && !phoneNumber) {
+    if (!staffUser) {
       return NextResponse.json(
-        { error: 'غير مصرح بإلغاء الحجز. يلزم تسجيل دخول الموظفين أو إدخال رقم هاتف الحجز.' },
+        { error: 'غير مصرح بإلغاء الحجز مباشرة. إلغاء الحجز متاح للموظفين المخولين فقط أو عبر تقديم طلب إلغاء للمراجعة.' },
         { status: 401 }
       );
     }
 
     const result = await appointmentStore.cancelAppointment(id, reason, {
-      staffUser: staffUser || undefined,
-      phoneNumber: phoneNumber || undefined,
+      staffUser,
+      userToken: token,
     });
 
     if (!result.success) {

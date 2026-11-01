@@ -701,33 +701,42 @@ test('Security 20: SQL Migration Integrity - Verifies column names, safe index s
   assert.ok(!content.includes('15 إلى 30 دقيقة'), 'Migration must not include 15-30 minute text');
 });
 
-test('Security 21: Cancellation Authorization - Patient cancellation requires matching phone number, rejects wrong phone or unverified caller', async () => {
+test('Security 21: Cancellation Authorization - Direct cancellation requires verified staff session; phone-only direct cancellation is strictly rejected', async () => {
   const apt = await appointmentStore.createAppointment({
     clinicId: 'dentistry',
     patientName: 'عمر خالد الدسوقي',
     phoneNumber: '01011223399',
     appointmentDate: '2026-11-25',
+    appointmentTime: '10:00',
   });
   assert.ok(apt.success);
   const ref = apt.appointment!.referenceNumber;
 
-  // 1. Cancellation without caller credentials -> Rejected
+  // 1. Direct cancellation without caller credentials -> Rejected
   const unauthCancel = await appointmentStore.cancelAppointment(ref, 'إلغاء مجهول');
   assert.equal(unauthCancel.success, false, 'Unauthenticated cancellation must be rejected');
-  assert.match(unauthCancel.error || '', /دون التحقق من الهوية أو رقم الهاتف/);
+  assert.match(unauthCancel.error || '', /غير مصرح بإلغاء الحجز مباشرة/);
 
-  // 2. Cancellation with wrong phone number -> Rejected
-  const wrongPhoneCancel = await appointmentStore.cancelAppointment(ref, 'إلغاء برقم خاطئ', {
-    phoneNumber: '01099998888',
-  });
-  assert.equal(wrongPhoneCancel.success, false, 'Cancellation with mismatched phone must be rejected');
-  assert.match(wrongPhoneCancel.error || '', /رقم الهاتف غير مطابق/);
-
-  // 3. Cancellation with matching phone number -> Succeeds
-  const validCancel = await appointmentStore.cancelAppointment(ref, 'ظرف عائلي طارئ', {
+  // 2. Direct cancellation with phone number alone -> Strictly rejected (requires request workflow)
+  const phoneOnlyCancel = await appointmentStore.cancelAppointment(ref, 'محاولة إلغاء برقم الهاتف', {
     phoneNumber: '01011223399',
+  } as any);
+  assert.equal(phoneOnlyCancel.success, false, 'Direct cancellation with phone number alone must be rejected');
+  assert.match(phoneOnlyCancel.error || '', /غير مصرح بإلغاء الحجز مباشرة/);
+
+  // 3. Direct cancellation by authorized receptionist -> Succeeds
+  const receptionist: StaffUser = {
+    id: 'staff-rec-dent-auth',
+    username: 'rec.dentistry',
+    name: 'استقبال عيادة الأسنان',
+    role: 'RECEPTIONIST',
+    clinicId: 'dentistry',
+    active: true,
+  };
+  const validCancel = await appointmentStore.cancelAppointment(ref, 'إلغاء معتمد من موظف الاستقبال', {
+    staffUser: receptionist,
   });
-  assert.equal(validCancel.success, true, 'Cancellation with matching phone number must succeed');
+  assert.equal(validCancel.success, true, 'Cancellation by authorized staff member must succeed');
 });
 
 test('Security 22: Inactive staff rejection - verifySession rejects inactive accounts immediately', async () => {
@@ -846,5 +855,957 @@ test('Security 32: Rate Limiting Safety - Keys are server-derived, limits are co
     (process.env as any).NODE_ENV = prevEnv;
   }
 });
+
+test('Security 33: Phase 8.1 - Admin operations succeed across clinics without restriction', async () => {
+  const admin: StaffUser = {
+    id: 'staff-admin-01',
+    username: 'admin.super',
+    name: 'مدير النظام التنفيذي',
+    role: 'ADMIN',
+    active: true,
+  };
+
+  const newApt = await appointmentStore.createAppointment({
+    clinicId: 'dentistry',
+    patientName: 'أحمد سعيد جمال',
+    phoneNumber: '01099887766',
+    appointmentDate: '2026-11-16',
+    appointmentTime: '10:00',
+  });
+  assert.equal(newApt.success, true);
+  const aptId = newApt.appointment!.id;
+
+  // Admin confirms
+  const resConfirm = await appointmentStore.updateStatus(aptId, 'CONFIRMED', admin);
+  assert.equal(resConfirm.success, true);
+
+  // Admin checks in
+  const resCheckIn = await appointmentStore.updateStatus(aptId, 'CHECKED_IN', admin);
+  assert.equal(resCheckIn.success, true);
+
+  // Admin completes
+  const resComplete = await appointmentStore.updateStatus(aptId, 'COMPLETED', admin);
+  assert.equal(resComplete.success, true);
+});
+
+test('Security 34: Phase 8.2 - Receptionist can confirm appointments (CONFIRMED) within assigned clinic', async () => {
+  const receptionist: StaffUser = {
+    id: 'staff-rec-01',
+    username: 'rec.dentistry',
+    name: 'موظف استقبال الأسنان',
+    role: 'RECEPTIONIST',
+    clinicId: 'dentistry',
+    active: true,
+  };
+
+  const newApt = await appointmentStore.createAppointment({
+    clinicId: 'dentistry',
+    patientName: 'سارة خالد المحمود',
+    phoneNumber: '01122334455',
+    appointmentDate: '2026-11-16',
+    appointmentTime: '10:30',
+  });
+  assert.equal(newApt.success, true);
+  const aptId = newApt.appointment!.id;
+
+  const resConfirm = await appointmentStore.updateStatus(aptId, 'CONFIRMED', receptionist);
+  assert.equal(resConfirm.success, true);
+  assert.equal(resConfirm.appointment?.status, 'CONFIRMED');
+});
+
+test('Security 35: Phase 8.3 - Receptionist is strictly blocked from marking appointments COMPLETED', async () => {
+  const receptionist: StaffUser = {
+    id: 'staff-rec-02',
+    username: 'rec.dentistry2',
+    name: 'موظف استقبال الأسنان 2',
+    role: 'RECEPTIONIST',
+    clinicId: 'dentistry',
+    active: true,
+  };
+
+  const newApt = await appointmentStore.createAppointment({
+    clinicId: 'dentistry',
+    patientName: 'كريم عادل الشافعي',
+    phoneNumber: '01233445566',
+    appointmentDate: '2026-11-16',
+    appointmentTime: '11:00',
+  });
+  assert.equal(newApt.success, true);
+  const aptId = newApt.appointment!.id;
+
+  // First confirm & check in as doctor
+  const doctor: StaffUser = {
+    id: 'staff-doc-01',
+    username: 'dr.dentist',
+    name: 'طبيب الأسنان',
+    role: 'DOCTOR',
+    clinicId: 'dentistry',
+    active: true,
+  };
+  await appointmentStore.updateStatus(aptId, 'CONFIRMED', doctor);
+  await appointmentStore.updateStatus(aptId, 'CHECKED_IN', doctor);
+
+  // Receptionist tries to mark COMPLETED
+  const resFail = await appointmentStore.updateStatus(aptId, 'COMPLETED', receptionist);
+  assert.equal(resFail.success, false);
+  assert.match(resFail.error || '', /إتمام الكشف الطبي وصرف التذكرة صلاحية طبية مخصصة للأطباء فقط/);
+});
+
+test('Security 36: Phase 8.4 - Receptionist cannot alter patient identity or appointment details directly', () => {
+  const migrationPath = path.join(process.cwd(), 'supabase', 'migrations', '20261101030000_atomic_status_update_and_privilege_hardening.sql');
+  const content = fs.readFileSync(migrationPath, 'utf8');
+
+  // Verify trigger checks receptionist restrictions
+  assert.ok(content.includes("IF v_role = 'RECEPTIONIST' THEN"), 'Migration trigger must enforce receptionist restrictions');
+  assert.ok(content.includes('OLD.patient_name != NEW.patient_name'), 'Trigger must block receptionist altering patient name');
+  assert.ok(content.includes('OLD.phone_number != NEW.phone_number'), 'Trigger must block receptionist altering phone number');
+  assert.ok(content.includes('OLD.clinic_id != NEW.clinic_id'), 'Trigger must block receptionist altering clinic directly without official transfer');
+});
+
+test('Security 37: Phase 8.5 - Doctor can only access and update appointments in assigned clinic', async () => {
+  const cardioDoctor: StaffUser = {
+    id: 'staff-doc-cardio',
+    username: 'dr.cardio',
+    name: 'د/ أسامة القلب',
+    role: 'DOCTOR',
+    clinicId: 'cardio',
+    active: true,
+  };
+
+  const newApt = await appointmentStore.createAppointment({
+    clinicId: 'cardio',
+    patientName: 'ياسين أحمد فؤاد',
+    phoneNumber: '01044556677',
+    appointmentDate: '2026-11-16',
+    appointmentTime: '11:30',
+  });
+  assert.equal(newApt.success, true);
+  const aptId = newApt.appointment!.id;
+
+  await appointmentStore.updateStatus(aptId, 'CONFIRMED', cardioDoctor);
+  await appointmentStore.updateStatus(aptId, 'CHECKED_IN', cardioDoctor);
+  const res = await appointmentStore.updateStatus(aptId, 'COMPLETED', cardioDoctor);
+  assert.equal(res.success, true);
+  assert.equal(res.appointment?.status, 'COMPLETED');
+});
+
+test('Security 38: Phase 8.6 - Doctor cannot access or update appointments in other clinics', async () => {
+  const cardioDoctor: StaffUser = {
+    id: 'staff-doc-cardio-2',
+    username: 'dr.cardio2',
+    name: 'د/ أسماء القلب',
+    role: 'DOCTOR',
+    clinicId: 'cardio',
+    active: true,
+  };
+
+  const dentistryApt = await appointmentStore.createAppointment({
+    clinicId: 'dentistry',
+    patientName: 'هدى مصطفى كامل',
+    phoneNumber: '01511223344',
+    appointmentDate: '2026-11-16',
+    appointmentTime: '12:00',
+  });
+  assert.equal(dentistryApt.success, true);
+  const aptId = dentistryApt.appointment!.id;
+
+  const res = await appointmentStore.updateStatus(aptId, 'CONFIRMED', cardioDoctor);
+  assert.equal(res.success, false);
+  assert.match(res.error || '', /عيادة أخرى/);
+});
+
+test('Security 39: Phase 8.7 - Unassigned Doctor (null clinicId) is denied access completely', async () => {
+  const unassignedDoctor: StaffUser = {
+    id: 'staff-doc-none',
+    username: 'dr.unassigned',
+    name: 'د/ طبيب عام بلا عيادة',
+    role: 'DOCTOR',
+    clinicId: undefined,
+    active: true,
+  };
+
+  const newApt = await appointmentStore.createAppointment({
+    clinicId: 'dentistry',
+    patientName: 'طارق زياد النجار',
+    phoneNumber: '01077889900',
+    appointmentDate: '2026-11-16',
+    appointmentTime: '12:30',
+  });
+  assert.equal(newApt.success, true);
+  const aptId = newApt.appointment!.id;
+
+  const res = await appointmentStore.updateStatus(aptId, 'CONFIRMED', unassignedDoctor);
+  assert.equal(res.success, false);
+  assert.match(res.error || '', /غير مصرح للطبيب غير المعين على عيادة/);
+
+  const apts = await appointmentStore.getStaffAppointments({}, unassignedDoctor);
+  assert.equal(apts.length, 0, 'Unassigned doctor must view zero appointments');
+});
+
+test('Security 40: Phase 8.8 - Terminal states (COMPLETED, CANCELLED) cannot be altered without Admin role', async () => {
+  const doctor: StaffUser = {
+    id: 'staff-doc-surgery',
+    username: 'dr.surgery',
+    name: 'د/ شريف جراحة',
+    role: 'DOCTOR',
+    clinicId: 'surgery',
+    active: true,
+  };
+
+  const newApt = await appointmentStore.createAppointment({
+    clinicId: 'surgery',
+    patientName: 'مروان هيثم وجدي',
+    phoneNumber: '01199887766',
+    appointmentDate: '2026-11-16',
+    appointmentTime: '13:00',
+  });
+  assert.equal(newApt.success, true);
+  const aptId = newApt.appointment!.id;
+
+  await appointmentStore.updateStatus(aptId, 'CONFIRMED', doctor);
+  await appointmentStore.updateStatus(aptId, 'CHECKED_IN', doctor);
+  await appointmentStore.updateStatus(aptId, 'COMPLETED', doctor);
+
+  // Doctor attempts to alter already completed appointment
+  const docReopen = await appointmentStore.updateStatus(aptId, 'CHECKED_IN', doctor);
+  assert.equal(docReopen.success, false);
+  assert.match(docReopen.error || '', /إلا بواسطة مدير النظام/);
+
+  // Receptionist attempts to alter completed appointment
+  const rec: StaffUser = {
+    id: 'rec-surgery',
+    username: 'rec.surgery',
+    name: 'استقبال جراحة',
+    role: 'RECEPTIONIST',
+    clinicId: 'surgery',
+    active: true,
+  };
+  const recReopen = await appointmentStore.updateStatus(aptId, 'CONFIRMED', rec);
+  assert.equal(recReopen.success, false);
+  assert.match(recReopen.error || '', /إلا بواسطة مدير النظام/);
+});
+
+test('Security 41: Phase 8.9 - Transactional atomicity: status update and history insertion in single plpgsql block', () => {
+  const migrationPath = path.join(process.cwd(), 'supabase', 'migrations', '20261101030000_atomic_status_update_and_privilege_hardening.sql');
+  const content = fs.readFileSync(migrationPath, 'utf8');
+
+  // Verify atomic RPC function exists and performs both UPDATE and INSERT
+  assert.ok(content.includes('CREATE OR REPLACE FUNCTION public.update_appointment_status_atomic'), 'Atomic update function must exist');
+  assert.ok(content.includes('UPDATE public.appointments'), 'Must update appointments table');
+  assert.ok(content.includes('INSERT INTO public.appointment_status_history'), 'Must insert into appointment_status_history');
+  assert.ok(content.includes('GET DIAGNOSTICS v_rows_updated = ROW_COUNT;'), 'Must assert exactly 1 row updated');
+  assert.ok(content.includes('IF v_rows_updated != 1 THEN'), 'Must raise exception and roll back if no row was updated');
+});
+
+test('Security 42: Phase 8.10 - Concurrency serialization: FOR UPDATE row lock and transactional advisory lock', () => {
+  const migrationPath = path.join(process.cwd(), 'supabase', 'migrations', '20261101030000_atomic_status_update_and_privilege_hardening.sql');
+  const content = fs.readFileSync(migrationPath, 'utf8');
+
+  // Verify FOR UPDATE locking in update_appointment_status_atomic
+  assert.ok(content.includes('FOR UPDATE;'), 'Status update RPC must acquire FOR UPDATE row lock');
+
+  // Verify advisory lock in transfer_appointment_clinic_atomic
+  assert.ok(content.includes("pg_advisory_xact_lock(hashtext('booking_' || p_target_clinic_id || '_' || v_apt.appointment_date::text))"), 'Clinic transfer RPC must acquire transactional advisory lock');
+});
+
+test('Security 43: Phase 8.11 - Direct RPC authorization: spoofed or unverified staff identities are rejected', () => {
+  const migrationPath = path.join(process.cwd(), 'supabase', 'migrations', '20261101030000_atomic_status_update_and_privilege_hardening.sql');
+  const content = fs.readFileSync(migrationPath, 'utf8');
+
+  assert.ok(content.includes('IF p_staff_user_id IS NOT NULL AND p_staff_user_id != auth.uid() THEN'), 'RPC must reject spoofed staff ID that does not match authenticated JWT uid');
+  assert.ok(content.includes('FROM public.staff_profiles'), 'RPC must verify staff record in staff_profiles');
+  assert.ok(content.includes('IF v_staff_record.is_active != true THEN'), 'RPC must reject inactive or suspended staff members');
+});
+
+test('Security 44: Phase 8.12 - Patient tracking privacy: unauthenticated lookups strictly minimize exposed data', async () => {
+  const trackRoutePath = path.join(process.cwd(), 'app', 'api', 'appointments', 'track', 'route.ts');
+  const trackContent = fs.readFileSync(trackRoutePath, 'utf8');
+
+  assert.ok(trackContent.includes('[بيانات الطفل محجوبة لحماية الخصوصية]'), 'Unverified lookups must redact child name');
+  assert.ok(trackContent.includes('BSCH-****'), 'Unverified lookups must mask booking reference number');
+});
+
+test('Security 45: Phase 8.13 - Client request tampering protection: API routes derive staff role from session only', () => {
+  const statusRoutePath = path.join(process.cwd(), 'app', 'api', 'appointments', '[id]', 'status', 'route.ts');
+  const content = fs.readFileSync(statusRoutePath, 'utf8');
+
+  assert.ok(content.includes('const staffUser = await AuthService.verifySession(token);'), 'Route must verify session token');
+  assert.ok(!content.includes('req.json().role'), 'Route must never extract role from JSON request body');
+  assert.ok(!content.includes('req.json().clinicId'), 'Route must never trust client-supplied clinicId for staff authorization');
+});
+
+test('Security 46: Phase 8.14 - Admin client fail-closed behavior: absence of SERVICE_ROLE_KEY throws in production', async () => {
+  const { createAdminClient } = await import('./supabase/admin.ts');
+  const prevEnv = process.env.NODE_ENV;
+  const prevKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  try {
+    (process.env as any).NODE_ENV = 'production';
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    assert.throws(
+      () => createAdminClient(),
+      /CRITICAL: Supabase admin client cannot be created in production/,
+      'createAdminClient must throw immediately in production if SUPABASE_SERVICE_ROLE_KEY is missing'
+    );
+  } finally {
+    (process.env as any).NODE_ENV = prevEnv;
+    if (prevKey) {
+      process.env.SUPABASE_SERVICE_ROLE_KEY = prevKey;
+    }
+  }
+});
+
+test('Security 47: Cancellation Request - Submitting cancellation request does NOT alter appointment status (remains active)', async () => {
+  const newApt = await appointmentStore.createAppointment({
+    clinicId: 'dentistry',
+    patientName: 'مروان سعيد عبد الرحمن',
+    phoneNumber: '01033445566',
+    appointmentDate: '2026-11-25',
+    appointmentTime: '09:30',
+  });
+  assert.equal(newApt.success, true);
+  const apt = newApt.appointment!;
+  assert.equal(apt.status, 'PENDING_REVIEW');
+
+  // Submit cancellation request
+  const reqRes = await appointmentStore.requestCancellation({
+    referenceNumber: apt.referenceNumber,
+    phoneNumber: '01033445566',
+    reason: 'سفر مفاجئ لولي الأمر',
+  });
+  assert.equal(reqRes.success, true);
+  assert.match(reqRes.message || '', /يظل الحجز فعالاً/);
+
+  // Verify appointment status did NOT change
+  const currentApt = appointmentStore.getAppointmentById(apt.id);
+  assert.ok(currentApt);
+  assert.equal(currentApt.status, 'PENDING_REVIEW', 'Appointment status must remain PENDING_REVIEW after submitting cancellation request');
+  assert.equal(currentApt.hasPendingCancellation, true, 'Appointment must flag pending cancellation request');
+});
+
+test('Security 48: Cancellation Request - Duplicate pending request for the same appointment is prevented', async () => {
+  const newApt = await appointmentStore.createAppointment({
+    clinicId: 'dentistry',
+    patientName: 'فاطمة محمود النجار',
+    phoneNumber: '01155667788',
+    appointmentDate: '2026-11-25',
+    appointmentTime: '10:00',
+  });
+  assert.equal(newApt.success, true);
+  const apt = newApt.appointment!;
+
+  // First request -> Succeeds
+  const firstReq = await appointmentStore.requestCancellation({
+    referenceNumber: apt.referenceNumber,
+    phoneNumber: '01155667788',
+    reason: 'ظرف صحي',
+  });
+  assert.equal(firstReq.success, true);
+
+  // Duplicate second request -> Rejected
+  const duplicateReq = await appointmentStore.requestCancellation({
+    referenceNumber: apt.referenceNumber,
+    phoneNumber: '01155667788',
+    reason: 'طلب تكرار الإلغاء',
+  });
+  assert.equal(duplicateReq.success, false, 'Duplicate pending cancellation request must be rejected');
+  assert.match(duplicateReq.error || '', /يوجد طلب إلغاء قيد المراجعة بالفعل/);
+});
+
+test('Security 49: Cancellation Request - Patient / anonymous direct cancellation is strictly forbidden', async () => {
+  const newApt = await appointmentStore.createAppointment({
+    clinicId: 'dentistry',
+    patientName: 'سليمان داود السعدي',
+    phoneNumber: '01244556677',
+    appointmentDate: '2026-11-25',
+    appointmentTime: '10:30',
+  });
+  assert.equal(newApt.success, true);
+  const apt = newApt.appointment!;
+
+  // Direct cancellation with phone number alone without staff user -> Must be rejected
+  const directCancel = await appointmentStore.cancelAppointment(apt.referenceNumber, 'محاولة إلغاء مباشر', {
+    phoneNumber: '01244556677',
+  } as any);
+  assert.equal(directCancel.success, false, 'Direct cancellation without staff session must be rejected');
+  assert.match(directCancel.error || '', /غير مصرح بإلغاء الحجز مباشرة/);
+
+  // Appointment must remain active
+  const checkApt = appointmentStore.getAppointmentById(apt.id);
+  assert.equal(checkApt?.status, 'PENDING_REVIEW');
+});
+
+test('Security 50: Cancellation Review - Unauthorized staff (different clinic) is denied permission to review request', async () => {
+  const newApt = await appointmentStore.createAppointment({
+    clinicId: 'dentistry',
+    patientName: 'يوسف رامي الشربيني',
+    phoneNumber: '01511223388',
+    appointmentDate: '2026-11-25',
+    appointmentTime: '11:00',
+  });
+  assert.equal(newApt.success, true);
+  const apt = newApt.appointment!;
+
+  const req = await appointmentStore.requestCancellation({
+    referenceNumber: apt.referenceNumber,
+    phoneNumber: '01511223388',
+    reason: 'اعتذار عن الحضور',
+  });
+  assert.equal(req.success, true);
+  const requestId = req.requestId!;
+
+  // Receptionist assigned to CARDIO attempts to review DENTISTRY request
+  const cardioReceptionist: StaffUser = {
+    id: 'staff-rec-cardio-99',
+    username: 'rec.cardio',
+    name: 'استقبال القلب',
+    role: 'RECEPTIONIST',
+    clinicId: 'cardio',
+    active: true,
+  };
+
+  const reviewRes = await appointmentStore.reviewCancellationRequest(
+    requestId,
+    'APPROVED',
+    cardioReceptionist,
+    'محاولة اعتماد من عيادة أخرى'
+  );
+  assert.equal(reviewRes.success, false, 'Receptionist of another clinic must be denied review permission');
+  assert.match(reviewRes.error || '', /غير مصرح.*بمراجعة طلبات إلغاء خاصة بعيادة أخرى/);
+});
+
+test('Security 51: Cancellation Review - Authorized staff approval cancels appointment via protected atomic path', async () => {
+  const newApt = await appointmentStore.createAppointment({
+    clinicId: 'dentistry',
+    patientName: 'جنا عماد التلاوي',
+    phoneNumber: '01066778899',
+    appointmentDate: '2026-11-25',
+    appointmentTime: '11:30',
+  });
+  assert.equal(newApt.success, true);
+  const apt = newApt.appointment!;
+
+  const req = await appointmentStore.requestCancellation({
+    referenceNumber: apt.referenceNumber,
+    phoneNumber: '01066778899',
+    reason: 'تعذر الحضور بسبب بعد المسافة',
+  });
+  assert.equal(req.success, true);
+  const requestId = req.requestId!;
+
+  const dentistryReceptionist: StaffUser = {
+    id: 'staff-rec-dent-10',
+    username: 'rec.dentistry',
+    name: 'أحمد استقبال الأسنان',
+    role: 'RECEPTIONIST',
+    clinicId: 'dentistry',
+    active: true,
+  };
+
+  // Approval
+  const approveRes = await appointmentStore.reviewCancellationRequest(
+    requestId,
+    'APPROVED',
+    dentistryReceptionist,
+    'تم قبول اعتذار ولي الأمر وإلغاء الحجز'
+  );
+  assert.equal(approveRes.success, true);
+
+  // Appointment status is now CANCELLED
+  const cancelledApt = appointmentStore.getAppointmentById(apt.id);
+  assert.ok(cancelledApt);
+  assert.equal(cancelledApt.status, 'CANCELLED');
+  assert.equal(cancelledApt.hasPendingCancellation, false);
+
+  // Verify status history recorded staff member name
+  const lastHistory = cancelledApt.statusHistory[cancelledApt.statusHistory.length - 1];
+  assert.equal(lastHistory.status, 'CANCELLED');
+  assert.equal(lastHistory.updatedBy, dentistryReceptionist.name);
+});
+
+test('Security 52: Cancellation Review - Staff rejection keeps appointment active and records rejection reason', async () => {
+  const newApt = await appointmentStore.createAppointment({
+    clinicId: 'dentistry',
+    patientName: 'علي كمال البغدادي',
+    phoneNumber: '01088990011',
+    appointmentDate: '2026-11-25',
+    appointmentTime: '12:00',
+  });
+  assert.equal(newApt.success, true);
+  const apt = newApt.appointment!;
+
+  const req = await appointmentStore.requestCancellation({
+    referenceNumber: apt.referenceNumber,
+    phoneNumber: '01088990011',
+    reason: 'رغبة في تأجيل غير مؤكدة',
+  });
+  assert.equal(req.success, true);
+  const requestId = req.requestId!;
+
+  const admin: StaffUser = {
+    id: 'staff-admin-99',
+    username: 'admin.super',
+    name: 'مدير المستشفى',
+    role: 'ADMIN',
+    active: true,
+  };
+
+  // Rejection
+  const rejectRes = await appointmentStore.reviewCancellationRequest(
+    requestId,
+    'REJECTED',
+    admin,
+    'تم التواصل هاتفياً مع ولي الأمر وتأكيد الحضور'
+  );
+  assert.equal(rejectRes.success, true);
+  assert.match(rejectRes.message || '', /تم رفض طلب الإلغاء واحتفاظ الحجز بحالته/);
+
+  // Appointment status remains PENDING_REVIEW
+  const currentApt = appointmentStore.getAppointmentById(apt.id);
+  assert.ok(currentApt);
+  assert.equal(currentApt.status, 'PENDING_REVIEW', 'Appointment status must remain active after rejection');
+  assert.equal(currentApt.hasPendingCancellation, false);
+
+  // Verify status history recorded rejection
+  const lastHistory = currentApt.statusHistory[currentApt.statusHistory.length - 1];
+  assert.match(lastHistory.note || '', /رفض طلب الإلغاء/);
+});
+
+test('Security 53: Cancellation Request - Terminal state appointments (COMPLETED or CANCELLED) reject cancellation requests', async () => {
+  const doctor: StaffUser = {
+    id: 'staff-doc-dent-1',
+    username: 'dr.dent',
+    name: 'د/ طبيب الأسنان',
+    role: 'DOCTOR',
+    clinicId: 'dentistry',
+    active: true,
+  };
+
+  // 1. Completed appointment (transition through CONFIRMED -> CHECKED_IN -> COMPLETED)
+  const apt1 = await appointmentStore.createAppointment({
+    clinicId: 'dentistry',
+    patientName: 'حسن إبراهيم الحكيم',
+    phoneNumber: '01011224455',
+    appointmentDate: '2026-11-25',
+    appointmentTime: '12:30',
+  });
+  assert.equal(apt1.success, true);
+  await appointmentStore.updateStatus(apt1.appointment!.id, 'CONFIRMED', doctor);
+  await appointmentStore.updateStatus(apt1.appointment!.id, 'CHECKED_IN', doctor);
+  await appointmentStore.updateStatus(apt1.appointment!.id, 'COMPLETED', doctor);
+
+  const reqCompleted = await appointmentStore.requestCancellation({
+    referenceNumber: apt1.appointment!.referenceNumber,
+    phoneNumber: '01011224455',
+    reason: 'إلغاء حجز بعد الكشف',
+  });
+  assert.equal(reqCompleted.success, false, 'Cancellation request for COMPLETED appointment must be rejected');
+  assert.match(reqCompleted.error || '', /لا يمكن تقديم طلب إلغاء لحجز تم الكشف عليه واكتماله/);
+
+  // 2. Already Cancelled appointment
+  const apt2 = await appointmentStore.createAppointment({
+    clinicId: 'dentistry',
+    patientName: 'نور الدين مصطفى',
+    phoneNumber: '01077881122',
+    appointmentDate: '2026-11-25',
+    appointmentTime: '13:00',
+  });
+  assert.equal(apt2.success, true);
+  await appointmentStore.cancelAppointment(apt2.appointment!.referenceNumber, 'إلغاء سابق', { staffUser: doctor });
+
+  const reqCancelled = await appointmentStore.requestCancellation({
+    referenceNumber: apt2.appointment!.referenceNumber,
+    phoneNumber: '01077881122',
+    reason: 'إلغاء حجز ملغي مسبقاً',
+  });
+  assert.equal(reqCancelled.success, false, 'Cancellation request for CANCELLED appointment must be rejected');
+  assert.match(reqCancelled.error || '', /هذا الحجز ملغي مسبقاً بالفعل/);
+});
+
+test('Security 54: Cancellation System - SQL Migration structural integrity, partial unique index, and atomic RPC definitions', () => {
+  const migrationPath = path.join(process.cwd(), 'supabase', 'migrations', '20261101040000_cancellation_requests_system.sql');
+  assert.ok(fs.existsSync(migrationPath), 'Migration 20261101040000 must exist locally');
+  const content = fs.readFileSync(migrationPath, 'utf8');
+
+  // Verify Table creation
+  assert.ok(content.includes('CREATE TABLE IF NOT EXISTS public.cancellation_requests'), 'Migration must create cancellation_requests table');
+
+  // Verify Partial Unique Index
+  assert.ok(content.includes('idx_unique_pending_cancellation_request'), 'Migration must enforce partial unique index for PENDING requests');
+  assert.ok(content.includes('WHERE status = \'PENDING\''), 'Index must specifically filter on status = PENDING');
+
+  // Verify Atomic RPCs
+  assert.ok(content.includes('CREATE OR REPLACE FUNCTION public.request_cancellation_atomic'), 'Migration must define request_cancellation_atomic RPC');
+  assert.ok(content.includes('CREATE OR REPLACE FUNCTION public.review_cancellation_request_atomic'), 'Migration must define review_cancellation_request_atomic RPC');
+
+  // Verify Disallowing Phone-only direct cancellation
+  assert.ok(content.includes('تم إلغاء مسار الإلغاء المباشر برقم الهاتف لأسباب أمنية'), 'update_appointment_status_atomic must reject unauthenticated direct cancellations');
+});
+
+test('Security 55: RPC Authorization - request_cancellation_atomic strictly revokes direct EXECUTE from anon and authenticated, permitting service_role only', () => {
+  const mig1 = fs.readFileSync(path.join(process.cwd(), 'supabase', 'migrations', '20261101040000_cancellation_requests_system.sql'), 'utf8');
+  const mig2 = fs.readFileSync(path.join(process.cwd(), 'supabase', 'migrations', '20261101050000_cancellation_requests_security_hardening.sql'), 'utf8');
+
+  for (const content of [mig1, mig2]) {
+    assert.ok(
+      content.includes('REVOKE ALL ON FUNCTION public.request_cancellation_atomic(TEXT, TEXT, TEXT) FROM PUBLIC, anon, authenticated;'),
+      'Migration must revoke request_cancellation_atomic from PUBLIC, anon, and authenticated'
+    );
+    assert.ok(
+      content.includes('GRANT EXECUTE ON FUNCTION public.request_cancellation_atomic(TEXT, TEXT, TEXT) TO service_role;'),
+      'Migration must grant request_cancellation_atomic strictly to service_role'
+    );
+    // Ensure no grant to anon or authenticated
+    const hasAnonGrant = /GRANT\s+EXECUTE\s+ON\s+FUNCTION\s+public\.request_cancellation_atomic[^\n;]+TO[^\n;]*anon/i.test(content);
+    assert.equal(hasAnonGrant, false, 'request_cancellation_atomic must NEVER be granted to anon');
+  }
+});
+
+test('Security 56: RLS & Privilege Protection - Direct UPDATE on cancellation_requests is strictly revoked and blocked for authenticated users', () => {
+  const mig1 = fs.readFileSync(path.join(process.cwd(), 'supabase', 'migrations', '20261101040000_cancellation_requests_system.sql'), 'utf8');
+  const mig2 = fs.readFileSync(path.join(process.cwd(), 'supabase', 'migrations', '20261101050000_cancellation_requests_security_hardening.sql'), 'utf8');
+
+  for (const content of [mig1, mig2]) {
+    // Direct table UPDATE permissions must be revoked
+    assert.ok(
+      content.includes('REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLE public.cancellation_requests FROM PUBLIC, anon, authenticated;'),
+      'Migration must revoke direct table modifications from normal clients'
+    );
+    // Staff update policy must be dropped
+    assert.ok(
+      content.includes('DROP POLICY IF EXISTS "Staff update cancellation_requests" ON public.cancellation_requests;'),
+      'Migration must drop Staff update policy on cancellation_requests'
+    );
+    // Ensure no new UPDATE policy is created for authenticated
+    const hasUpdatePolicy = /CREATE\s+POLICY[^\n;]+ON\s+public\.cancellation_requests\s+FOR\s+UPDATE\s+TO\s+authenticated/i.test(content);
+    assert.equal(hasUpdatePolicy, false, 'No UPDATE policy must exist for authenticated on cancellation_requests');
+  }
+});
+
+test('Security 57: Clinic Confinement - Receptionist without assigned clinic (null/empty clinicId) is strictly denied reviewing any cancellation request', async () => {
+  const newApt = await appointmentStore.createAppointment({
+    clinicId: 'dentistry',
+    patientName: 'سعيد عبد العال شرف',
+    phoneNumber: '01011998877',
+    appointmentDate: '2026-11-25',
+    appointmentTime: '11:00',
+  });
+  assert.equal(newApt.success, true);
+  const apt = newApt.appointment!;
+
+  const req = await appointmentStore.requestCancellation({
+    referenceNumber: apt.referenceNumber,
+    phoneNumber: '01011998877',
+    reason: 'اعتذار عن الحضور',
+  });
+  assert.equal(req.success, true);
+  const requestId = req.requestId!;
+
+  // Receptionist with no clinic assigned
+  const unassignedReceptionist: StaffUser = {
+    id: 'staff-rec-unassigned-57',
+    username: 'rec.unassigned57',
+    name: 'موظف استقبال بدون عيادة',
+    role: 'RECEPTIONIST',
+    clinicId: undefined,
+    active: true,
+  };
+
+  const reviewRes = await appointmentStore.reviewCancellationRequest(
+    requestId,
+    'APPROVED',
+    unassignedReceptionist,
+    'محاولة اعتماد من موظف استقبال بدون عيادة'
+  );
+
+  assert.equal(reviewRes.success, false, 'Unassigned receptionist must be rejected from reviewing requests');
+  assert.match(reviewRes.error || '', /غير مصرح.*موظف الاستقبال غير معين على عيادة/);
+
+  // Must not be able to list any cancellation requests
+  const list = await appointmentStore.getCancellationRequests({}, unassignedReceptionist);
+  assert.equal(list.length, 0, 'Unassigned receptionist must see 0 cancellation requests');
+});
+
+test('Security 58: Clinic Confinement - Receptionist cannot review cancellation request belonging to another clinic', async () => {
+  const newApt = await appointmentStore.createAppointment({
+    clinicId: 'dentistry',
+    patientName: 'مريم طارق البدري',
+    phoneNumber: '01122336699',
+    appointmentDate: '2026-11-25',
+    appointmentTime: '11:30',
+  });
+  assert.equal(newApt.success, true);
+  const apt = newApt.appointment!;
+
+  const req = await appointmentStore.requestCancellation({
+    referenceNumber: apt.referenceNumber,
+    phoneNumber: '01122336699',
+    reason: 'سفر مفاجئ',
+  });
+  assert.equal(req.success, true);
+  const requestId = req.requestId!;
+
+  // Receptionist assigned to CARDIO
+  const cardioReceptionist: StaffUser = {
+    id: 'staff-rec-cardio-58',
+    username: 'rec.cardio58',
+    name: 'موظف استقبال القلب',
+    role: 'RECEPTIONIST',
+    clinicId: 'cardio',
+    active: true,
+  };
+
+  const reviewRes = await appointmentStore.reviewCancellationRequest(
+    requestId,
+    'APPROVED',
+    cardioReceptionist,
+    'محاولة اعتماد من عيادة أخرى'
+  );
+
+  assert.equal(reviewRes.success, false, 'Receptionist of another clinic must be denied review permission');
+  assert.match(reviewRes.error || '', /غير مصرح لموظف الاستقبال بمراجعة طلبات إلغاء خاصة بعيادة أخرى/);
+});
+
+test('Security 59: Role Authorization - Doctor is strictly blocked from reviewing cancellation requests', async () => {
+  const newApt = await appointmentStore.createAppointment({
+    clinicId: 'dentistry',
+    patientName: 'ياسر كمال المنشاوي',
+    phoneNumber: '01222446688',
+    appointmentDate: '2026-11-25',
+    appointmentTime: '12:00',
+  });
+  assert.equal(newApt.success, true);
+  const apt = newApt.appointment!;
+
+  const req = await appointmentStore.requestCancellation({
+    referenceNumber: apt.referenceNumber,
+    phoneNumber: '01222446688',
+    reason: 'ظرف طارئ',
+  });
+  assert.equal(req.success, true);
+  const requestId = req.requestId!;
+
+  // Doctor assigned to DENTISTRY
+  const doctor: StaffUser = {
+    id: 'staff-doc-dent-59',
+    username: 'dr.dent59',
+    name: 'دكتور الأسنان',
+    role: 'DOCTOR',
+    clinicId: 'dentistry',
+    active: true,
+  };
+
+  const reviewRes = await appointmentStore.reviewCancellationRequest(
+    requestId,
+    'APPROVED',
+    doctor,
+    'محاولة اعتماد من طبيب العيادة'
+  );
+
+  assert.equal(reviewRes.success, false, 'Doctor must be strictly blocked from reviewing cancellation requests');
+  assert.match(reviewRes.error || '', /غير مصرح لهذا الدور بمراجعة طلبات الإلغاء/);
+
+  // Doctors must also see 0 cancellation requests in listing
+  const list = await appointmentStore.getCancellationRequests({}, doctor);
+  assert.equal(list.length, 0, 'Doctor must see 0 cancellation requests');
+});
+
+test('Security 60: Bot Protection - Turnstile cannot be bypassed in production by deleting or omitting turnstileToken', async () => {
+  const prevEnv = process.env.NODE_ENV;
+  const prevSecret = process.env.TURNSTILE_SECRET_KEY;
+
+  try {
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'production';
+
+    // 1. Without TURNSTILE_SECRET_KEY in production: must fail-closed even if token omitted
+    delete process.env.TURNSTILE_SECRET_KEY;
+    const resNoSecret = await verifyTurnstileToken(undefined, '127.0.0.1');
+    assert.equal(resNoSecret.success, false, 'Must fail closed in production when secret key is unconfigured');
+    assert.match(resNoSecret.error || '', /غير مهيأ في بيئة الإنتاج/);
+
+    // 2. With TURNSTILE_SECRET_KEY in production: missing or deleted token must be rejected
+    process.env.TURNSTILE_SECRET_KEY = 'test_prod_turnstile_secret';
+    const resEmptyToken = await verifyTurnstileToken('', '127.0.0.1');
+    assert.equal(resEmptyToken.success, false, 'Must reject empty token in production');
+    assert.match(resEmptyToken.error || '', /إكمال التحقق الأمني من مكافحة الروبوتات/);
+
+    const resUndefinedToken = await verifyTurnstileToken(undefined, '127.0.0.1');
+    assert.equal(resUndefinedToken.success, false, 'Must reject omitted/deleted token in production');
+    assert.match(resUndefinedToken.error || '', /إكمال التحقق الأمني من مكافحة الروبوتات/);
+  } finally {
+    (process.env as Record<string, string | undefined>).NODE_ENV = prevEnv;
+    process.env.TURNSTILE_SECRET_KEY = prevSecret;
+  }
+});
+
+test('Security 61: Transactional Atomicity - Failure of appointment cancellation aborts the operation and never leaves request in APPROVED status', async () => {
+  const newApt = await appointmentStore.createAppointment({
+    clinicId: 'dentistry',
+    patientName: 'صلاح الدين الأيوبي الصغير',
+    phoneNumber: '01099887766',
+    appointmentDate: '2026-11-25',
+    appointmentTime: '12:30',
+  });
+  assert.equal(newApt.success, true);
+  const apt = newApt.appointment!;
+
+  const req = await appointmentStore.requestCancellation({
+    referenceNumber: apt.referenceNumber,
+    phoneNumber: '01099887766',
+    reason: 'اعتذار بعد استكمال الكشف',
+  });
+  assert.equal(req.success, true);
+  const requestId = req.requestId!;
+
+  const admin: StaffUser = {
+    id: 'staff-admin-61',
+    username: 'admin.atomicity',
+    name: 'مدير النظام للتزامن',
+    role: 'ADMIN',
+    active: true,
+  };
+
+  // Simulate appointment becoming COMPLETED before the receptionist approves the cancellation request
+  const doc: StaffUser = {
+    id: 'doc-61',
+    username: 'dr.atomicity',
+    name: 'طبيب الكشف',
+    role: 'DOCTOR',
+    clinicId: 'dentistry',
+    active: true,
+  };
+  await appointmentStore.updateStatus(apt.id, 'CONFIRMED', doc);
+  await appointmentStore.updateStatus(apt.id, 'CHECKED_IN', doc);
+  await appointmentStore.updateStatus(apt.id, 'COMPLETED', doc);
+
+  // Non-admin receptionist attempts to approve cancellation on completed appointment
+  const recep: StaffUser = {
+    id: 'staff-rec-dent-61',
+    username: 'rec.dent61',
+    name: 'موظف الاستقبال',
+    role: 'RECEPTIONIST',
+    clinicId: 'dentistry',
+    active: true,
+  };
+
+  const reviewAttempt = await appointmentStore.reviewCancellationRequest(
+    requestId,
+    'APPROVED',
+    recep,
+    'محاولة موافقة بعد اكتمال الكشف'
+  );
+
+  assert.equal(reviewAttempt.success, false, 'Review must fail when central status update is rejected');
+
+  // Verify cancellation request status NEVER changed to APPROVED (remains PENDING)
+  const reqInStore = (appointmentStore as any).cancellationRequests?.find((r: any) => r.id === requestId);
+  assert.ok(reqInStore);
+  assert.notEqual(reqInStore.status, 'APPROVED', 'Cancellation request status must NEVER be APPROVED when appointment update fails');
+  assert.equal(reqInStore.status, 'PENDING');
+});
+
+test('Security 62: Audit Trail - Approval of cancellation request is recorded in audit_logs with staff identity, request ID, and appointment reference', async () => {
+  const newApt = await appointmentStore.createAppointment({
+    clinicId: 'dentistry',
+    patientName: 'أنس جلال المرشدي',
+    phoneNumber: '01022334455',
+    appointmentDate: '2026-11-25',
+    appointmentTime: '13:00',
+  });
+  assert.equal(newApt.success, true);
+  const apt = newApt.appointment!;
+
+  const req = await appointmentStore.requestCancellation({
+    referenceNumber: apt.referenceNumber,
+    phoneNumber: '01022334455',
+    reason: 'تعذر الحضور بسبب الطقس',
+  });
+  assert.equal(req.success, true);
+  const requestId = req.requestId!;
+
+  const dentistryRecep: StaffUser = {
+    id: 'staff-rec-dent-62',
+    username: 'rec.dent62',
+    name: 'أحمد كمال عبد الله',
+    role: 'RECEPTIONIST',
+    clinicId: 'dentistry',
+    active: true,
+  };
+
+  const reviewRes = await appointmentStore.reviewCancellationRequest(
+    requestId,
+    'APPROVED',
+    dentistryRecep,
+    'تم قبول عذر الطقس وإلغاء الحجز'
+  );
+  assert.equal(reviewRes.success, true);
+
+  // Check audit log entry
+  const logs = await appointmentStore.getAuditLogs();
+  const approveLog = logs.find(
+    (l) => l.action.includes('موافقة على إلغاء حجز') && l.referenceNumber === apt.referenceNumber
+  );
+  assert.ok(approveLog, 'Audit log must contain approval record for the appointment');
+  assert.equal(approveLog.staffName, dentistryRecep.name, 'Audit log must record staff full name');
+  assert.equal(approveLog.staffRole, dentistryRecep.role, 'Audit log must record staff role');
+  assert.ok(approveLog.details.includes(requestId), 'Audit log must record cancellation request ID');
+});
+
+test('Security 63: Audit Trail & State Preservation - Rejection is recorded in audit_logs and appointment remains active in its original status', async () => {
+  const newApt = await appointmentStore.createAppointment({
+    clinicId: 'dentistry',
+    patientName: 'حمزة سامح الصاوي',
+    phoneNumber: '01033446677',
+    appointmentDate: '2026-11-25',
+    appointmentTime: '13:30',
+  });
+  assert.equal(newApt.success, true);
+  const apt = newApt.appointment!;
+  const originalStatus = apt.status; // 'PENDING_REVIEW'
+
+  const req = await appointmentStore.requestCancellation({
+    referenceNumber: apt.referenceNumber,
+    phoneNumber: '01033446677',
+    reason: 'شك في الموعد',
+  });
+  assert.equal(req.success, true);
+  const requestId = req.requestId!;
+
+  const dentistryRecep: StaffUser = {
+    id: 'staff-rec-dent-63',
+    username: 'rec.dent63',
+    name: 'محمود سعد الخولي',
+    role: 'RECEPTIONIST',
+    clinicId: 'dentistry',
+    active: true,
+  };
+
+  const reviewRes = await appointmentStore.reviewCancellationRequest(
+    requestId,
+    'REJECTED',
+    dentistryRecep,
+    'تم التواصل والتأكيد على الحضور في الموعد'
+  );
+  assert.equal(reviewRes.success, true);
+
+  // Check appointment status is untouched
+  const currentApt = appointmentStore.getAppointmentById(apt.id);
+  assert.ok(currentApt);
+  assert.equal(currentApt.status, originalStatus, 'Appointment must maintain its original status after rejection');
+  assert.notEqual(currentApt.status, 'CANCELLED', 'Appointment must NOT be CANCELLED after rejection');
+
+  // Check audit log entry
+  const logs = await appointmentStore.getAuditLogs();
+  const rejectLog = logs.find(
+    (l) => l.action.includes('رفض طلب إلغاء حجز') && l.referenceNumber === apt.referenceNumber
+  );
+  assert.ok(rejectLog, 'Audit log must contain rejection record for the appointment');
+  assert.equal(rejectLog.staffName, dentistryRecep.name);
+  assert.equal(rejectLog.staffRole, dentistryRecep.role);
+  assert.ok(rejectLog.details.includes(requestId), 'Audit log must record cancellation request ID');
+  assert.ok(rejectLog.details.includes('تم التواصل والتأكيد على الحضور'), 'Audit log must record rejection reason');
+});
+
 
 

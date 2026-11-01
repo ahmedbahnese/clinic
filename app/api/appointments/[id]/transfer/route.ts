@@ -26,7 +26,7 @@ export async function POST(
       return NextResponse.json({ error: 'العيادة المحول إليها مطلوبة' }, { status: 400 });
     }
 
-    const result = await appointmentStore.transferClinic(id, targetClinicId, reason, staffUser);
+    const result = await appointmentStore.transferClinic(id, targetClinicId, reason, staffUser, token);
     if (!result.success || !result.appointment) {
       return NextResponse.json({ error: result.error || 'تعذر تحويل المريض' }, { status: 400 });
     }

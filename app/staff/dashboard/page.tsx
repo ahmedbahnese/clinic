@@ -33,7 +33,7 @@ import {
   CalendarDays,
 } from 'lucide-react';
 import CmsDashboard from '@/components/cms/CmsDashboard';
-import { Appointment, Clinic, ClinicScheduleException, AppointmentStatus, AuditLogItem } from '@/types';
+import { Appointment, Clinic, ClinicScheduleException, AppointmentStatus, AuditLogItem, CancellationRequest } from '@/types';
 import { getStatusDisplay, formatArabicDate, formatLocalDate } from '@/lib/rules';
 
 export default function StaffDashboardPage() {
@@ -46,12 +46,21 @@ export default function StaffDashboardPage() {
   } | null>(null);
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState<'QUEUE' | 'CLINICS' | 'AUDIT' | 'CMS'>('QUEUE');
+  const [activeTab, setActiveTab] = useState<'QUEUE' | 'CLINICS' | 'AUDIT' | 'CMS' | 'CANCELLATIONS'>('QUEUE');
 
   // Appointments & Clinics State
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [clinics, setClinics] = useState<Clinic[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Cancellation Requests State
+  const [cancellationRequests, setCancellationRequests] = useState<CancellationRequest[]>([]);
+  const [loadingCancellationRequests, setLoadingCancellationRequests] = useState(false);
+  const [cancellationFilterStatus, setCancellationFilterStatus] = useState<string>('PENDING');
+  const [reviewingReqId, setReviewingReqId] = useState<string | null>(null);
+  const [reviewDecision, setReviewDecision] = useState<'APPROVED' | 'REJECTED'>('APPROVED');
+  const [reviewReason, setReviewReason] = useState('');
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
   // Filters State
   const [dateFilterType, setDateFilterType] = useState<'TODAY' | 'TOMORROW' | 'CUSTOM' | 'ALL'>('TODAY');
@@ -242,6 +251,29 @@ export default function StaffDashboardPage() {
     }
   }, []);
 
+  const loadCancellationRequests = useCallback(async () => {
+    const token = localStorage.getItem('bsch_staff_token');
+    if (!token) return;
+    setLoadingCancellationRequests(true);
+    try {
+      const url = new URL('/api/staff/cancellation-requests', window.location.origin);
+      if (cancellationFilterStatus !== 'ALL') {
+        url.searchParams.set('status', cancellationFilterStatus);
+      }
+      const res = await fetch(url.toString(), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCancellationRequests(data.requests || []);
+      }
+    } catch (err) {
+      console.error('Error loading cancellation requests:', err);
+    } finally {
+      setLoadingCancellationRequests(false);
+    }
+  }, [cancellationFilterStatus]);
+
   useEffect(() => {
     let active = true;
     const token = localStorage.getItem('bsch_staff_token');
@@ -269,12 +301,48 @@ export default function StaffDashboardPage() {
           }
         })
         .catch((e) => console.error(e));
+    } else if (activeTab === 'CANCELLATIONS') {
+      loadCancellationRequests();
     }
 
     return () => {
       active = false;
     };
-  }, [activeTab]);
+  }, [activeTab, loadCancellationRequests]);
+
+  useEffect(() => {
+    loadCancellationRequests();
+  }, [loadCancellationRequests, refreshKey]);
+
+  async function handleReviewCancellation(requestId: string, decision: 'APPROVED' | 'REJECTED', reason?: string) {
+    const token = localStorage.getItem('bsch_staff_token');
+    if (!token) return;
+    setIsSubmittingReview(true);
+    try {
+      const res = await fetch(`/api/staff/cancellation-requests/${requestId}/review`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ decision, reason }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message || (decision === 'APPROVED' ? 'تمت الموافقة على طلب الإلغاء وإلغاء الحجز بنجاح' : 'تم رفض طلب الإلغاء واحتفاظ الحجز بحالته'));
+        setReviewingReqId(null);
+        setReviewReason('');
+        loadCancellationRequests();
+        setRefreshKey((k) => k + 1);
+      } else {
+        alert(data.error || 'تعذر البت في طلب الإلغاء');
+      }
+    } catch {
+      alert('حدث خطأ أثناء معالجة الطلب');
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  }
 
   // Status Change Handler
   async function handleStatusChange(appointmentId: string, newStatus: AppointmentStatus, note?: string) {
@@ -736,6 +804,25 @@ export default function StaffDashboardPage() {
               <span>طابور العيادة والحجوزات</span>
             </button>
 
+            {(isReceptionist || isAdmin) && (
+              <button
+                onClick={() => setActiveTab('CANCELLATIONS')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+                  activeTab === 'CANCELLATIONS'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'text-[#163C3A] hover:bg-slate-100 bg-white border border-[#E2E8EE]'
+                }`}
+              >
+                <AlertCircle className="w-4 h-4" />
+                <span>طلبات الإلغاء</span>
+                {cancellationRequests.filter((r) => r.status === 'PENDING').length > 0 && (
+                  <span className="bg-red-500 text-white text-3xs font-extrabold px-1.5 py-0.5 rounded-full animate-pulse">
+                    {cancellationRequests.filter((r) => r.status === 'PENDING').length}
+                  </span>
+                )}
+              </button>
+            )}
+
             {isAdmin && (
               <>
                 <button
@@ -1009,6 +1096,24 @@ export default function StaffDashboardPage() {
                               >
                                 <span>{status.label}</span>
                               </span>
+
+                              {(apt.hasPendingCancellation ||
+                                cancellationRequests.some(
+                                  (r) =>
+                                    (r.appointmentId === apt.id ||
+                                      r.referenceNumber === apt.referenceNumber) &&
+                                    r.status === 'PENDING'
+                                )) && (
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveTab('CANCELLATIONS')}
+                                  className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 text-3xs font-extrabold hover:bg-amber-200 transition-colors cursor-pointer"
+                                  title="انقر للانتقال ومراجعة طلب الإلغاء"
+                                >
+                                  <AlertCircle className="w-3 h-3 text-amber-600 animate-pulse" />
+                                  <span>طلب إلغاء معلق</span>
+                                </button>
+                              )}
                             </td>
 
                             {/* Workflow Actions */}
@@ -1300,6 +1405,148 @@ export default function StaffDashboardPage() {
         {/* TAB 4: WEBSITE CONTENT MANAGEMENT (CMS) */}
         {activeTab === 'CMS' && isAdmin && (
           <CmsDashboard currentUser={currentUser} />
+        )}
+
+        {/* TAB 5: CANCELLATION REQUESTS MANAGEMENT */}
+        {activeTab === 'CANCELLATIONS' && (isReceptionist || isAdmin) && (
+          <div className="bg-white rounded-2xl border border-[#E2E8EE] p-6 shadow-2xs space-y-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+              <div>
+                <h2 className="text-base font-bold text-[#124E4A] flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-amber-600" />
+                  <span>طلبات إلغاء المواعيد المقدمة من أولياء الأمور</span>
+                </h2>
+                <p className="text-xs text-[#8493A6]">
+                  مراجعة طلبات الاعتذار عن الحضور والبت فيها بالقبول (إلغاء الحجز) أو الرفض (استمرار الحجز).
+                </p>
+              </div>
+
+              {/* Status Filter */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[#8493A6]">تصفية الطلبات:</span>
+                <select
+                  value={cancellationFilterStatus}
+                  onChange={(e) => setCancellationFilterStatus(e.target.value)}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-800 bg-white font-semibold"
+                >
+                  <option value="PENDING">طلبات قيد الانتظار فقط</option>
+                  <option value="ALL">جميع الطلبات</option>
+                  <option value="APPROVED">الطلبات المقبولة</option>
+                  <option value="REJECTED">الطلبات المرفوضة</option>
+                </select>
+                <button
+                  onClick={loadCancellationRequests}
+                  className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600"
+                  title="تحديث القائمة"
+                >
+                  <RefreshCw className={`w-4 h-4 ${loadingCancellationRequests ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+            </div>
+
+            {loadingCancellationRequests ? (
+              <div className="p-12 text-center text-xs text-slate-400">جاري تحميل طلبات الإلغاء...</div>
+            ) : cancellationRequests.length === 0 ? (
+              <div className="p-12 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs">
+                لا توجد طلبات إلغاء تطابق خيارات التصفية الحالية.
+              </div>
+            ) : (
+              <div className="overflow-x-auto border border-[#E2E8EE] rounded-xl">
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-[#F6F9FB] border-b border-[#E2E8EE] text-[#8493A6]">
+                    <tr>
+                      <th className="py-3 px-4 font-bold">رقم الحجز</th>
+                      <th className="py-3 px-4 font-bold">المريض ورقم الهاتف</th>
+                      <th className="py-3 px-4 font-bold">العيادة وتاريخ الحجز</th>
+                      <th className="py-3 px-4 font-bold">تاريخ الطلب والسبب</th>
+                      <th className="py-3 px-4 font-bold">حالة الطلب</th>
+                      <th className="py-3 px-4 font-bold text-center">القرار والإجراء</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#E2E8EE]">
+                    {cancellationRequests.map((req) => (
+                      <tr key={req.id} className="hover:bg-slate-50/70">
+                        <td className="py-3 px-4 font-mono font-bold text-[#124E4A]">
+                          {req.referenceNumber}
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="font-bold text-[#163C3A] block">{req.patientName || '—'}</span>
+                          <span className="font-mono text-2xs text-[#8493A6]" dir="ltr">{req.phoneNumber}</span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="font-semibold text-[#087F78] block">{req.clinicName || '—'}</span>
+                          <span className="text-2xs text-[#8493A6]">
+                            {req.appointmentDate ? formatArabicDate(req.appointmentDate) : '—'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 max-w-xs">
+                          <span className="text-2xs text-slate-400 block">
+                            {new Date(req.requestedAt).toLocaleDateString('ar-EG', { dateStyle: 'short', timeStyle: 'short' })}
+                          </span>
+                          <span className="text-xs text-slate-700 block italic">
+                            "{req.reason || 'طلب إلغاء من ولي الأمر'}"
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          {req.status === 'PENDING' && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-2xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                              <Clock className="w-3 h-3 text-amber-500 animate-pulse" />
+                              <span>قيد الانتظار</span>
+                            </span>
+                          )}
+                          {req.status === 'APPROVED' && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-2xs font-bold bg-red-50 text-red-700 border border-red-200">
+                              <CheckCircle2 className="w-3 h-3 text-red-500" />
+                              <span>تم قبول الإلغاء</span>
+                            </span>
+                          )}
+                          {req.status === 'REJECTED' && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-2xs font-bold bg-slate-100 text-slate-700 border border-slate-300">
+                              <X className="w-3 h-3 text-slate-500" />
+                              <span>طلب مرفوض (سارٍ)</span>
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          {req.status === 'PENDING' ? (
+                            <div className="flex items-center justify-center gap-2">
+                              <button
+                                onClick={() => {
+                                  setReviewingReqId(req.id);
+                                  setReviewDecision('APPROVED');
+                                  setReviewReason('');
+                                }}
+                                className="px-3 py-1.5 rounded-lg text-2xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-2xs transition-colors cursor-pointer"
+                              >
+                                موافقة وإلغاء الحجز
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setReviewingReqId(req.id);
+                                  setReviewDecision('REJECTED');
+                                  setReviewReason('الحجز سارٍ ومطلوب الحضور');
+                                }}
+                                className="px-3 py-1.5 rounded-lg text-2xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition-colors cursor-pointer"
+                              >
+                                رفض الطلب
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="text-3xs text-slate-500 text-center">
+                              <span>بواسطة {req.reviewedByName || 'الموظف'}</span>
+                              {req.rejectionReason && (
+                                <span className="block text-slate-400">السبب: {req.rejectionReason}</span>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         )}
 
       </main>
@@ -1932,6 +2179,81 @@ export default function StaffDashboardPage() {
                 className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
               >
                 إغلاق النافذة
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: REVIEW CANCELLATION REQUEST */}
+      {reviewingReqId && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 text-right shadow-xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="text-base font-bold text-[#163C3A] flex items-center gap-2">
+                {reviewDecision === 'APPROVED' ? (
+                  <>
+                    <AlertCircle className="w-5 h-5 text-red-500" />
+                    <span className="text-red-600">تأكيد الموافقة على إلغاء الحجز</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                    <span className="text-emerald-700">تأكيد رفض طلب الإلغاء واستمرار الحجز</span>
+                  </>
+                )}
+              </h3>
+              <button
+                onClick={() => setReviewingReqId(null)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              {reviewDecision === 'APPROVED'
+                ? 'عند الموافقة، سيتم إلغاء الحجز نهائياً ونقل حالته إلى (CANCELLED) وإتاحة الدور في سجلات العيادة.'
+                : 'عند رفض الطلب، سيظل الحجز فعالاً وسارياً بحالته السابقة وسيتم توثيق استمرار الحجز.'}
+            </p>
+
+            <div>
+              <label className="block text-2xs font-bold text-[#163C3A] mb-1">
+                ملاحظات القرار (اختياري)
+              </label>
+              <input
+                type="text"
+                value={reviewReason}
+                onChange={(e) => setReviewReason(e.target.value)}
+                placeholder={reviewDecision === 'APPROVED' ? 'سبب الموافقة على الإلغاء...' : 'سبب رفض طلب الإلغاء...'}
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-800 focus:border-[#087F78]"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setReviewingReqId(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+              >
+                تراجع
+              </button>
+              <button
+                type="button"
+                onClick={() => handleReviewCancellation(reviewingReqId, reviewDecision, reviewReason)}
+                disabled={isSubmittingReview}
+                className={`px-5 py-2 rounded-xl text-xs font-bold text-white shadow-xs disabled:opacity-60 flex items-center gap-1.5 ${
+                  reviewDecision === 'APPROVED' ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'
+                }`}
+              >
+                {isSubmittingReview ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>جاري التنفيذ...</span>
+                  </>
+                ) : (
+                  <span>{reviewDecision === 'APPROVED' ? 'تأكيد إلغاء الحجز' : 'تأكيد استمرار الحجز'}</span>
+                )}
               </button>
             </div>
           </div>

@@ -26,7 +26,7 @@ export async function POST(
       return NextResponse.json({ error: 'الحالة المستهدفة مطلوبة' }, { status: 400 });
     }
 
-    const result = await appointmentStore.updateStatus(id, status, staffUser, note);
+    const result = await appointmentStore.updateStatus(id, status, staffUser, note, token);
     if (!result.success || !result.appointment) {
       return NextResponse.json({ error: result.error || 'تعذر تحديث الحالة' }, { status: 400 });
     }

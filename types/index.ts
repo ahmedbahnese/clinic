@@ -88,7 +88,27 @@ export interface Appointment {
   lastCalledAt?: string;
   calledCount?: number;
   isVerified?: boolean;
+  hasPendingCancellation?: boolean;
   statusHistory: StatusHistoryItem[];
+}
+
+export interface CancellationRequest {
+  id: string;
+  appointmentId: string;
+  referenceNumber: string;
+  phoneNumber: string;
+  reason?: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  requestedAt: string;
+  reviewedAt?: string;
+  reviewedById?: string;
+  reviewedByName?: string;
+  rejectionReason?: string;
+  patientName?: string;
+  clinicId?: string;
+  clinicName?: string;
+  appointmentDate?: string;
+  currentAppointmentStatus?: AppointmentStatus;
 }
 
 export type StaffRole = 'ADMIN' | 'RECEPTIONIST' | 'DOCTOR';

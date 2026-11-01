@@ -19,7 +19,7 @@ export async function POST(
       );
     }
 
-    const result = await appointmentStore.recallPatient(id, staffUser);
+    const result = await appointmentStore.recallPatient(id, staffUser, token);
     if (!result.success || !result.appointment) {
       return NextResponse.json({ error: result.error || 'تعذر إعادة نداء المريض' }, { status: 400 });
     }
