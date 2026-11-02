@@ -1,0 +1,13 @@
+{
+  "routes": [
+    { "path": "/", "title": "العيادات الخارجية" },
+    { "path": "/booking", "title": "حجز موعد" },
+    { "path": "/track", "title": "متابعة الحجز" },
+    { "path": "/staff/login", "title": "دخول الموظفين" },
+    { "path": "/staff", "title": "مساحة عمل الموظفين" },
+    { "path": "/staff/clinics", "title": "إدارة العيادات" },
+    { "path": "/staff/users", "title": "إدارة الموظفين" },
+    { "path": "/staff/reports", "title": "التقارير" },
+    { "path": "/staff/audit", "title": "سجل التدقيق" }
+  ]
+}
