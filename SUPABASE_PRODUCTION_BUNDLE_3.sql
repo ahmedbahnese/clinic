@@ -61,7 +61,8 @@ CREATE TRIGGER trigger_cancellation_requests_updated_at
 ALTER TABLE public.cancellation_requests ENABLE ROW LEVEL SECURITY;
 
 -- Revoke all direct client modifications (all mutations must go through atomic RPCs)
-REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLE public.cancellation_requests FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.cancellation_requests FROM PUBLIC, anon;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON TABLE public.cancellation_requests FROM authenticated;
 GRANT SELECT ON TABLE public.cancellation_requests TO authenticated;
 GRANT ALL ON TABLE public.cancellation_requests TO service_role;
 
