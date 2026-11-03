@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const result = await cmsService.updateSettings(body, staffUser);
+    const result = await cmsService.updateSettings(body, staffUser, token);
 
     if (!result.success || !result.settings) {
       return NextResponse.json(

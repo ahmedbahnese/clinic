@@ -1,7 +1,8 @@
 import type { Clinic, ClinicService, ClinicScheduleException, Appointment, AppointmentSlot, AppointmentStatus, CreateAppointmentInput, AuditLogItem, StaffUser, CancellationRequest } from '../types/index.ts';
 import { normalizeAndValidateEgyptianPhone, validatePatientName, generateReferenceNumber, canTransitionStatus, formatLocalDate, getTodayCairoDateString, validateGuardianNationalId, maskPatientName } from '../lib/rules.ts';
 import { generateBookingCode, hashBookingCode } from '../lib/trackingAccess.ts';
-import { createAdminClient, createUserClient, isSupabaseConfigured, isMockStoreAllowed } from '../lib/supabase/admin.ts';
+import { createClient } from '@supabase/supabase-js';
+import { createAdminClient, createUserClient, isSupabaseConfigured, isSupabaseAdminConfigured, isMockStoreAllowed } from '../lib/supabase/admin.ts';
 import type { Database } from '../types/database.types.ts';
 
 // Pre-defined pediatric outpatient clinics from BSCH
@@ -403,7 +404,8 @@ class AppointmentServiceStore {
   public async createClinicService(
     clinicId: string,
     input: Partial<ClinicService>,
-    staffUser: StaffUser
+    staffUser: StaffUser,
+    userToken?: string
   ): Promise<{ success: boolean; service?: ClinicService; error?: string }> {
     if (staffUser.role !== 'ADMIN') {
       return { success: false, error: 'إضافة الخدمات يتطلب صلاحية مدير النظام' };
@@ -430,7 +432,11 @@ class AppointmentServiceStore {
 
     if (isSupabaseConfigured()) {
       try {
-        const supabase = createAdminClient();
+        const supabase = userToken
+          ? createUserClient(userToken)
+          : (isSupabaseAdminConfigured()
+              ? createAdminClient()
+              : createClient(process.env.NEXT_PUBLIC_SUPABASE_URL || '', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''));
         const { error } = await (supabase as any).from('clinic_services').insert({
           id: newService.id,
           clinic_id: newService.clinicId,
@@ -457,7 +463,8 @@ class AppointmentServiceStore {
     clinicId: string,
     serviceId: string,
     updates: Partial<ClinicService>,
-    staffUser: StaffUser
+    staffUser: StaffUser,
+    userToken?: string
   ): Promise<{ success: boolean; service?: ClinicService; error?: string }> {
     if (staffUser.role !== 'ADMIN') {
       return { success: false, error: 'تعديل الخدمات يتطلب صلاحية مدير النظام' };
@@ -470,7 +477,11 @@ class AppointmentServiceStore {
 
     if (isSupabaseConfigured()) {
       try {
-        const supabase = createAdminClient();
+        const supabase = userToken
+          ? createUserClient(userToken)
+          : (isSupabaseAdminConfigured()
+              ? createAdminClient()
+              : createClient(process.env.NEXT_PUBLIC_SUPABASE_URL || '', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''));
         const { error } = await (supabase as any)
           .from('clinic_services')
           .update({
@@ -507,7 +518,8 @@ class AppointmentServiceStore {
   public async deleteClinicService(
     clinicId: string,
     serviceId: string,
-    staffUser: StaffUser
+    staffUser: StaffUser,
+    userToken?: string
   ): Promise<{ success: boolean; deactivated?: boolean; message?: string; error?: string }> {
     if (staffUser.role !== 'ADMIN') {
       return { success: false, error: 'حذف الخدمات يتطلب صلاحية مدير النظام' };
@@ -520,7 +532,11 @@ class AppointmentServiceStore {
     let hasAppointments = false;
     if (isSupabaseConfigured()) {
       try {
-        const supabase = createAdminClient();
+        const supabase = userToken
+          ? createUserClient(userToken)
+          : (isSupabaseAdminConfigured()
+              ? createAdminClient()
+              : createClient(process.env.NEXT_PUBLIC_SUPABASE_URL || '', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''));
         const { count } = await (supabase as any)
           .from('appointments')
           .select('id', { count: 'exact', head: true })
@@ -535,7 +551,7 @@ class AppointmentServiceStore {
 
     if (hasAppointments) {
       // Safe soft deactivation to preserve historical appointments
-      await this.updateClinicService(clinicId, serviceId, { isActive: false }, staffUser);
+      await this.updateClinicService(clinicId, serviceId, { isActive: false }, staffUser, userToken);
       return {
         success: true,
         deactivated: true,
@@ -545,7 +561,11 @@ class AppointmentServiceStore {
 
     if (isSupabaseConfigured()) {
       try {
-        const supabase = createAdminClient();
+        const supabase = userToken
+          ? createUserClient(userToken)
+          : (isSupabaseAdminConfigured()
+              ? createAdminClient()
+              : createClient(process.env.NEXT_PUBLIC_SUPABASE_URL || '', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''));
         await (supabase as any).from('clinic_services').delete().eq('id', serviceId);
       } catch (err) {
         return { success: false, error: 'تعذر حذف الخدمة من قاعدة البيانات' };

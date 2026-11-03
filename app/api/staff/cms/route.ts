@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const data = await cmsService.getCmsDashboardData();
+    const data = await cmsService.getCmsDashboardData(token);
     return NextResponse.json({ success: true, ...data });
   } catch (error) {
     console.error('Error fetching admin CMS data:', error);

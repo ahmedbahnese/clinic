@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'صيغة بيانات عناصر القائمة غير صحيحة' }, { status: 400 });
     }
 
-    const result = await cmsService.updateNavigation(items, staffUser);
+    const result = await cmsService.updateNavigation(items, staffUser, token);
     if (!result.success || !result.navigation) {
       return NextResponse.json({ error: result.error || 'فشل في تحديث عناصر القوائم' }, { status: 400 });
     }

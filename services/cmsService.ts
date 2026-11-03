@@ -1,4 +1,11 @@
-import { createAdminClient, isSupabaseConfigured, isMockStoreAllowed } from '../lib/supabase/admin.ts';
+import { createClient } from '@supabase/supabase-js';
+import {
+  createAdminClient,
+  createUserClient,
+  isSupabaseConfigured,
+  isSupabaseAdminConfigured,
+  isMockStoreAllowed,
+} from '../lib/supabase/admin.ts';
 import type { StaffUser } from '../types/index.ts';
 import type {
   WebsiteSettings,
@@ -233,9 +240,9 @@ export const DEFAULT_HOMEPAGE_SECTIONS: HomepageSection[] = [
 ];
 
 export const DEFAULT_NAV_ITEMS: NavigationItem[] = [
-  { id: 'nav-1', label: 'الرئيسية', href: '/', display_order: 1, is_visible: true, is_external: false, location: 'HEADER', icon_name: 'Home' },
-  { id: 'nav-2', label: 'حجز موعد', href: '/appointments/new', display_order: 2, is_visible: true, is_external: false, location: 'HEADER', icon_name: 'CalendarPlus' },
-  { id: 'nav-3', label: 'متابعة حجز', href: '/appointments/track', display_order: 3, is_visible: true, is_external: false, location: 'HEADER', icon_name: 'Search' },
+  { id: '5056fe62-61f8-437e-b098-a2f8db156b07', label: 'الرئيسية', href: '/', display_order: 1, is_visible: true, is_external: false, location: 'HEADER', icon_name: 'Home' },
+  { id: '7dd7b699-eddf-4a5b-adea-2b22a570d7da', label: 'حجز موعد', href: '/appointments/new', display_order: 2, is_visible: true, is_external: false, location: 'HEADER', icon_name: 'CalendarPlus' },
+  { id: '1a727c19-bdc3-4f26-9c0f-c299c58b89d7', label: 'متابعة حجز', href: '/appointments/track', display_order: 3, is_visible: true, is_external: false, location: 'HEADER', icon_name: 'Search' },
 ];
 
 export const DEFAULT_CLINICS_PRESENTATION: ClinicPresentation[] = [
@@ -262,10 +269,34 @@ class CmsService {
   private clinicsPresentation: ClinicPresentation[] = [...DEFAULT_CLINICS_PRESENTATION];
   private customAssets: MediaAsset[] = [];
 
+  private getSupabaseClient(userToken?: string) {
+    if (userToken && userToken.trim()) {
+      try {
+        return createUserClient(userToken);
+      } catch (e) {
+        console.warn('Failed to create user client for CMS, falling back:', e);
+      }
+    }
+    if (isSupabaseAdminConfigured()) {
+      try {
+        return createAdminClient();
+      } catch (e) {
+        console.warn('Failed to create admin client for CMS, falling back:', e);
+      }
+    }
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
+    const anonKey =
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+      '';
+    return createClient(url, anonKey);
+  }
+
   public async getPublishedContent(): Promise<CmsFullPayload> {
     if (isSupabaseConfigured()) {
       try {
-        const supabase: any = createAdminClient();
+        const supabase: any = this.getSupabaseClient();
         const [settingsRes, sectionsRes, navRes, clinicsRes] = await Promise.all([
           supabase.from('website_settings').select('*').eq('id', 'default').single(),
           supabase.from('homepage_sections').select('*').order('display_order', { ascending: true }),
@@ -297,12 +328,12 @@ class CmsService {
     };
   }
 
-  public async getCmsDashboardData(): Promise<CmsFullPayload & { assets: MediaAsset[] }> {
+  public async getCmsDashboardData(userToken?: string): Promise<CmsFullPayload & { assets: MediaAsset[] }> {
     let assets: MediaAsset[] = [...PRECONFIGURED_MEDIA_ASSETS, ...this.customAssets];
 
     if (isSupabaseConfigured()) {
       try {
-        const supabase: any = createAdminClient();
+        const supabase: any = this.getSupabaseClient(userToken);
         const [settingsRes, sectionsRes, navRes, clinicsRes, mediaRes] = await Promise.all([
           supabase.from('website_settings').select('*').eq('id', 'default').single(),
           supabase.from('homepage_sections').select('*').order('display_order', { ascending: true }),
@@ -334,7 +365,8 @@ class CmsService {
 
   public async updateSettings(
     updates: Partial<WebsiteSettings>,
-    user: StaffUser
+    user: StaffUser,
+    userToken?: string
   ): Promise<{ success: boolean; settings?: WebsiteSettings; error?: string }> {
     if (user.role !== 'ADMIN') {
       return { success: false, error: 'غير مصرح بتعديل إعدادات وهوية الموقع. صلاحية مدير النظام مطلوبة.' };
@@ -345,20 +377,47 @@ class CmsService {
       ...updates,
       id: 'default',
       updated_at: new Date().toISOString(),
-      updated_by: user.name,
-      is_published: true,
-      published_at: new Date().toISOString(),
+      updated_by: user.name || user.username || 'admin',
+      is_published: updates.is_published ?? this.settings.is_published ?? true,
+      published_at: this.settings.published_at || new Date().toISOString(),
     };
 
     if (isSupabaseConfigured()) {
       try {
-        const supabase: any = createAdminClient();
+        const supabase: any = this.getSupabaseClient(userToken);
+        const dbPayload = {
+          id: 'default',
+          site_name: updated.site_name,
+          site_tagline: updated.site_tagline,
+          header_logo_url: updated.header_logo_url,
+          footer_logo_url: updated.footer_logo_url,
+          favicon_url: updated.favicon_url,
+          contact_phone: updated.contact_phone,
+          emergency_hotline: updated.emergency_hotline,
+          contact_email: updated.contact_email,
+          hospital_address: updated.hospital_address,
+          working_hours: updated.working_hours,
+          meta_title: updated.meta_title,
+          meta_description: updated.meta_description,
+          og_image_url: updated.og_image_url,
+          canonical_url: updated.canonical_url,
+          social_links: updated.social_links,
+          notice_bar: updated.notice_bar,
+          footer_summary: updated.footer_summary,
+          footer_copyright: updated.footer_copyright,
+          footer_status_badge: updated.footer_status_badge,
+          is_published: updated.is_published,
+          published_at: updated.published_at,
+          updated_at: updated.updated_at,
+          updated_by: updated.updated_by,
+        };
+
         const { error } = await supabase
           .from('website_settings')
-          .upsert(updated as any, { onConflict: 'id' });
+          .upsert(dbPayload, { onConflict: 'id' });
 
         if (error) {
-          console.error('Supabase updateSettings failed with code:', error.code);
+          console.error('Supabase updateSettings failed with code:', error.code, error.message);
           return {
             success: false,
             error: 'فشل في حفظ إعدادات وهوية الموقع في قاعدة البيانات المركزية. يرجى مراجعة الصلاحيات والمحاولة لاحقاً.',
@@ -386,7 +445,8 @@ class CmsService {
   public async updateSection(
     sectionId: string,
     updates: Partial<HomepageSection>,
-    user: StaffUser
+    user: StaffUser,
+    userToken?: string
   ): Promise<{ success: boolean; section?: HomepageSection; error?: string }> {
     if (user.role !== 'ADMIN') {
       return { success: false, error: 'غير مصرح بتعديل أقسام الصفحة الرئيسية. صلاحية مدير النظام مطلوبة.' };
@@ -401,18 +461,30 @@ class CmsService {
       ...this.sections[idx],
       ...updates,
       updated_at: new Date().toISOString(),
-      updated_by: user.name,
+      updated_by: user.name || user.username || 'admin',
     };
 
     if (isSupabaseConfigured()) {
       try {
-        const supabase: any = createAdminClient();
+        const supabase: any = this.getSupabaseClient(userToken);
+        const dbPayload = {
+          id: updated.id,
+          display_order: updated.display_order,
+          is_visible: updated.is_visible,
+          title: updated.title,
+          subtitle: updated.subtitle,
+          badge_text: updated.badge_text,
+          content: updated.content,
+          updated_at: updated.updated_at,
+          updated_by: updated.updated_by,
+        };
+
         const { error } = await supabase
           .from('homepage_sections')
-          .upsert(updated as any, { onConflict: 'id' });
+          .upsert(dbPayload, { onConflict: 'id' });
 
         if (error) {
-          console.error('Supabase updateSection failed with code:', error.code);
+          console.error('Supabase updateSection failed with code:', error.code, error.message);
           return {
             success: false,
             error: `فشل في حفظ قسم (${updated.title || sectionId}) في قاعدة البيانات المركزية.`,
@@ -438,8 +510,9 @@ class CmsService {
   }
 
   public async reorderSections(
-    ordered: (string | { id: string; display_order: number })[],
-    user: StaffUser
+    ordered: (string | { id: string; display_order?: number })[],
+    user: StaffUser,
+    userToken?: string
   ): Promise<{ success: boolean; sections?: HomepageSection[]; error?: string }> {
     if (user.role !== 'ADMIN') {
       return { success: false, error: 'صلاحية مدير النظام مطلوبة لإعادة ترتيب الأقسام.' };
@@ -457,7 +530,7 @@ class CmsService {
 
     if (isSupabaseConfigured()) {
       try {
-        const supabase: any = createAdminClient();
+        const supabase: any = this.getSupabaseClient(userToken);
         for (const sec of this.sections) {
           const { error } = await supabase
             .from('homepage_sections')
@@ -465,7 +538,7 @@ class CmsService {
             .eq('id', sec.id);
 
           if (error) {
-            console.error('Supabase reorderSections failed on section:', sec.id, 'code:', error.code);
+            console.error('Supabase reorderSections failed on section:', sec.id, 'code:', error.code, error.message);
             return {
               success: false,
               error: 'فشل في تحديث ترتيب بعض الأقسام في قاعدة البيانات المركزية.',
@@ -492,19 +565,38 @@ class CmsService {
 
   public async updateNavigation(
     items: NavigationItem[],
-    user: StaffUser
+    user: StaffUser,
+    userToken?: string
   ): Promise<{ success: boolean; navigation?: NavigationItem[]; error?: string }> {
     if (user.role !== 'ADMIN') {
       return { success: false, error: 'صلاحية مدير النظام مطلوبة لتعديل قوائم التنقل.' };
     }
 
+    const isUUID = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    const sanitizedItems: NavigationItem[] = items.map((item, idx) => ({
+      ...item,
+      id: isUUID(item.id) ? item.id : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `nav-${Date.now()}-${idx}`),
+      display_order: item.display_order ?? (idx + 1),
+    }));
+
     if (isSupabaseConfigured()) {
       try {
-        const supabase: any = createAdminClient();
-        for (const item of items) {
-          const { error } = await supabase.from('navigation_items').upsert(item as any, { onConflict: 'id' });
+        const supabase: any = this.getSupabaseClient(userToken);
+        for (const item of sanitizedItems) {
+          const dbItem = {
+            id: item.id,
+            label: item.label,
+            href: item.href,
+            display_order: item.display_order,
+            is_visible: item.is_visible,
+            is_external: item.is_external,
+            location: item.location,
+            icon_name: item.icon_name,
+            updated_at: new Date().toISOString(),
+          };
+          const { error } = await supabase.from('navigation_items').upsert(dbItem as any, { onConflict: 'id' });
           if (error) {
-            console.error('Supabase updateNavigation failed on item:', item.id, 'code:', error.code);
+            console.error('Supabase updateNavigation failed on item:', item.id, 'code:', error.code, error.message);
             return {
               success: false,
               error: 'فشل في حفظ بعض عناصر القوائم في قاعدة البيانات المركزية.',
@@ -525,7 +617,7 @@ class CmsService {
       };
     }
 
-    this.navigation = items;
+    this.navigation = sanitizedItems;
     await safeRevalidatePath('/');
     return { success: true, navigation: this.navigation };
   }
@@ -533,7 +625,8 @@ class CmsService {
   public async updateClinicPresentation(
     clinicId: string,
     updates: Partial<ClinicPresentation>,
-    user: StaffUser
+    user: StaffUser,
+    userToken?: string
   ): Promise<{ success: boolean; clinic?: ClinicPresentation; error?: string }> {
     if (user.role !== 'ADMIN') {
       return { success: false, error: 'صلاحية مدير النظام مطلوبة لتعديل بيانات عرض العيادة.' };
@@ -546,7 +639,7 @@ class CmsService {
 
     if (isSupabaseConfigured()) {
       try {
-        const supabase: any = createAdminClient();
+        const supabase: any = this.getSupabaseClient(userToken);
         const { error } = await supabase
           .from('clinics')
           .update({
@@ -562,7 +655,7 @@ class CmsService {
           .eq('id', clinicId);
 
         if (error) {
-          console.error('Supabase updateClinicPresentation failed with code:', error.code);
+          console.error('Supabase updateClinicPresentation failed with code:', error.code, error.message);
           return {
             success: false,
             error: `فشل في تحديث مظهر عيادة (${clinic.name}) في قاعدة البيانات المركزية.`,

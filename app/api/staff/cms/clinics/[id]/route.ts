@@ -20,7 +20,7 @@ export async function PATCH(
     }
 
     const updates = await req.json();
-    const result = await cmsService.updateClinicPresentation(id, updates, staffUser);
+    const result = await cmsService.updateClinicPresentation(id, updates, staffUser, token);
 
     if (!result.success || !result.clinic) {
       return NextResponse.json({ error: result.error || 'فشل في تحديث بيانات عرض العيادة' }, { status: 400 });

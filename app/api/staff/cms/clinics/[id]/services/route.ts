@@ -39,7 +39,7 @@ export async function POST(
     }
 
     const body = await req.json();
-    const result = await appointmentStore.createClinicService(id, body, staffUser);
+    const result = await appointmentStore.createClinicService(id, body, staffUser, token);
 
     if (!result.success) {
       return NextResponse.json({ error: result.error || 'تعذر إضافة الخدمة' }, { status: 400 });
@@ -73,7 +73,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'معرف الخدمة مطلوب' }, { status: 400 });
     }
 
-    const result = await appointmentStore.updateClinicService(id, serviceId, updates, staffUser);
+    const result = await appointmentStore.updateClinicService(id, serviceId, updates, staffUser, token);
 
     if (!result.success) {
       return NextResponse.json({ error: result.error || 'تعذر تحديث الخدمة' }, { status: 400 });
@@ -107,7 +107,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'معرف الخدمة مطلوب' }, { status: 400 });
     }
 
-    const result = await appointmentStore.deleteClinicService(id, serviceId, staffUser);
+    const result = await appointmentStore.deleteClinicService(id, serviceId, staffUser, token);
     if (!result.success) {
       return NextResponse.json({ error: result.error || 'تعذر حذف الخدمة' }, { status: 400 });
     }

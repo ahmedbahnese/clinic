@@ -1,5 +1,12 @@
 import type { StaffUser } from '../types/index.ts';
-import { createAdminClient, createUserClient, isSupabaseConfigured, isMockStoreAllowed } from '../lib/supabase/admin.ts';
+import { createClient } from '@supabase/supabase-js';
+import {
+  createAdminClient,
+  createUserClient,
+  isSupabaseConfigured,
+  isSupabaseAdminConfigured,
+  isMockStoreAllowed,
+} from '../lib/supabase/admin.ts';
 
 export interface AuthSession {
   user: StaffUser;

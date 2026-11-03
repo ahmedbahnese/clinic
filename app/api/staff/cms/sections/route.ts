@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'قائمة ترتيب الأقسام غير صحيحة' }, { status: 400 });
       }
 
-      const result = await cmsService.reorderSections(body.sections, staffUser);
+      const result = await cmsService.reorderSections(body.sections, staffUser, token);
       if (!result.success) {
         return NextResponse.json({ error: result.error || 'فشل في إعادة ترتيب الأقسام' }, { status: 400 });
       }
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'معرّف القسم والبيانات المطلوبة للتعديل ناقصة' }, { status: 400 });
     }
 
-    const result = await cmsService.updateSection(sectionId, updates, staffUser);
+    const result = await cmsService.updateSection(sectionId, updates, staffUser, token);
     if (!result.success || !result.section) {
       return NextResponse.json({ error: result.error || 'فشل في تحديث بيانات القسم' }, { status: 400 });
     }

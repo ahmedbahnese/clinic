@@ -1,7 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cmsService } from '@/services/cmsService';
 import { AuthService } from '@/services/authService';
-import { createAdminClient, isSupabaseConfigured } from '@/lib/supabase/admin';
+import { createAdminClient, createUserClient, isSupabaseConfigured, isSupabaseAdminConfigured } from '@/lib/supabase/admin';
+import { createClient } from '@supabase/supabase-js';
+
+function getSupabaseClient(token?: string) {
+  if (token && token.trim()) {
+    try {
+      return createUserClient(token);
+    } catch {}
+  }
+  if (isSupabaseAdminConfigured()) {
+    try {
+      return createAdminClient();
+    } catch {}
+  }
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
+  return createClient(url, anonKey);
+}
 import type { MediaAsset } from '@/types/cms';
 import path from 'path';
 import fs from 'fs/promises';
@@ -27,7 +44,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'غير مصرح بعرض مكتبة الوسائط.' }, { status: 403 });
     }
 
-    const data = await cmsService.getCmsDashboardData();
+    const data = await cmsService.getCmsDashboardData(token);
     return NextResponse.json({ success: true, assets: data.assets });
   } catch (error) {
     console.error('Error fetching media assets:', error);
@@ -69,7 +86,7 @@ export async function POST(req: NextRequest) {
 
       if (isSupabaseConfigured()) {
         try {
-          const supabase = createAdminClient();
+          const supabase = getSupabaseClient(token);
           await (supabase.from('media_assets') as any).upsert({
             id: asset.id,
             name: asset.name,
@@ -131,7 +148,7 @@ export async function POST(req: NextRequest) {
     // Attempt Supabase storage first if configured
     if (isSupabaseConfigured()) {
       try {
-        const supabase = createAdminClient();
+        const supabase = getSupabaseClient(token);
         const { error: uploadError } = await supabase.storage
           .from('public-cms-assets')
           .upload(`uploads/${uniqueFilename}`, buffer, {
@@ -173,7 +190,7 @@ export async function POST(req: NextRequest) {
 
     if (isSupabaseConfigured()) {
       try {
-        const supabase = createAdminClient();
+        const supabase = getSupabaseClient(token);
         await (supabase.from('media_assets') as any).upsert({
           id: asset.id,
           name: asset.name,
