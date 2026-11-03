@@ -2,6 +2,7 @@
 
 import React, { useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
   ShieldCheck,
@@ -104,10 +105,17 @@ export default function StaffLoginPage() {
       <div className="w-full max-w-lg mx-auto my-auto">
         <div className="bg-white rounded-[26px] border border-[#E2E8EE] p-7 sm:p-9 shadow-sm">
           
-          <div className="text-center mb-7 space-y-1.5">
-            <div className="w-12 h-12 rounded-2xl bg-[#087F78] text-white flex items-center justify-center mx-auto mb-2 shadow-xs">
-              <ShieldCheck className="w-6 h-6 stroke-[2]" />
-            </div>
+          <div className="text-center mb-7 space-y-2">
+            <Link href="/" className="inline-block transition-transform hover:scale-105">
+              <Image
+                src="/logo-main.png"
+                alt="شعار مستشفى الأطفال التخصصي بالبحيرة"
+                width={96}
+                height={96}
+                className="w-20 sm:w-24 h-auto mx-auto mb-2 object-contain drop-shadow-xs"
+                priority
+              />
+            </Link>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-[#124E4A]">
               دخول الموظفين
             </h1>

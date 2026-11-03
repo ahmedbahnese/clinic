@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
   Stethoscope,
@@ -712,9 +713,16 @@ export default function StaffDashboardPage() {
         <div className="max-w-[1250px] mx-auto px-4 sm:px-6 h-18 flex items-center justify-between">
           
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#087F78] text-white flex items-center justify-center shadow-xs">
-              <Stethoscope className="w-5 h-5 stroke-[2.2]" />
-            </div>
+            <Link href="/" className="transition-transform hover:scale-105 shrink-0" title="العودة للرئيسية">
+              <Image
+                src="/logo-main.png"
+                alt="شعار مستشفى الأطفال التخصصي بالبحيرة"
+                width={44}
+                height={44}
+                className="w-10 sm:w-11 h-auto object-contain drop-shadow-xs"
+                priority
+              />
+            </Link>
             <div>
               <span className="text-base font-bold text-[#124E4A] block">
                 لوحة تحكم العيادات الخارجية

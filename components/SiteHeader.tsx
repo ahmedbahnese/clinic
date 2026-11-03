@@ -22,7 +22,7 @@ interface SiteHeaderProps {
   navigationItems?: NavigationItem[];
 }
 
-export function SiteHeader({ logoUrl = '/logo-outpatient.png', navigationItems }: SiteHeaderProps) {
+export function SiteHeader({ logoUrl = '/logo-main.png', navigationItems }: SiteHeaderProps) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -53,7 +53,7 @@ export function SiteHeader({ logoUrl = '/logo-outpatient.png', navigationItems }
           aria-label="الرئيسية - عيادات مستشفى الأطفال التخصصي بالبحيرة"
         >
           <Image
-            src={logoUrl || '/logo-outpatient.png'}
+            src={logoUrl || '/logo-main.png'}
             alt="شعار مستشفى الأطفال التخصصي بالبحيرة - العيادات الخارجية"
             width={160}
             height={160}

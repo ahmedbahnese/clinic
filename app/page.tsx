@@ -18,9 +18,18 @@ export const revalidate = 60; // ISR cache revalidation every 60s or upon admin 
 export async function generateMetadata(): Promise<Metadata> {
   const content = await cmsService.getPublishedContent();
   const { settings } = content;
+  const iconUrl = settings.favicon_url || '/logo-main.png';
   return {
     title: settings.meta_title,
     description: settings.meta_description,
+    icons: {
+      icon: [
+        { url: iconUrl, type: 'image/png' },
+        { url: '/favicon.ico' },
+      ],
+      shortcut: iconUrl,
+      apple: iconUrl,
+    },
     openGraph: {
       title: settings.meta_title,
       description: settings.meta_description,

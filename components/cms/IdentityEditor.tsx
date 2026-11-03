@@ -174,7 +174,7 @@ export default function IdentityEditor({ initialSettings, token, onSaved }: Iden
               type="text"
               value={settings.header_logo_url}
               onChange={(e) => handleChange('header_logo_url', e.target.value)}
-              placeholder="/logo-outpatient.png"
+              placeholder="/logo-main.png"
               className="w-full text-xs bg-white border border-[#CBD5E1] rounded-lg px-2.5 py-1.5 text-[#163C3A] font-mono"
             />
           </div>
@@ -236,7 +236,7 @@ export default function IdentityEditor({ initialSettings, token, onSaved }: Iden
               type="text"
               value={settings.favicon_url}
               onChange={(e) => handleChange('favicon_url', e.target.value)}
-              placeholder="/favicon.ico"
+              placeholder="/logo-main.png"
               className="w-full text-xs bg-white border border-[#CBD5E1] rounded-lg px-2.5 py-1.5 text-[#163C3A] font-mono"
             />
           </div>

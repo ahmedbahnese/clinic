@@ -13,9 +13,19 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://bsch-clinics.gov.eg'),
   title: 'BSCH Clinics — العيادات الخارجية لمستشفى الأطفال التخصصي بالبحيرة',
   description: 'منصة حجز المواعيد والاستعلام للعيادات الخارجية بمستشفى الأطفال التخصصي بالبحيرة — احجز موعدك بالاسم ورقم الهاتف فقط وتابع حالة حجزك وتعليمات الحضور.',
+  icons: {
+    icon: [
+      { url: '/logo-main.png', type: 'image/png' },
+      { url: '/icon.png', type: 'image/png' },
+      { url: '/favicon.ico' },
+    ],
+    shortcut: '/logo-main.png',
+    apple: '/logo-main.png',
+  },
   openGraph: {
     title: 'BSCH Clinics — العيادات الخارجية لمستشفى الأطفال التخصصي بالبحيرة',
     description: 'منصة حجز المواعيد والاستعلام للعيادات الخارجية بمستشفى الأطفال التخصصي بالبحيرة — احجز موعدك بالاسم ورقم الهاتف فقط وتابع حالة حجزك وتعليمات الحضور.',
+    images: [{ url: '/logo-main.png', width: 800, height: 800, alt: 'شعار مستشفى الأطفال التخصصي بالبحيرة' }],
     type: 'website',
     locale: 'ar_EG',
   },
@@ -23,6 +33,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'BSCH Clinics — العيادات الخارجية لمستشفى الأطفال التخصصي بالبحيرة',
     description: 'منصة حجز المواعيد والاستعلام للعيادات الخارجية بمستشفى الأطفال التخصصي بالبحيرة — احجز موعدك بالاسم ورقم الهاتف فقط وتابع حالة حجزك وتعليمات الحضور.',
+    images: ['/logo-main.png'],
   },
 };
 
