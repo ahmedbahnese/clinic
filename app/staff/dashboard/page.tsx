@@ -1026,9 +1026,32 @@ export default function StaffDashboardPage() {
               {loading ? (
                 <div className="p-12 text-center text-xs text-[#8493A6]">جاري تحميل جدول الحجوزات...</div>
               ) : appointments.length === 0 ? (
-                <div className="p-12 text-center text-xs text-[#8493A6] space-y-2">
+                <div className="p-12 text-center text-xs text-[#8493A6] space-y-3">
                   <AlertCircle className="w-8 h-8 text-slate-300 mx-auto" />
-                  <p>لا توجد حجوزات مطابقة للفلاتر المحددة</p>
+                  <p className="font-semibold text-slate-700 text-sm">
+                    لا توجد حجوزات مسجلة لتاريخ {dateFilterType === 'TODAY' ? 'اليوم' : dateFilterType === 'TOMORROW' ? 'غداً' : 'المحدد'}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    إذا قمت بتسجيل حجز لتاريخ قادم، يرجى النقر على زر "غداً" أو "عرض كل المواعيد" أدناه:
+                  </p>
+                  <div className="flex items-center justify-center gap-2 pt-2">
+                    {dateFilterType !== 'TOMORROW' && (
+                      <button
+                        onClick={() => setDateFilterType('TOMORROW')}
+                        className="px-3.5 py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-[#087F78] text-xs font-bold border border-teal-200 transition-colors cursor-pointer"
+                      >
+                        عرض حجوزات الغد (المواعيد القادمة)
+                      </button>
+                    )}
+                    {dateFilterType !== 'ALL' && (
+                      <button
+                        onClick={() => setDateFilterType('ALL')}
+                        className="px-3.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        عرض كل المواعيد
+                      </button>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
