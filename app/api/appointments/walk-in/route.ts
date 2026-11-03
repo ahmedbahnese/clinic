@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { clinicId, patientName, phoneNumber, patientAge, patientAddress, appointmentDate, appointmentTime } = body;
+    const { clinicId, serviceId, patientName, phoneNumber, patientAge, patientAddress, appointmentDate, appointmentTime } = body;
 
     if (!clinicId || !patientName || !phoneNumber) {
       return NextResponse.json(
@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
 
     const result = await appointmentStore.createAppointment({
       clinicId,
+      serviceId: serviceId || undefined,
       patientName,
       phoneNumber,
       patientAge,

@@ -20,6 +20,7 @@ import {
   Lock,
   ListPlus,
   Plus,
+  Trash2,
   Edit2,
 } from 'lucide-react';
 import type { ClinicPresentation } from '@/types/cms';
@@ -72,6 +73,14 @@ export default function ClinicsPresentationEditor({
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   const [serviceSaving, setServiceSaving] = useState(false);
   const [serviceSuccessMsg, setServiceSuccessMsg] = useState<string | null>(null);
+
+  // New Service Inline State
+  const [showAddServiceForm, setShowAddServiceForm] = useState(false);
+  const [newServiceName, setNewServiceName] = useState('');
+  const [newServiceCapacity, setNewServiceCapacity] = useState(20);
+  const [newServiceDocs, setNewServiceDocs] = useState('');
+  const [newServiceInstructions, setNewServiceInstructions] = useState('');
+  const [addingService, setAddingService] = useState(false);
 
   // Load services whenever selectedClinicId changes
   useEffect(() => {
@@ -136,6 +145,67 @@ export default function ClinicsPresentationEditor({
       setError(err.message || 'حدث خطأ أثناء حفظ الخدمة');
     } finally {
       setServiceSaving(false);
+    }
+  };
+
+  const handleCreateService = async () => {
+    if (!newServiceName.trim()) {
+      alert('يرجى إدخال اسم الخدمة');
+      return;
+    }
+    setAddingService(true);
+    try {
+      const authToken = token || localStorage.getItem('bsch_staff_token') || '';
+      const res = await fetch(`/api/staff/cms/clinics/${selectedClinicId}/services`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          name: newServiceName.trim(),
+          maxDailyCapacity: Number(newServiceCapacity) || 20,
+          requiredDocuments: newServiceDocs.split('\n').map((s) => s.trim()).filter(Boolean),
+          instructions: newServiceInstructions.trim(),
+          isActive: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'تعذر إضافة الخدمة');
+      }
+      setServices((prev) => [...prev, data.service]);
+      setNewServiceName('');
+      setNewServiceCapacity(20);
+      setNewServiceDocs('');
+      setNewServiceInstructions('');
+      setShowAddServiceForm(false);
+      setServiceSuccessMsg(`تمت إضافة خدمة (${data.service.name}) بنجاح`);
+    } catch (err: any) {
+      alert(err.message || 'حدث خطأ أثناء إضافة الخدمة');
+    } finally {
+      setAddingService(false);
+    }
+  };
+
+  const handleDeleteService = async (serviceId: string) => {
+    if (!confirm('هل أنت متأكد من حذف هذه الخدمة من العيادة؟')) return;
+    try {
+      const authToken = token || localStorage.getItem('bsch_staff_token') || '';
+      const res = await fetch(`/api/staff/cms/clinics/${selectedClinicId}/services?serviceId=${serviceId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'تعذر حذف الخدمة');
+      }
+      setServices((prev) => prev.filter((s) => s.id !== serviceId));
+      setServiceSuccessMsg('تم حذف الخدمة بنجاح');
+    } catch (err: any) {
+      alert(err.message || 'حدث خطأ أثناء حذف الخدمة');
     }
   };
 
@@ -482,10 +552,105 @@ export default function ClinicsPresentationEditor({
                 </p>
               </div>
             </div>
-            <span className="text-xs font-semibold px-3 py-1 rounded-full bg-teal-50 text-[#087F78] border border-teal-200">
-              {services.length} خدمات مسجلة
-            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAddServiceForm(!showAddServiceForm)}
+                className="px-3 py-1.5 rounded-xl bg-[#087F78] hover:bg-[#066560] text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>إضافة خدمة جديدة</span>
+              </button>
+              <span className="text-xs font-semibold px-3 py-1 rounded-full bg-teal-50 text-[#087F78] border border-teal-200">
+                {services.length} خدمات مسجلة
+              </span>
+            </div>
           </div>
+
+          {/* Add Service Inline Form */}
+          {showAddServiceForm && (
+            <div className="p-4 rounded-2xl border-2 border-teal-200 bg-teal-50/40 space-y-3 animate-in fade-in duration-150">
+              <div className="flex items-center justify-between pb-2 border-b border-teal-100">
+                <span className="font-bold text-xs text-[#124E4A] flex items-center gap-1.5">
+                  <Plus className="w-4 h-4 text-[#087F78]" />
+                  <span>إضافة خدمة طبية جديدة لعيادة {selectedClinic.name}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowAddServiceForm(false)}
+                  className="text-xs text-slate-400 hover:text-slate-600"
+                >
+                  إلغاء
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div>
+                  <label className="block text-3xs font-bold text-slate-600 mb-1">اسم الخدمة *</label>
+                  <input
+                    type="text"
+                    value={newServiceName}
+                    onChange={(e) => setNewServiceName(e.target.value)}
+                    placeholder="مثال: فحص دوري، رسم قلب، إيكو"
+                    className="w-full px-3 py-2 rounded-xl border border-teal-200 text-xs bg-white focus:border-[#087F78]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-3xs font-bold text-slate-600 mb-1">الطاقة الاستيعابية اليومية</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={newServiceCapacity}
+                    onChange={(e) => setNewServiceCapacity(Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-xl border border-teal-200 text-xs font-mono bg-white focus:border-[#087F78]"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-3xs font-bold text-slate-600 mb-1">المستندات المطلوبة (مستند في كل سطر)</label>
+                  <textarea
+                    rows={2}
+                    value={newServiceDocs}
+                    onChange={(e) => setNewServiceDocs(e.target.value)}
+                    placeholder="شهادة الميلاد، بطاقة التأمين الصحي..."
+                    className="w-full px-3 py-2 rounded-xl border border-teal-200 text-xs bg-white resize-y"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-3xs font-bold text-slate-600 mb-1">تعليمات التحضير الخاصة بالخدمة</label>
+                  <input
+                    type="text"
+                    value={newServiceInstructions}
+                    onChange={(e) => setNewServiceInstructions(e.target.value)}
+                    placeholder="مثال: صيام 6 ساعات قبل موعد الفحص..."
+                    className="w-full px-3 py-2 rounded-xl border border-teal-200 text-xs bg-white"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddServiceForm(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                >
+                  تراجع
+                </button>
+                <button
+                  type="button"
+                  disabled={addingService || !newServiceName.trim()}
+                  onClick={handleCreateService}
+                  className="px-5 py-2 rounded-xl bg-[#087F78] hover:bg-[#066560] text-white text-xs font-bold transition-all shadow-xs disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                >
+                  {addingService ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>جاري الإضافة...</span>
+                    </>
+                  ) : (
+                    <span>تأكيد إضافة الخدمة</span>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
 
           {serviceSuccessMsg && (
             <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 rounded-xl text-xs flex items-center gap-2">
@@ -521,9 +686,18 @@ export default function ClinicsPresentationEditor({
                         <button
                           type="button"
                           onClick={() => setEditingServiceId(isEditing ? null : srv.id)}
-                          className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-[#087F78] bg-white hover:bg-slate-50 transition-colors"
+                          className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-[#087F78] bg-white hover:bg-slate-50 transition-colors cursor-pointer"
                         >
                           {isEditing ? 'إغلاق التعديل' : 'تعديل الأوراق والتعليمات'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteService(srv.id)}
+                          className="px-2.5 py-1.5 rounded-lg border border-red-200 text-xs font-semibold text-red-600 bg-white hover:bg-red-50 transition-colors flex items-center gap-1 cursor-pointer"
+                          title="حذف الخدمة"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>حذف</span>
                         </button>
                       </div>
                     </div>

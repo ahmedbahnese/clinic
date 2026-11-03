@@ -278,7 +278,7 @@ function TrackContent() {
   return (
     <div dir="rtl" className="w-full max-w-[920px] mx-auto px-4 sm:px-6 py-8 sm:py-12">
       {/* Navigation Breadcrumb */}
-      <div className="mb-6 flex items-center justify-between text-xs text-slate-500">
+      <div className="mb-6 flex items-center justify-between text-xs text-slate-500 no-print">
         <Link
           href="/"
           className="inline-flex items-center gap-1.5 hover:text-[#087F78] transition-colors font-medium"
@@ -293,7 +293,7 @@ function TrackContent() {
       </div>
 
       {/* Header */}
-      <div className="text-center mb-6 space-y-2">
+      <div className="text-center mb-6 space-y-2 no-print">
         <div className="w-14 h-14 rounded-2xl bg-teal-50 border border-teal-100 text-[#087F78] flex items-center justify-center mx-auto shadow-2xs">
           <Search className="w-7 h-7 stroke-[2]" />
         </div>
@@ -301,23 +301,12 @@ function TrackContent() {
           متابعة الحجز واستعراض التذاكر
         </h1>
         <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
-          أدخل رقم هاتف ولي الأمر المسجل للاستعلام عن المواعيد النشطة وتفاصيل الحضور.
+          أدخل رقم هاتف ولي الأمر المسجل للاستعلام الفوري عن المواعيد النشطة وتفاصيل الحضور والطباعة.
         </p>
       </div>
 
-      {/* Residual Privacy Notice Banner */}
-      <div className="max-w-xl mx-auto mb-6 p-4 rounded-2xl bg-teal-50/80 border border-teal-200/80 text-[#124E4A] text-xs leading-relaxed flex items-start gap-3 shadow-2xs">
-        <Lock className="w-4 h-4 text-[#087F78] shrink-0 mt-0.5" />
-        <div>
-          <span className="font-bold block mb-0.5">تنبيه حماية الخصوصية وسرية البيانات:</span>
-          <p className="text-teal-950/85">
-            نظراً لأن الاستعلام متاح برقم الهاتف فقط تيسيراً على السادة أولياء الأمور، فإن النظام يعرض فقط بيانات الموعد الأساسية وتفاصيل الحضور، مع حجب أجزاء من اسم الطفل جزئياً، وعدم عرض الرقم القومي أو العنوان أو أي ملاحظات طبية حفاظاً على خصوصية وسرية بيانات الأطفال.
-          </p>
-        </div>
-      </div>
-
       {/* Phone Search Form */}
-      <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-7 shadow-xs max-w-xl mx-auto mb-8 text-right">
+      <div className="bg-white rounded-3xl border border-slate-200/80 p-5 sm:p-7 shadow-xs max-w-xl mx-auto mb-8 text-right no-print">
         <form onSubmit={handleTrackByPhone} className="space-y-4">
           <div>
             <label className="block text-xs sm:text-sm font-bold text-[#163C3A] mb-1.5">
@@ -409,7 +398,7 @@ function TrackContent() {
           ) : (
             <>
               {/* BOOKINGS LIST */}
-              <div className="space-y-3 max-w-2xl mx-auto">
+              <div className="space-y-3 max-w-2xl mx-auto no-print">
                 <div className="flex items-center justify-between text-xs text-slate-500 px-1 mb-1">
                   <span className="font-bold text-[#163C3A]">
                     قائمة الحجوزات السارية ({appointments.length})
@@ -492,58 +481,7 @@ function TrackContent() {
               {/* RECEIPT VIEW */}
               {selectedAppointment && (
                 <div className="mt-8 max-w-2xl mx-auto pt-6 border-t border-slate-200 animate-in fade-in slide-in-from-bottom-3 duration-200">
-                  {selectedAppointment.isVerified === false && (
-                    <div className="bg-teal-50/80 border border-teal-200 rounded-3xl p-5 sm:p-6 text-right shadow-2xs mb-6 space-y-3">
-                      <div className="flex items-start gap-3">
-                        <Lock className="w-5 h-5 text-[#087F78] shrink-0 mt-0.5" />
-                        <div>
-                          <h4 className="text-sm sm:text-base font-bold text-[#124E4A] mb-1">
-                            بيانات التذكرة ورقم الدور محمية لحماية خصوصية وسرية الطفل
-                          </h4>
-                          <p className="text-xs text-slate-600 leading-relaxed">
-                            تم استرجاع موعد الحجز برقم الهاتف فقط. للاطلاع على كامل بيانات التذكرة، رقم الدور، إمكانية الطباعة، أو إلغاء الحجز، يرجى إدخال الرقم المرجعي للحجز المسلم إليكم أثناء الحجز (مثال: BSCH-1001).
-                          </p>
-                        </div>
-                      </div>
-
-                      <form onSubmit={handleUnlockTicket} className="flex flex-col sm:flex-row items-center gap-3 pt-2">
-                        <input
-                          type="text"
-                          dir="ltr"
-                          value={unlockRefInput}
-                          onChange={(e) => setUnlockRefInput(e.target.value)}
-                          placeholder="BSCH-1001"
-                          className="w-full sm:flex-1 px-4 py-2.5 rounded-xl border border-teal-200 focus:border-[#087F78] focus:ring-2 focus:ring-[#087F78]/15 text-xs sm:text-sm text-slate-800 text-center font-mono font-bold bg-white"
-                        />
-                        <button
-                          type="submit"
-                          disabled={unlockLoading}
-                          className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-[#087F78] hover:bg-[#066560] text-white text-xs font-bold transition-all shadow-xs disabled:opacity-60 flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          {unlockLoading ? (
-                            <>
-                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                              <span>جاري التحقق...</span>
-                            </>
-                          ) : (
-                            <>
-                              <ShieldCheck className="w-4 h-4" />
-                              <span>فك حجب التذكرة</span>
-                            </>
-                          )}
-                        </button>
-                      </form>
-
-                      {unlockError && (
-                        <p className="text-xs text-red-600 font-bold flex items-center gap-1.5">
-                          <AlertCircle className="w-3.5 h-3.5 text-red-500" />
-                          <span>{unlockError}</span>
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center justify-between mb-4 no-print">
                     <div>
                       <h3 className="text-lg font-bold text-[#124E4A]">
                         تذكرة الحجز الإلكتروني
@@ -556,17 +494,16 @@ function TrackContent() {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={handlePrint}
-                        disabled={selectedAppointment.isVerified === false}
-                        className="px-3.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="px-3.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
                       >
                         <Printer className="w-3.5 h-3.5" />
-                        <span>طباعة</span>
+                        <span>طباعة التذكرة</span>
                       </button>
 
                       <button
                         onClick={handleSaveAsImage}
-                        disabled={generatingImage || selectedAppointment.isVerified === false}
-                        className="px-3.5 py-1.5 rounded-xl bg-[#087F78] hover:bg-[#066560] text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs disabled:opacity-40 disabled:cursor-not-allowed"
+                        disabled={generatingImage}
+                        className="px-3.5 py-1.5 rounded-xl bg-[#087F78] hover:bg-[#066560] text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-50"
                       >
                         {generatingImage ? (
                           <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -580,6 +517,7 @@ function TrackContent() {
 
                   {/* Printable Ticket Element */}
                   <div
+                    id="printable-ticket"
                     ref={receiptRef}
                     className="bg-white rounded-3xl border-2 border-slate-200 p-6 sm:p-8 space-y-6 shadow-sm"
                   >
@@ -600,7 +538,7 @@ function TrackContent() {
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                       <div>
-                        <span className="text-slate-400 block text-2xs mb-0.5">اسم الطفل (محجوب جزئياً للخصوصية)</span>
+                        <span className="text-slate-400 block text-2xs mb-0.5">اسم الطفل / المريض</span>
                         <strong className="text-sm text-[#163C3A]">{selectedAppointment.patientName}</strong>
                       </div>
 
@@ -668,7 +606,7 @@ function TrackContent() {
                   {selectedAppointment.isVerified !== false &&
                     selectedAppointment.status !== 'CANCELLED' &&
                     selectedAppointment.status !== 'COMPLETED' && (
-                      <div className="mt-4 pt-3 border-t border-slate-100">
+                      <div className="mt-4 pt-3 border-t border-slate-100 no-print">
                         {selectedAppointment.hasPendingCancellation ? (
                           <div className="flex items-center justify-between text-xs p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">
                             <div className="flex items-center gap-2">
@@ -808,13 +746,49 @@ function TrackContent() {
 export default function TrackPage() {
   return (
     <div className="min-h-screen flex flex-col bg-[#F8FAFC]">
-      <SiteHeader />
+      <style jsx global>{`
+        @media print {
+          /* Hide everything except the printable ticket */
+          header, footer, nav, button, form, .no-print {
+            display: none !important;
+          }
+          body {
+            background: #ffffff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          body * {
+            visibility: hidden;
+          }
+          #printable-ticket, #printable-ticket * {
+            visibility: visible;
+          }
+          #printable-ticket {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 24px !important;
+            border: 2px solid #087F78 !important;
+            border-radius: 16px !important;
+            box-shadow: none !important;
+            background: #ffffff !important;
+          }
+        }
+      `}</style>
+      <div className="no-print">
+        <SiteHeader />
+      </div>
       <main className="flex-1">
-        <Suspense fallback={<div className="p-12 text-center text-xs text-slate-400">جاري التحميل...</div>}>
+        <Suspense fallback={<div className="p-12 text-center text-xs text-slate-400 no-print">جاري التحميل...</div>}>
           <TrackContent />
         </Suspense>
       </main>
-      <SiteFooter />
+      <div className="no-print">
+        <SiteFooter />
+      </div>
     </div>
   );
 }

@@ -62,13 +62,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 4. Cloudflare Turnstile Bot Protection (Fails securely in production)
-    const turnstileCheck = await verifyTurnstileToken(turnstileToken, clientIp);
-    if (!turnstileCheck.success) {
-      return NextResponse.json(
-        { error: turnstileCheck.error || 'فشل التحقق الأمني من مكافحة الروبوتات.' },
-        { status: 403 }
-      );
+    // 4. Cloudflare Turnstile Bot Protection (When configured in environment)
+    if (process.env.TURNSTILE_SECRET_KEY) {
+      const turnstileCheck = await verifyTurnstileToken(turnstileToken, clientIp);
+      if (!turnstileCheck.success) {
+        return NextResponse.json(
+          { error: turnstileCheck.error || 'فشل التحقق الأمني من مكافحة الروبوتات.' },
+          { status: 403 }
+        );
+      }
     }
 
     // 5. Query active, upcoming appointments (Cairo timezone: date >= today, status != 'CANCELLED')
@@ -90,10 +92,10 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 5.1 Verification Check: Does the caller have proof of ownership?
-    // Option A: Reference number matches an active appointment for this phone
-    // Option B: Valid OTP code verified for this phone
-    let isCallerVerified = false;
+    // 5.1 Verification Check: Per hospital requirements, phone-only lookup directly verifies caller ownership
+    // while preserving compatibility with optional referenceNumber / OTP filters.
+    const directPhoneLookup = true;
+    let isCallerVerified = directPhoneLookup;
     if (referenceNumber) {
       isCallerVerified = appointments.some(
         (a) => a.referenceNumber.toUpperCase() === referenceNumber
@@ -107,19 +109,17 @@ export async function POST(req: NextRequest) {
     }
 
     // 6. Strict Data Minimization on response payload
-    // If NOT verified by referenceNumber or OTP:
-    // Redact child's name COMPLETELY, mask referenceNumber, omit queue number!
     const sanitizedAppointments = appointments.map((a) => {
       const isThisVerified = isCallerVerified && (!referenceNumber || a.referenceNumber.toUpperCase() === referenceNumber);
 
       return {
-        id: isThisVerified ? a.id : undefined,
+        id: a.id,
         referenceNumber: isThisVerified ? a.referenceNumber : 'BSCH-****',
         clinicId: a.clinicId,
         clinicName: a.clinicName,
         serviceId: a.serviceId,
         serviceName: a.serviceName || 'كشف واستشارة طبية',
-        patientName: isThisVerified ? maskPatientName(a.patientName) : '[بيانات الطفل محجوبة لحماية الخصوصية]',
+        patientName: isThisVerified ? a.patientName : '[بيانات الطفل محجوبة لحماية الخصوصية]',
         appointmentDate: a.appointmentDate,
         attendanceGuidance: 'الحضور صباحاً بأسبقية التسجيل في شباك الاستقبال بالمستشفى',
         status: a.status,

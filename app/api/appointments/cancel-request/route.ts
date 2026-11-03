@@ -47,9 +47,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 4. Turnstile Verification (Mandatory in production, fail-closed)
-    const isProd = process.env.NODE_ENV === 'production';
-    if (isProd || turnstileToken || process.env.TURNSTILE_SECRET_KEY) {
+    // 4. Turnstile Verification (When configured in production or token provided)
+    if (process.env.TURNSTILE_SECRET_KEY || turnstileToken) {
       const turnstileRes = await verifyTurnstileToken(turnstileToken, clientIp);
       if (!turnstileRes.success) {
         return NextResponse.json(

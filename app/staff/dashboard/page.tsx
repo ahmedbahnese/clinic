@@ -34,7 +34,7 @@ import {
   CalendarDays,
 } from 'lucide-react';
 import CmsDashboard from '@/components/cms/CmsDashboard';
-import { Appointment, Clinic, ClinicScheduleException, AppointmentStatus, AuditLogItem, CancellationRequest } from '@/types';
+import { Appointment, Clinic, ClinicService, ClinicScheduleException, AppointmentStatus, AuditLogItem, CancellationRequest } from '@/types';
 import { getStatusDisplay, formatArabicDate, formatLocalDate } from '@/lib/rules';
 
 export default function StaffDashboardPage() {
@@ -87,10 +87,24 @@ export default function StaffDashboardPage() {
   const [walkInPatientName, setWalkInPatientName] = useState('');
   const [walkInPhone, setWalkInPhone] = useState('');
   const [walkInClinicId, setWalkInClinicId] = useState('');
+  const [walkInServiceId, setWalkInServiceId] = useState('');
+  const [walkInAppointmentDate, setWalkInAppointmentDate] = useState('');
   const [walkInAge, setWalkInAge] = useState('');
   const [walkInAddress, setWalkInAddress] = useState('');
   const [walkInSubmitting, setWalkInSubmitting] = useState(false);
   const [walkInError, setWalkInError] = useState<string | null>(null);
+  const [walkInServicesList, setWalkInServicesList] = useState<ClinicService[]>([]);
+  const [walkInSuccessReceipt, setWalkInSuccessReceipt] = useState<Appointment | null>(null);
+
+  // Clinic Services in Edit Clinic Modal
+  const [editingClinicServices, setEditingClinicServices] = useState<ClinicService[]>([]);
+  const [loadingClinicServices, setLoadingClinicServices] = useState(false);
+  const [newServiceName, setNewServiceName] = useState('');
+  const [newServiceCapacity, setNewServiceCapacity] = useState(20);
+  const [newServiceDocs, setNewServiceDocs] = useState('');
+  const [newServiceInstructions, setNewServiceInstructions] = useState('');
+  const [addingServiceLoading, setAddingServiceLoading] = useState(false);
+  const [deletingServiceId, setDeletingServiceId] = useState<string | null>(null);
 
   // Admin Clinics Management State
   const [adminClinics, setAdminClinics] = useState<Clinic[]>([]);
@@ -211,6 +225,59 @@ export default function StaffDashboardPage() {
       active = false;
     };
   }, [router, selectedClinic, selectedStatus, searchQuery, getEffectiveDateString, refreshKey]);
+
+  // Load services for walk-in selected clinic
+  useEffect(() => {
+    if (!walkInClinicId) return;
+    let active = true;
+    async function loadWalkInServices() {
+      try {
+        const res = await fetch(`/api/clinics/${walkInClinicId}/services`);
+        const data = await res.json();
+        if (active && data.services) {
+          setWalkInServicesList(data.services.filter((s: ClinicService) => s.isActive !== false));
+          setWalkInServiceId('');
+        }
+      } catch {
+        if (active) setWalkInServicesList([]);
+      }
+    }
+    loadWalkInServices();
+    return () => {
+      active = false;
+    };
+  }, [walkInClinicId]);
+
+  // Load services for editing clinic
+  useEffect(() => {
+    if (!editingClinic?.id) {
+      setEditingClinicServices([]);
+      return;
+    }
+    const currentEditingClinicId = editingClinic.id;
+    let active = true;
+    async function loadServices() {
+      setLoadingClinicServices(true);
+      try {
+        const token = localStorage.getItem('bsch_staff_token');
+        const res = await fetch(`/api/staff/cms/clinics/${currentEditingClinicId}/services`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (active && data.services) {
+          setEditingClinicServices(data.services);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (active) setLoadingClinicServices(false);
+      }
+    }
+    loadServices();
+    return () => {
+      active = false;
+    };
+  }, [editingClinic?.id]);
 
   // Fetch Admin Clinics
   const fetchAdminClinics = useCallback(async () => {
@@ -448,6 +515,18 @@ export default function StaffDashboardPage() {
     const token = localStorage.getItem('bsch_staff_token');
     if (!token) return;
 
+    const chosenDate = walkInAppointmentDate || formatLocalDate();
+
+    // Check clinic working days
+    const currentClinic = clinics.find((c) => c.id === walkInClinicId);
+    if (currentClinic && currentClinic.daysOfWeek && currentClinic.daysOfWeek.length > 0) {
+      const dayOfWeek = new Date(chosenDate + 'T00:00:00Z').getUTCDay();
+      if (!currentClinic.daysOfWeek.includes(dayOfWeek)) {
+        setWalkInError('تنبيه: العيادة المختارة لا تعمل في هذا اليوم وفقاً لجدول العمل الأسبوعي.');
+        return;
+      }
+    }
+
     setWalkInSubmitting(true);
     try {
       const res = await fetch('/api/appointments/walk-in', {
@@ -458,22 +537,25 @@ export default function StaffDashboardPage() {
         },
         body: JSON.stringify({
           clinicId: walkInClinicId,
+          serviceId: walkInServiceId || undefined,
           patientName: walkInPatientName,
           phoneNumber: walkInPhone,
           patientAge: walkInAge,
           patientAddress: walkInAddress,
-          appointmentDate: formatLocalDate(),
+          appointmentDate: chosenDate,
         }),
       });
 
       const data = await res.json();
-      if (data.success) {
-        alert(data.message || 'تم تسجيل الحجز بنجاح');
+      if (data.success && data.appointment) {
         setShowWalkInModal(false);
+        setWalkInSuccessReceipt(data.appointment);
         setWalkInPatientName('');
         setWalkInPhone('');
         setWalkInAge('');
         setWalkInAddress('');
+        setWalkInServiceId('');
+        setWalkInAppointmentDate('');
         setRefreshKey((k) => k + 1);
       } else {
         setWalkInError(data.error || 'تعذر تسجيل الحجز الحضوري');
@@ -483,6 +565,79 @@ export default function StaffDashboardPage() {
       setWalkInError('حدث خطأ أثناء إرسال البيانات');
     } finally {
       setWalkInSubmitting(false);
+    }
+  }
+
+  // Add Service to Clinic Handler
+  async function handleAddServiceToClinic() {
+    if (!editingClinic || !newServiceName.trim()) {
+      alert('يرجى كتابة اسم الخدمة أولاً');
+      return;
+    }
+    const token = localStorage.getItem('bsch_staff_token');
+    if (!token) return;
+
+    setAddingServiceLoading(true);
+    try {
+      const res = await fetch(`/api/staff/cms/clinics/${editingClinic.id}/services`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: newServiceName.trim(),
+          maxDailyCapacity: Number(newServiceCapacity) || 20,
+          requiredDocuments: newServiceDocs.split('\n').map((s) => s.trim()).filter(Boolean),
+          instructions: newServiceInstructions.trim(),
+          isActive: true,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.service) {
+        setEditingClinicServices((prev) => [...prev, data.service]);
+        setNewServiceName('');
+        setNewServiceCapacity(20);
+        setNewServiceDocs('');
+        setNewServiceInstructions('');
+        alert('تمت إضافة الخدمة للعيادة بنجاح');
+      } else {
+        alert(data.error || 'تعذر إضافة الخدمة');
+      }
+    } catch {
+      alert('حدث خطأ أثناء الاتصال بالخادم');
+    } finally {
+      setAddingServiceLoading(false);
+    }
+  }
+
+  // Delete Service from Clinic Handler
+  async function handleDeleteServiceFromClinic(serviceId: string) {
+    if (!editingClinic) return;
+    if (!confirm('هل تريد بالتأكيد حذف هذه الخدمة من العيادة؟')) return;
+
+    const token = localStorage.getItem('bsch_staff_token');
+    if (!token) return;
+
+    setDeletingServiceId(serviceId);
+    try {
+      const res = await fetch(`/api/staff/cms/clinics/${editingClinic.id}/services?serviceId=${serviceId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEditingClinicServices((prev) => prev.filter((s) => s.id !== serviceId));
+        alert('تم حذف / إلغاء تفعيل الخدمة بنجاح');
+      } else {
+        alert(data.error || 'تعذر حذف الخدمة');
+      }
+    } catch {
+      alert('حدث خطأ أثناء الاتصال بالخادم');
+    } finally {
+      setDeletingServiceId(null);
     }
   }
 
@@ -707,9 +862,38 @@ export default function StaffDashboardPage() {
 
   return (
     <div className="min-h-screen bg-[#F6F9FB] flex flex-col text-right">
+      <style jsx global>{`
+        @media print {
+          body {
+            background: #ffffff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          body * {
+            visibility: hidden;
+          }
+          #printable-walkin-receipt, #printable-walkin-receipt * {
+            visibility: visible;
+          }
+          #printable-walkin-receipt {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 24px !important;
+            border: 2px solid #087F78 !important;
+            border-radius: 12px !important;
+            background: #ffffff !important;
+          }
+          header, nav, button, .no-print {
+            display: none !important;
+          }
+        }
+      `}</style>
       
       {/* Top Staff Header */}
-      <header className="bg-white border-b border-[#E2E8EE] sticky top-0 z-30 shadow-2xs">
+      <header className="bg-white border-b border-[#E2E8EE] sticky top-0 z-30 shadow-2xs no-print">
         <div className="max-w-[1250px] mx-auto px-4 sm:px-6 h-18 flex items-center justify-between">
           
           <div className="flex items-center gap-3">
@@ -1659,15 +1843,15 @@ export default function StaffDashboardPage() {
       {/* MODAL 2: WALK-IN BOOKING */}
       {showWalkInModal && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 text-right shadow-xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 text-right shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="text-base font-bold text-[#124E4A] flex items-center gap-2">
                 <UserPlus className="w-5 h-5 text-amber-500" />
-                <span>حجز حضوري مباشر (مكتب الاستقبال)</span>
+                <span>تسجيل حجز حضوري (مكتب الاستقبال)</span>
               </h3>
               <button
                 onClick={() => setShowWalkInModal(false)}
-                className="text-slate-400 hover:text-slate-600"
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1695,7 +1879,7 @@ export default function StaffDashboardPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-[#163C3A] mb-1">
                     رقم الهاتف <span className="text-red-500">*</span>
@@ -1727,6 +1911,52 @@ export default function StaffDashboardPage() {
                 </div>
               </div>
 
+              {/* Service Selection for Selected Clinic */}
+              <div>
+                <label className="block text-xs font-bold text-[#163C3A] mb-1">
+                  الخدمة الطبية المطلوبة
+                </label>
+                <select
+                  value={walkInServiceId}
+                  onChange={(e) => setWalkInServiceId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-[#E2E8EE] text-xs font-semibold text-[#124E4A] bg-white focus:border-[#087F78]"
+                >
+                  <option value="">كشف واستشارة طبية عامة (افتراضي)</option>
+                  {walkInServicesList.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} {s.maxDailyCapacity ? `(السعة اليومية: ${s.maxDailyCapacity} مريض)` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Date Selection: Today or Future Date */}
+              <div>
+                <label className="block text-xs font-bold text-[#163C3A] mb-1">
+                  تاريخ الكشف (اليوم أو تاريخ مستقبلي) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  min={formatLocalDate()}
+                  value={walkInAppointmentDate || formatLocalDate()}
+                  onChange={(e) => setWalkInAppointmentDate(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-[#E2E8EE] text-xs font-bold text-[#124E4A] bg-white focus:border-[#087F78]"
+                />
+                {(() => {
+                  const selClinic = clinics.find((c) => c.id === walkInClinicId);
+                  const dayNames = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+                  const workingDaysStr = (selClinic?.daysOfWeek || [])
+                    .map((d) => dayNames[d])
+                    .filter(Boolean)
+                    .join('، ');
+                  return workingDaysStr ? (
+                    <span className="block text-[11px] text-teal-700 mt-1">
+                      أيام عمل العيادة الرسمية: <strong>{workingDaysStr}</strong>
+                    </span>
+                  ) : null;
+                })()}
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-[#163C3A] mb-1">السن</label>
@@ -1754,19 +1984,140 @@ export default function StaffDashboardPage() {
                 <button
                   type="button"
                   onClick={() => setShowWalkInModal(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
                 >
                   إلغاء
                 </button>
                 <button
                   type="submit"
                   disabled={walkInSubmitting}
-                  className="px-5 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white shadow-xs"
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#087F78] hover:bg-[#066560] text-white shadow-xs cursor-pointer flex items-center gap-1.5"
                 >
-                  {walkInSubmitting ? 'جاري التسجيل...' : 'تسجيل وطباعة الدور فوراً'}
+                  {walkInSubmitting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>جاري التسجيل...</span>
+                    </>
+                  ) : (
+                    <span>تسجيل وحفظ الحجز وإصدار الإيصال</span>
+                  )}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2.5: WALK-IN SUCCESS PRINTABLE RECEIPT */}
+      {walkInSuccessReceipt && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 text-right shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 no-print">
+              <h3 className="text-base font-bold text-[#124E4A] flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                <span>تم تسجيل وتأكيد الحجز الحضوري بنجاح</span>
+              </h3>
+              <button
+                onClick={() => setWalkInSuccessReceipt(null)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Printable Receipt Card */}
+            <div
+              id="printable-walkin-receipt"
+              className="bg-white rounded-2xl border-2 border-teal-600/30 p-5 space-y-4 text-xs"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                <div>
+                  <h4 className="text-base font-black text-[#124E4A]">مستشفى الأطفال التخصصي بالبحيرة</h4>
+                  <p className="text-[11px] text-slate-500">إيصال حجز كشف حضوري معتمد</p>
+                </div>
+                <div className="text-left font-mono">
+                  <span className="text-[10px] text-slate-400 block font-semibold">رقم التذكرة</span>
+                  <span className="text-sm font-black text-[#087F78]">{walkInSuccessReceipt.referenceNumber}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <span className="text-slate-400 block text-[10.5px]">اسم المريض</span>
+                  <strong className="text-sm text-[#163C3A]">{walkInSuccessReceipt.patientName}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10.5px]">رقم الهاتف</span>
+                  <strong className="text-xs font-mono text-[#163C3A]">{walkInSuccessReceipt.phoneNumber}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10.5px]">العيادة</span>
+                  <strong className="text-xs text-[#163C3A]">{walkInSuccessReceipt.clinicName}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10.5px]">الخدمة</span>
+                  <strong className="text-xs text-[#087F78]">{walkInSuccessReceipt.serviceName || 'كشف واستشارة طبية'}</strong>
+                </div>
+                <div className="p-2.5 rounded-xl bg-teal-50 border border-teal-100 col-span-2">
+                  <span className="text-[10.5px] font-bold text-[#087F78] block">تاريخ الكشف المحدد</span>
+                  <strong className="text-xs sm:text-sm font-bold text-[#124E4A]">
+                    {formatArabicDate(walkInSuccessReceipt.appointmentDate)} — الحضور صباحاً بأسبقية الحضور
+                  </strong>
+                </div>
+                {walkInSuccessReceipt.queueNumber && (
+                  <div>
+                    <span className="text-slate-400 block text-[10.5px]">رقم الدور في اليوم</span>
+                    <strong className="text-base font-black text-[#087F78]">#{walkInSuccessReceipt.queueNumber}</strong>
+                  </div>
+                )}
+                {walkInSuccessReceipt.patientAge && (
+                  <div>
+                    <span className="text-slate-400 block text-[10.5px]">السن</span>
+                    <strong className="text-xs text-[#163C3A]">{walkInSuccessReceipt.patientAge}</strong>
+                  </div>
+                )}
+              </div>
+
+              {walkInSuccessReceipt.requiredDocuments && walkInSuccessReceipt.requiredDocuments.length > 0 && (
+                <div className="pt-2.5 border-t border-slate-100 text-xs">
+                  <span className="font-bold text-[#124E4A] block mb-1">الأوراق والمستندات المطلوبة:</span>
+                  <ul className="list-disc list-inside space-y-0.5 text-slate-600 text-[11px]">
+                    {walkInSuccessReceipt.requiredDocuments.map((doc, idx) => (
+                      <li key={idx}>{doc}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {walkInSuccessReceipt.serviceInstructions && (
+                <div className="pt-2 border-t border-slate-100 text-xs">
+                  <span className="font-bold text-[#124E4A] block mb-0.5">تعليمات وإرشادات الحضور:</span>
+                  <p className="text-slate-600 text-[11px] leading-relaxed">{walkInSuccessReceipt.serviceInstructions}</p>
+                </div>
+              )}
+
+              <div className="pt-3 border-t border-slate-100 text-center text-[10px] text-slate-400">
+                أبو حمص – دمسنا – محافظة البحيرة • مستشفى الأطفال التخصصي
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 no-print">
+              <button
+                type="button"
+                onClick={() => setWalkInSuccessReceipt(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+              >
+                إغلاق
+              </button>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-[#087F78] hover:bg-[#066560] text-white shadow-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <Printer className="w-4 h-4" />
+                <span>طباعة الإيصال فوراً</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1908,6 +2259,136 @@ export default function StaffDashboardPage() {
                   />
                   <span className="text-xs font-bold text-[#163C3A]">اعتماد بيانات العيادة رسمياً من إدارة المستشفى</span>
                 </label>
+              </div>
+
+              {/* CLINIC SERVICES MANAGEMENT SECTION */}
+              <div className="pt-4 border-t border-slate-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black text-[#124E4A] flex items-center gap-1.5">
+                    <Stethoscope className="w-4 h-4 text-[#087F78]" />
+                    <span>خدمات العيادة المتوفرة ({editingClinicServices.length})</span>
+                  </h4>
+                  <span className="text-3xs text-slate-400">إضافة وحذف وتعديل خدمات العيادة</span>
+                </div>
+
+                {loadingClinicServices ? (
+                  <div className="p-4 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>جاري تحميل الخدمات...</span>
+                  </div>
+                ) : editingClinicServices.length === 0 ? (
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-center text-2xs text-slate-500">
+                    لا توجد خدمات مسجلة لهذه العيادة حالياً. يمكنك إضافة خدمة جديدة أدناه.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                    {editingClinicServices.map((service) => (
+                      <div
+                        key={service.id}
+                        className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 flex items-start justify-between gap-3 text-xs"
+                      >
+                        <div className="space-y-0.5 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-[#163C3A]">{service.name}</span>
+                            {service.maxDailyCapacity && (
+                              <span className="px-2 py-0.5 rounded-md bg-teal-50 text-[#087F78] text-3xs font-bold font-mono">
+                                سعة: {service.maxDailyCapacity} مريض/يوم
+                              </span>
+                            )}
+                          </div>
+                          {service.instructions && (
+                            <p className="text-3xs text-slate-500 line-clamp-1">{service.instructions}</p>
+                          )}
+                          {service.requiredDocuments && service.requiredDocuments.length > 0 && (
+                            <p className="text-3xs text-slate-400">
+                              الأوراق: {service.requiredDocuments.join('، ')}
+                            </p>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteServiceFromClinic(service.id)}
+                          disabled={deletingServiceId === service.id}
+                          className="px-2.5 py-1 text-2xs font-bold text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50 shrink-0"
+                          title="حذف الخدمة"
+                        >
+                          {deletingServiceId === service.id ? (
+                            <RefreshCw className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-3 h-3" />
+                          )}
+                          <span>حذف</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* ADD NEW SERVICE INLINE FORM */}
+                <div className="p-3.5 bg-teal-50/50 border border-teal-200/70 rounded-xl space-y-2 text-xs">
+                  <span className="font-bold text-[#124E4A] block">إضافة خدمة جديدة لهذه العيادة:</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-3xs text-slate-600 mb-0.5">اسم الخدمة *</label>
+                      <input
+                        type="text"
+                        value={newServiceName}
+                        onChange={(e) => setNewServiceName(e.target.value)}
+                        placeholder="مثال: فحص دوري، رسم قلب"
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-teal-200 text-xs bg-white focus:border-[#087F78]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-3xs text-slate-600 mb-0.5">الطاقة الاستيعابية اليومية</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={newServiceCapacity}
+                        onChange={(e) => setNewServiceCapacity(Number(e.target.value))}
+                        className="w-full px-2.5 py-1.5 rounded-lg border border-teal-200 text-xs font-mono bg-white focus:border-[#087F78]"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-3xs text-slate-600 mb-0.5">المستندات المطلوبة (مستند في كل سطر)</label>
+                    <textarea
+                      rows={1}
+                      value={newServiceDocs}
+                      onChange={(e) => setNewServiceDocs(e.target.value)}
+                      placeholder="شهادة الميلاد، إحالة التأمين..."
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-teal-200 text-xs bg-white resize-y"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-3xs text-slate-600 mb-0.5">تعليمات التحضير الخاصة بالخدمة</label>
+                    <input
+                      type="text"
+                      value={newServiceInstructions}
+                      onChange={(e) => setNewServiceInstructions(e.target.value)}
+                      placeholder="مثال: صيام 6 ساعات قبل الفحص..."
+                      className="w-full px-2.5 py-1.5 rounded-lg border border-teal-200 text-xs bg-white"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddServiceToClinic}
+                    disabled={addingServiceLoading || !newServiceName.trim()}
+                    className="w-full py-2 rounded-xl bg-[#087F78] hover:bg-[#066560] text-white text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                  >
+                    {addingServiceLoading ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>جاري الإضافة...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>إضافة الخدمة للعيادة</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
 
