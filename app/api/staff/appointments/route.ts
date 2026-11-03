@@ -33,7 +33,8 @@ export async function GET(req: NextRequest) {
         date,
         search,
       },
-      staffUser
+      staffUser,
+      token
     );
 
     return NextResponse.json({

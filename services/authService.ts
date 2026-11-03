@@ -1,5 +1,5 @@
 import type { StaffUser } from '../types/index.ts';
-import { createAdminClient, isSupabaseConfigured, isMockStoreAllowed } from '../lib/supabase/admin.ts';
+import { createAdminClient, createUserClient, isSupabaseConfigured, isMockStoreAllowed } from '../lib/supabase/admin.ts';
 
 export interface AuthSession {
   user: StaffUser;
@@ -75,13 +75,27 @@ export class AuthService {
         }
 
         // Map auth.users record to verified public.staff_profiles
-        const { data: profile, error: profileErr } = await (adminClient as any)
+        let profile = null;
+        const { data: adminProf, error: profileErr } = await (adminClient as any)
           .from('staff_profiles')
           .select('id, username, full_name, role, clinic_id, is_active')
           .eq('id', data.user.id)
           .maybeSingle();
 
-        if (profileErr || !profile || profile.is_active !== true) {
+        if (!profileErr && adminProf) {
+          profile = adminProf;
+        } else if (data.session?.access_token) {
+          // Fallback to verified authenticated user client under RLS
+          const userClient = createUserClient(data.session.access_token);
+          const { data: userProf } = await (userClient as any)
+            .from('staff_profiles')
+            .select('id, username, full_name, role, clinic_id, is_active')
+            .eq('id', data.user.id)
+            .maybeSingle();
+          profile = userProf;
+        }
+
+        if (!profile || profile.is_active !== true) {
           return null; // Fail closed: reject inactive, suspended, or unlinked user
         }
 
@@ -147,13 +161,27 @@ export class AuthService {
         }
 
         // Query server-enforced role and clinic assignment from staff_profiles
-        const { data: profile, error: profileErr } = await (adminClient as any)
+        let profile = null;
+        const { data: adminProf, error: adminErr } = await (adminClient as any)
           .from('staff_profiles')
           .select('id, username, full_name, role, clinic_id, is_active')
           .eq('id', data.user.id)
           .maybeSingle();
 
-        if (profileErr || !profile || profile.is_active !== true) {
+        if (!adminErr && adminProf) {
+          profile = adminProf;
+        } else {
+          // Fallback to verified authenticated user client under RLS
+          const userClient = createUserClient(cleanToken);
+          const { data: userProf } = await (userClient as any)
+            .from('staff_profiles')
+            .select('id, username, full_name, role, clinic_id, is_active')
+            .eq('id', data.user.id)
+            .maybeSingle();
+          profile = userProf;
+        }
+
+        if (!profile || profile.is_active !== true) {
           return null; // Fail closed: reject inactive or missing staff profile
         }
 

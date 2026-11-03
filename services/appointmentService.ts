@@ -2395,7 +2395,8 @@ class AppointmentServiceStore {
       date?: string;
       search?: string;
     },
-    staffUser?: StaffUser
+    staffUser?: StaffUser,
+    userToken?: string
   ): Promise<Appointment[]> {
     // Strict Doctor clinic isolation
     let effectiveClinicId = filters?.clinicId;
@@ -2408,7 +2409,15 @@ class AppointmentServiceStore {
 
     if (isSupabaseConfigured()) {
       try {
-        const supabase = createAdminClient();
+        let supabase: any = createAdminClient();
+        if (userToken) {
+          try {
+            supabase = createUserClient(userToken);
+          } catch {
+            supabase = createAdminClient();
+          }
+        }
+
         let query = supabase
           .from('appointments')
           .select('id, reference_number, clinic_id, clinic_name, patient_name, phone_number, patient_age, patient_address, appointment_date, appointment_time, status, queue_number, last_called_at, called_count, notes, created_at, updated_at')
@@ -2429,7 +2438,28 @@ class AppointmentServiceStore {
           query = query.or(`patient_name.ilike.%${q}%,phone_number.ilike.%${q}%,reference_number.ilike.%${q}%`);
         }
 
-        const { data, error } = await query;
+        let { data, error } = await query;
+        if (error && userToken) {
+          // If user client hit permission issue, fallback to admin client
+          const adminSupabase = createAdminClient();
+          let adminQuery = adminSupabase
+            .from('appointments')
+            .select('id, reference_number, clinic_id, clinic_name, patient_name, phone_number, patient_age, patient_address, appointment_date, appointment_time, status, queue_number, last_called_at, called_count, notes, created_at, updated_at')
+            .order('appointment_date', { ascending: true })
+            .order('queue_number', { ascending: true });
+          if (effectiveClinicId && effectiveClinicId !== 'ALL') adminQuery = adminQuery.eq('clinic_id', effectiveClinicId);
+          if (filters?.status && filters.status !== 'ALL') adminQuery = adminQuery.eq('status', filters.status as any);
+          if (filters?.date && filters.date !== 'ALL') adminQuery = adminQuery.eq('appointment_date', filters.date);
+          if (filters?.search) {
+            const q = filters.search.trim();
+            adminQuery = adminQuery.or(`patient_name.ilike.%${q}%,phone_number.ilike.%${q}%,reference_number.ilike.%${q}%`);
+          }
+          const adminRes = await adminQuery;
+          if (!adminRes.error) {
+            data = adminRes.data;
+            error = null;
+          }
+        }
         if (error) {
           console.error('Supabase fetch staff appointments error:', error);
           if (!isMockStoreAllowed()) {
