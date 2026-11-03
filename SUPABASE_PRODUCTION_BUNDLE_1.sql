@@ -242,6 +242,8 @@ DECLARE
   v_clinic RECORD;
   v_service RECORD;
   v_service_name TEXT := NULL;
+  v_service_capacity INTEGER := NULL;
+  v_service_instructions TEXT := NULL;
   v_schedule RECORD;
   v_target_date DATE;
   v_day_of_week INTEGER;
@@ -324,6 +326,8 @@ BEGIN
     END IF;
 
     v_service_name := v_service.name;
+    v_service_capacity := v_service.max_daily_capacity;
+    v_service_instructions := v_service.instructions;
   END IF;
 
   -- 5. Target Date & Horizon Validation (Strict 30-day window)
@@ -377,7 +381,7 @@ BEGIN
     RETURN jsonb_build_object('success', false, 'error', 'عذراً، اكتملت سعة الحجز اليومية للعيادة في هذا التاريخ.');
   END IF;
 
-  IF v_service.max_daily_capacity IS NOT NULL AND v_service.max_daily_capacity > 0 THEN
+  IF v_service_capacity IS NOT NULL AND v_service_capacity > 0 THEN
     SELECT count(*) INTO v_current_service_bookings
     FROM public.appointments
     WHERE clinic_id = p_clinic_id
@@ -447,7 +451,7 @@ BEGIN
         p_service_id,
         v_service_name,
         p_guardian_national_id,
-        COALESCE(v_service.instructions, v_clinic.instructions, 'الحضور صباحاً بأسبقية الحضور لإنهاء التذكرة.'),
+        COALESCE(v_service_instructions, v_clinic.instructions, 'الحضور صباحاً بأسبقية الحضور لإنهاء التذكرة.'),
         0,
         v_now,
         v_now
@@ -479,7 +483,7 @@ BEGIN
     v_now
   );
 
-  -- Return sanitized receipt data to caller
+  -- Return sanitized receipt data to caller (both flat and nested 'appointment' for 100% backward compatibility)
   RETURN jsonb_build_object(
     'success', true,
     'appointment_id', v_appointment_id,
@@ -490,15 +494,29 @@ BEGIN
     'service_name', v_service_name,
     'appointment_date', v_target_date,
     'appointment_time', COALESCE(p_appointment_time, '09:00'),
-    'status', v_initial_status
+    'status', v_initial_status,
+    'appointment', jsonb_build_object(
+      'id', v_appointment_id,
+      'reference_number', v_reference_number,
+      'queue_number', v_queue_number,
+      'clinic_id', p_clinic_id,
+      'clinic_name', v_clinic.name,
+      'service_name', v_service_name,
+      'patient_name', v_clean_name,
+      'phone_number', v_clean_phone,
+      'patient_age', p_patient_age,
+      'patient_address', p_patient_address,
+      'appointment_date', v_target_date,
+      'appointment_time', COALESCE(p_appointment_time, '09:00'),
+      'status', v_initial_status,
+      'created_at', v_now
+    )
   );
 END;
 $$;
 
 REVOKE ALL ON FUNCTION public.book_appointment_atomic(TEXT, TEXT, TEXT, TEXT, TEXT, DATE, TEXT, TEXT, TEXT, TEXT, UUID) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.book_appointment_atomic(TEXT, TEXT, TEXT, TEXT, TEXT, DATE, TEXT, TEXT, TEXT, TEXT, UUID) FROM anon;
-REVOKE ALL ON FUNCTION public.book_appointment_atomic(TEXT, TEXT, TEXT, TEXT, TEXT, DATE, TEXT, TEXT, TEXT, TEXT, UUID) FROM authenticated;
-GRANT EXECUTE ON FUNCTION public.book_appointment_atomic(TEXT, TEXT, TEXT, TEXT, TEXT, DATE, TEXT, TEXT, TEXT, TEXT, UUID) TO service_role;
+GRANT EXECUTE ON FUNCTION public.book_appointment_atomic(TEXT, TEXT, TEXT, TEXT, TEXT, DATE, TEXT, TEXT, TEXT, TEXT, UUID) TO anon, authenticated, service_role;
 
 -- ----------------------------------------------------------------------------
 -- 7. Secure Phone Tracking RPC (Data Minimized)

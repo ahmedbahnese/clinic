@@ -1183,36 +1183,36 @@ class AppointmentServiceStore {
         }
 
         if (data && typeof data === 'object') {
-          const res = data as { success: boolean; error?: string; appointment?: any };
+          const res = data as { success: boolean; error?: string; appointment?: any; [key: string]: any };
           if (!res.success) {
             return { success: false, error: res.error || 'فشل تسجيل الحجز في قاعدة البيانات' };
           }
-          if (res.appointment) {
-            const dbApt = res.appointment;
+          const dbApt = res.appointment || (res.appointment_id || res.reference_number ? res : null);
+          if (dbApt) {
             const mappedApt: Appointment = {
-              id: dbApt.id || dbApt.reference_number || `apt-${Date.now()}`,
+              id: dbApt.id || dbApt.appointment_id || dbApt.reference_number || `apt-${Date.now()}`,
               referenceNumber: dbApt.reference_number,
-              clinicId: dbApt.clinic_id,
-              clinicName: dbApt.clinic_name,
+              clinicId: dbApt.clinic_id || input.clinicId,
+              clinicName: dbApt.clinic_name || clinic.name,
               serviceId: matchedService?.id,
               serviceName: resolvedServiceName,
-              patientName: dbApt.patient_name,
-              phoneNumber: dbApt.phone_number,
-              patientAge: dbApt.patient_age || undefined,
-              patientAddress: dbApt.patient_address || undefined,
+              patientName: dbApt.patient_name || input.patientName.trim(),
+              phoneNumber: dbApt.phone_number || phoneCheck.normalized,
+              patientAge: dbApt.patient_age || input.patientAge?.trim() || undefined,
+              patientAddress: dbApt.patient_address || input.patientAddress?.trim() || undefined,
               bookingCode: bookingCode, // Unhashed transient code returned once for the ticket receipt
               bookingCodeHash: bookingCodeHash,
               requiredDocuments: matchedService?.requiredDocuments,
               serviceInstructions: matchedService?.instructions,
-              appointmentDate: dbApt.appointment_date,
-              appointmentTime: dbApt.appointment_time,
-              status: dbApt.status,
+              appointmentDate: dbApt.appointment_date || input.appointmentDate,
+              appointmentTime: dbApt.appointment_time || selectedTime || '09:00',
+              status: dbApt.status || (input.isWalkIn ? 'CONFIRMED' : 'PENDING_REVIEW'),
               queueNumber: dbApt.queue_number ?? undefined,
               createdAt: dbApt.created_at || new Date().toISOString(),
               updatedAt: dbApt.updated_at || new Date().toISOString(),
               statusHistory: [
                 {
-                  status: dbApt.status,
+                  status: dbApt.status || (input.isWalkIn ? 'CONFIRMED' : 'PENDING_REVIEW'),
                   timestamp: new Date().toISOString(),
                   note: input.isWalkIn
                     ? 'تسجيل حضوري مباشر من مكتب الاستقبال بالمستشفى'
@@ -1539,7 +1539,53 @@ class AppointmentServiceStore {
   }
 
   public getAppointmentById(id: string): Appointment | undefined {
-    return this.appointments.find((a) => a.id === id);
+    return this.appointments.find((a) => a.id === id || a.referenceNumber === id);
+  }
+
+  public async getAppointmentByIdAsync(id: string, userToken?: string): Promise<Appointment | undefined> {
+    const memoryApt = this.appointments.find((a) => a.id === id || a.referenceNumber === id);
+    if (memoryApt) return memoryApt;
+
+    if (isSupabaseConfigured()) {
+      try {
+        const client = userToken ? createUserClient(userToken) : createAdminClient();
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+        let query = (client as any).from('appointments').select('*');
+        if (isUUID) {
+          query = query.eq('id', id);
+        } else {
+          query = query.eq('reference_number', id);
+        }
+        const { data, error } = await query.maybeSingle();
+        if (!error && data) {
+          const mapped: Appointment = {
+            id: data.id,
+            referenceNumber: data.reference_number,
+            clinicId: data.clinic_id,
+            clinicName: data.clinic_name,
+            serviceId: data.service_id,
+            serviceName: data.service_name,
+            patientName: data.patient_name,
+            phoneNumber: data.phone_number,
+            patientAge: data.patient_age || undefined,
+            patientAddress: data.patient_address || undefined,
+            appointmentDate: data.appointment_date,
+            appointmentTime: data.appointment_time,
+            status: data.status,
+            queueNumber: data.queue_number,
+            createdAt: data.created_at,
+            updatedAt: data.updated_at,
+            statusHistory: [],
+          };
+          this.appointments.unshift(mapped);
+          return mapped;
+        }
+      } catch (err) {
+        console.warn('Failed to fetch appointment by id from Supabase:', err);
+      }
+    }
+
+    return undefined;
   }
 
   public async updateStatus(
@@ -1549,7 +1595,7 @@ class AppointmentServiceStore {
     note?: string,
     userToken?: string
   ): Promise<{ success: boolean; appointment?: Appointment; error?: string }> {
-    const apt = this.getAppointmentById(id);
+    const apt = await this.getAppointmentByIdAsync(id, userToken);
     if (!apt) {
       return { success: false, error: 'الموعد غير موجود' };
     }
@@ -1664,7 +1710,7 @@ class AppointmentServiceStore {
     staffUser: StaffUser,
     userToken?: string
   ): Promise<{ success: boolean; appointment?: Appointment; error?: string }> {
-    const apt = this.getAppointmentById(id);
+    const apt = await this.getAppointmentByIdAsync(id, userToken);
     if (!apt) {
       return { success: false, error: 'الحجز غير موجود' };
     }
@@ -1742,22 +1788,20 @@ class AppointmentServiceStore {
     userToken?: string
   ): Promise<{ success: boolean; appointment?: Appointment; error?: string }> {
     // 1. Validate Staff Authorization
+    const apt = await this.getAppointmentByIdAsync(id, userToken);
+    if (!apt) {
+      return { success: false, error: 'الحجز غير موجود' };
+    }
+
     if (staffUser.role === 'DOCTOR' && staffUser.clinicId) {
-      const aptCheck = this.getAppointmentById(id);
-      if (aptCheck && aptCheck.clinicId !== staffUser.clinicId) {
+      if (apt.clinicId !== staffUser.clinicId) {
         return { success: false, error: 'الطبيب مصرح له فقط بتحويل الحالات المسجلة بعيادته الخاصة' };
       }
     }
     if (staffUser.role === 'RECEPTIONIST' && staffUser.clinicId) {
-      const aptCheck = this.getAppointmentById(id);
-      if (aptCheck && aptCheck.clinicId !== staffUser.clinicId) {
+      if (apt.clinicId !== staffUser.clinicId) {
         return { success: false, error: 'موظف الاستقبال غير مصرح له بتحويل حالات من عيادة أخرى' };
       }
-    }
-
-    const apt = this.getAppointmentById(id);
-    if (!apt) {
-      return { success: false, error: 'الحجز غير موجود' };
     }
 
     const targetClinic = this.getClinicById(targetClinicId);
