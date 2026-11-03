@@ -61,11 +61,28 @@ export class AuthService {
     // 1. Supabase Auth Path
     if (isSupabaseConfigured()) {
       try {
-        const adminClient = createAdminClient();
+        let authClient: any = null;
+        if (isSupabaseAdminConfigured()) {
+          try {
+            authClient = createAdminClient();
+          } catch {
+            authClient = null;
+          }
+        }
+        if (!authClient) {
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
+          const supabaseAnonKey =
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+            process.env.SUPABASE_ANON_KEY ||
+            process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+            '';
+          authClient = createClient(supabaseUrl, supabaseAnonKey);
+        }
+
         const staffDomain = process.env.STAFF_AUTH_DOMAIN || 'hospital.internal';
         const email = cleanUser.includes('@') ? cleanUser : `${cleanUser.toLowerCase()}@${staffDomain}`;
 
-        const { data, error } = await adminClient.auth.signInWithPassword({
+        const { data, error } = await authClient.auth.signInWithPassword({
           email,
           password: cleanPass,
         });
@@ -76,15 +93,24 @@ export class AuthService {
 
         // Map auth.users record to verified public.staff_profiles
         let profile = null;
-        const { data: adminProf, error: profileErr } = await (adminClient as any)
-          .from('staff_profiles')
-          .select('id, username, full_name, role, clinic_id, is_active')
-          .eq('id', data.user.id)
-          .maybeSingle();
+        if (isSupabaseAdminConfigured()) {
+          try {
+            const adminClient = createAdminClient();
+            const { data: adminProf, error: profileErr } = await (adminClient as any)
+              .from('staff_profiles')
+              .select('id, username, full_name, role, clinic_id, is_active')
+              .eq('id', data.user.id)
+              .maybeSingle();
 
-        if (!profileErr && adminProf) {
-          profile = adminProf;
-        } else if (data.session?.access_token) {
+            if (!profileErr && adminProf) {
+              profile = adminProf;
+            }
+          } catch {
+            profile = null;
+          }
+        }
+
+        if (!profile && data.session?.access_token) {
           // Fallback to verified authenticated user client under RLS
           const userClient = createUserClient(data.session.access_token);
           const { data: userProf } = await (userClient as any)
@@ -153,30 +179,56 @@ export class AuthService {
     // 1. Supabase Auth Verification
     if (isSupabaseConfigured()) {
       try {
-        const adminClient = createAdminClient();
-        const { data, error } = await adminClient.auth.getUser(cleanToken);
-
-        if (error || !data.user) {
-          return null;
+        let userRecord = null;
+        if (isSupabaseAdminConfigured()) {
+          try {
+            const adminClient = createAdminClient();
+            const { data, error } = await adminClient.auth.getUser(cleanToken);
+            if (!error && data?.user) {
+              userRecord = data.user;
+            }
+          } catch {
+            userRecord = null;
+          }
+        }
+        if (!userRecord) {
+          try {
+            const userClient = createUserClient(cleanToken);
+            const { data, error } = await userClient.auth.getUser();
+            if (error || !data?.user) {
+              return null;
+            }
+            userRecord = data.user;
+          } catch {
+            return null;
+          }
         }
 
         // Query server-enforced role and clinic assignment from staff_profiles
         let profile = null;
-        const { data: adminProf, error: adminErr } = await (adminClient as any)
-          .from('staff_profiles')
-          .select('id, username, full_name, role, clinic_id, is_active')
-          .eq('id', data.user.id)
-          .maybeSingle();
+        if (isSupabaseAdminConfigured()) {
+          try {
+            const adminClient = createAdminClient();
+            const { data: adminProf, error: adminErr } = await (adminClient as any)
+              .from('staff_profiles')
+              .select('id, username, full_name, role, clinic_id, is_active')
+              .eq('id', userRecord.id)
+              .maybeSingle();
 
-        if (!adminErr && adminProf) {
-          profile = adminProf;
-        } else {
-          // Fallback to verified authenticated user client under RLS
+            if (!adminErr && adminProf) {
+              profile = adminProf;
+            }
+          } catch {
+            profile = null;
+          }
+        }
+
+        if (!profile) {
           const userClient = createUserClient(cleanToken);
           const { data: userProf } = await (userClient as any)
             .from('staff_profiles')
             .select('id, username, full_name, role, clinic_id, is_active')
-            .eq('id', data.user.id)
+            .eq('id', userRecord.id)
             .maybeSingle();
           profile = userProf;
         }
