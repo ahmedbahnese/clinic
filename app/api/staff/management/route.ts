@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthService } from '@/services/authService';
-import { createAdminClient, isSupabaseConfigured } from '@/lib/supabase/admin';
+import { getAuthenticatedServerClient, isSupabaseConfigured } from '@/lib/supabase/admin';
 import { STAFF_SESSION_COOKIE } from '@/lib/staffSessionCookie';
 
 /**
@@ -43,8 +43,21 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const adminClient = createAdminClient();
-    const { data, error } = await (adminClient as any)
+    // Resilient client resolution: the caller's own verified session token
+    // (ADMIN under RLS can read all staff_profiles), then the service-role
+    // key, then the server-side system session. Never throws on env gaps.
+    const { client } = await getAuthenticatedServerClient(token);
+    if (!client) {
+      return NextResponse.json(
+        {
+          error:
+            'تعذر الوصول إلى قاعدة البيانات. تأكد من مفتاح الخدمة (SUPABASE_SERVICE_ROLE_KEY) أو بيانات حساب النظام (STAFF_DEFAULT_PASSWORD) ثم أعد النشر.',
+        },
+        { status: 500 }
+      );
+    }
+
+    const { data, error } = await (client as any)
       .from('staff_profiles')
       .select('id, username, full_name, role, clinic_id, is_active, created_at, updated_at')
       .order('username', { ascending: true });

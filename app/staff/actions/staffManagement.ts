@@ -2,7 +2,12 @@
 
 import { cookies } from 'next/headers';
 import { AuthService } from '@/services/authService';
-import { createAdminClient, isSupabaseConfigured } from '@/lib/supabase/admin';
+import {
+  createAdminClient,
+  getAuthenticatedServerClient,
+  isSupabaseAdminConfigured,
+  isSupabaseConfigured,
+} from '@/lib/supabase/admin';
 import { appointmentStore } from '@/services/appointmentService';
 import { STAFF_SESSION_COOKIE } from '@/lib/staffSessionCookie';
 import { staffFormSchema } from '@/lib/staffManagementSchema';
@@ -62,13 +67,22 @@ export async function createOrUpdateStaff(
     }
   }
 
-  const adminClient = createAdminClient();
   const staffDomain = process.env.STAFF_AUTH_DOMAIN || 'hospital.internal';
 
   // ---------------------------------------------------------------
   // 5. CREATE — new account
+  // (auth.admin.createUser + provision_staff_member RPC require a
+  //  genuine service_role key; fail with a clear message otherwise)
   // ---------------------------------------------------------------
   if (!data.id) {
+    if (!isSupabaseAdminConfigured()) {
+      return {
+        success: false,
+        error:
+          'إنشاء حساب جديد يتطلب مفتاح خدمة service_role صحيح في متغيرات البيئة (SUPABASE_SERVICE_ROLE_KEY). تواصل مع المسؤول التقني.',
+      };
+    }
+    const adminClient = createAdminClient();
     const email = `${data.username.toLowerCase()}@${staffDomain}`;
 
     // Username uniqueness (staff_profiles has a unique username)
@@ -135,7 +149,18 @@ export async function createOrUpdateStaff(
     };
   }
 
-  const { error: updateErr } = await (adminClient as any)
+  // Profile update runs under the caller's verified session (ADMIN RLS
+  // policies) or the service-role key — resilient to env misconfiguration.
+  const { client: profileClient } = await getAuthenticatedServerClient(token);
+  if (!profileClient) {
+    return {
+      success: false,
+      error:
+        'تعذر الوصول إلى قاعدة البيانات. تأكد من مفتاح الخدمة (SUPABASE_SERVICE_ROLE_KEY) أو بيانات حساب النظام (STAFF_DEFAULT_PASSWORD).',
+    };
+  }
+
+  const { error: updateErr } = await (profileClient as any)
     .from('staff_profiles')
     .update({
       full_name: data.fullName,
@@ -154,6 +179,14 @@ export async function createOrUpdateStaff(
   // Optional password reset (only when the admin provided a new one)
   const newPassword = data.password?.trim();
   if (newPassword && newPassword.length > 0) {
+    if (!isSupabaseAdminConfigured()) {
+      return {
+        success: true,
+        message:
+          'تم تحديث بيانات الموظف بنجاح. ملاحظة: إعادة تعيين كلمة المرور تتطلب مفتاح خدمة service_role صحيح ولم يتم تغييرها.',
+      };
+    }
+    const adminClient = createAdminClient();
     const { error: pwdErr } = await adminClient.auth.admin.updateUserById(
       data.id,
       { password: newPassword }
