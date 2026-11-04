@@ -1466,49 +1466,71 @@ class AppointmentServiceStore {
 
     if (isSupabaseConfigured()) {
       try {
-        const supabase = createAdminClient();
-        const { data, error } = await (supabase as any)
-          .from('appointments')
-          .select('id, reference_number, clinic_id, clinic_name, service_id, service_name, patient_name, patient_age, patient_address, appointment_date, appointment_time, status, queue_number')
-          .eq('phone_number', cleanPhone)
-          .gte('appointment_date', todayCairo)
-          .neq('status', 'CANCELLED')
-          .order('appointment_date', { ascending: true });
+        const { client, authenticated } = await getSystemSupabaseClient();
+        if (client && authenticated) {
+          const baseColumns =
+            'id, reference_number, clinic_id, clinic_name, patient_name, patient_age, patient_address, appointment_date, appointment_time, status, queue_number';
+          let { data, error } = await (client as any)
+            .from('appointments')
+            .select(`${baseColumns}, service_id, service_name`)
+            .eq('phone_number', cleanPhone)
+            .gte('appointment_date', todayCairo)
+            .neq('status', 'CANCELLED')
+            .order('appointment_date', { ascending: true });
 
-        if (!error && data && Array.isArray(data)) {
-          return data.map((dbApt: any) => {
-            const matchedService = dbApt.service_id
-              ? allServices.find((s) => s.id === dbApt.service_id)
-              : allServices.find((s) => s.clinicId === dbApt.clinic_id);
-            const clinic = this.getClinicById(dbApt.clinic_id);
-            return {
-              id: dbApt.id || dbApt.reference_number,
-              referenceNumber: dbApt.reference_number,
-              clinicId: dbApt.clinic_id,
-              clinicName: dbApt.clinic_name,
-              serviceId: dbApt.service_id || matchedService?.id,
-              serviceName: dbApt.service_name || matchedService?.name || 'كشف واستشارة طبية',
-              patientName: maskPatientName(dbApt.patient_name),
-              phoneNumber: cleanPhone,
-              appointmentDate: dbApt.appointment_date,
-              appointmentTime: '',
-              status: dbApt.status,
-              queueNumber: dbApt.queue_number ?? undefined,
-              hasPendingCancellation: this.cancellationRequests.some((r) => (r.referenceNumber === dbApt.reference_number || r.appointmentId === dbApt.id) && r.status === 'PENDING'),
-              requiredDocuments: [
-                ...(clinic?.requiredDocuments || []),
-                ...(matchedService?.requiredDocuments || []),
-              ],
-              serviceInstructions: matchedService?.instructions || clinic?.instructions || 'الحضور صباحاً بأسبقية التسجيل في شباك الاستقبال.',
-              createdAt: '',
-              updatedAt: '',
-              statusHistory: [],
-            };
-          });
+          if (error) {
+            // Production DB may predate Production Bundle 1 (no service columns yet)
+            const retry = await (client as any)
+              .from('appointments')
+              .select(baseColumns)
+              .eq('phone_number', cleanPhone)
+              .gte('appointment_date', todayCairo)
+              .neq('status', 'CANCELLED')
+              .order('appointment_date', { ascending: true });
+            ({ data, error } = retry);
+          }
+
+          if (!error && data && Array.isArray(data)) {
+            return data.map((dbApt: any) => {
+              const matchedService = dbApt.service_id
+                ? allServices.find((s) => s.id === dbApt.service_id)
+                : allServices.find((s) => s.clinicId === dbApt.clinic_id);
+              const clinic = this.getClinicById(dbApt.clinic_id);
+              return {
+                id: dbApt.id || dbApt.reference_number,
+                referenceNumber: dbApt.reference_number,
+                clinicId: dbApt.clinic_id,
+                clinicName: dbApt.clinic_name,
+                serviceId: dbApt.service_id || matchedService?.id,
+                serviceName: dbApt.service_name || matchedService?.name || 'كشف واستشارة طبية',
+                patientName: maskPatientName(dbApt.patient_name),
+                phoneNumber: cleanPhone,
+                appointmentDate: dbApt.appointment_date,
+                appointmentTime: '',
+                status: dbApt.status,
+                queueNumber: dbApt.queue_number ?? undefined,
+                hasPendingCancellation: this.cancellationRequests.some((r) => (r.referenceNumber === dbApt.reference_number || r.appointmentId === dbApt.id) && r.status === 'PENDING'),
+                requiredDocuments: [
+                  ...(clinic?.requiredDocuments || []),
+                  ...(matchedService?.requiredDocuments || []),
+                ],
+                serviceInstructions: matchedService?.instructions || clinic?.instructions || 'الحضور صباحاً بأسبقية التسجيل في شباك الاستقبال.',
+                createdAt: '',
+                updatedAt: '',
+                statusHistory: [],
+              };
+            });
+          }
+
+          console.error('Supabase trackAppointmentsByVerifiedPhone query error:', error);
         }
       } catch (err) {
-        console.warn('Supabase trackAppointmentsByVerifiedPhone error:', err);
+        console.error('Supabase trackAppointmentsByVerifiedPhone error:', err);
       }
+
+      // Fail loudly instead of silently reporting "no bookings" when the
+      // central database could not be reached or queried successfully.
+      throw new Error('تعذر الوصول إلى بيانات الحجوزات المركزية حالياً، يرجى المحاولة لاحقاً أو التواصل مع المستشفى.');
     }
 
     return this.appointments

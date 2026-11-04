@@ -34,7 +34,10 @@ export function createAdminClient() {
     process.env.SUPABASE_SERVICE_ROLE_KEY;
   const supabaseServiceRoleKey = rawKey ? rawKey.trim().replace(/^["']|["']$/g, '') : '';
 
-  if (!supabaseUrl || !supabaseServiceRoleKey || supabaseServiceRoleKey.length < 20) {
+  const hasValidServiceKey =
+    supabaseServiceRoleKey.length >= 20 && isServiceRoleJwtKey(supabaseServiceRoleKey);
+
+  if (!supabaseUrl || !hasValidServiceKey) {
     if (cachedSystemSession && cachedSystemSession.expiresAt > Date.now()) {
       const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
       return createClient<Database>(supabaseUrl || 'https://placeholder-project.supabase.co', anonKey, {

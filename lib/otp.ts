@@ -127,15 +127,20 @@ export async function checkRateLimit(
       }
 
       if (isProd) {
-        console.error('CRITICAL: Persistent rate limiting RPC failed in production:', error);
-        return { allowed: false, retryAfterSeconds: 60 };
+        // Degraded-mode fallback: keep public booking/tracking operational with
+        // per-instance in-memory limiting while the persistent counter (Bundle 1)
+        // or a valid service_role key is unavailable. Persistent limiting resumes
+        // automatically once check_rate_limit becomes reachable.
+        console.error('CRITICAL: Persistent rate limiting RPC failed in production, falling back to in-memory limiting:', error);
+      } else {
+        console.warn('Persistent rate limit RPC fallback to memory:', error);
       }
     } catch (rpcErr) {
       if (isProd) {
-        console.error('CRITICAL: Persistent rate limit network/client failure in production:', rpcErr);
-        return { allowed: false, retryAfterSeconds: 60 };
+        console.error('CRITICAL: Persistent rate limit client failure in production, falling back to in-memory limiting:', rpcErr);
+      } else {
+        console.warn('Persistent rate limit RPC fallback to memory:', rpcErr);
       }
-      console.warn('Persistent rate limit RPC fallback to memory:', rpcErr);
     }
   } else if (isProd) {
     console.error('CRITICAL: Rate limiting is unconfigured in production (persistent Supabase store required).');
