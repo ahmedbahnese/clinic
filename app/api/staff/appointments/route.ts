@@ -48,8 +48,12 @@ export async function GET(req: NextRequest) {
       },
       appointments,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching staff appointments:', error);
-    return NextResponse.json({ error: 'تعذر جلب حجوزات الموظفين' }, { status: 500 });
+    const message =
+      error?.message && typeof error.message === 'string'
+        ? error.message
+        : 'تعذر جلب حجوزات الموظفين';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

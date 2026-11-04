@@ -2586,7 +2586,7 @@ class AppointmentServiceStore {
         let { data, error } = await query;
         if (error) {
           // If user client hit permission issue, fallback to system client
-          const { client: systemClient } = await getSystemSupabaseClient();
+          const { client: systemClient, authenticated: systemAuthenticated } = await getSystemSupabaseClient();
           let fallbackQuery = systemClient
             .from('appointments')
             .select('id, reference_number, clinic_id, clinic_name, patient_name, phone_number, patient_age, patient_address, appointment_date, appointment_time, status, queue_number, last_called_at, called_count, notes, created_at, updated_at')
@@ -2603,6 +2603,11 @@ class AppointmentServiceStore {
           if (!fallbackRes.error) {
             data = fallbackRes.data;
             error = null;
+          } else if (!systemAuthenticated) {
+            console.error('Supabase system client has no authenticated identity for staff appointments:', fallbackRes.error);
+            throw new Error(
+              'تعذر الوصول إلى بيانات الحجوزات: لا يوجد مفتاح خدمة (service_role) صالح ولا جلسة نظام موثقة. يرجى ضبط SUPABASE_SERVICE_ROLE_KEY بمفتاح service_role الحقيقي أو تزويد حساب الموظف في قاعدة البيانات عبر provision_staff_member.'
+            );
           }
         }
         if (error) {

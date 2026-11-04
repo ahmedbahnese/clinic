@@ -56,6 +56,21 @@ export default function StaffDashboardPage() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [clinics, setClinics] = useState<Clinic[]>([]);
   const [loading, setLoading] = useState(true);
+  const [appointmentsError, setAppointmentsError] = useState<string | null>(null);
+
+  // Restore the verified staff profile saved at login so the role-based UI
+  // renders immediately even if the appointments fetch fails later.
+  useEffect(() => {
+    try {
+      const rawUser = localStorage.getItem('bsch_staff_user');
+      if (rawUser) {
+        const saved = JSON.parse(rawUser);
+        if (saved && saved.role) setCurrentUser(saved);
+      }
+    } catch {
+      // Ignore malformed localStorage payload
+    }
+  }, []);
 
   // Cancellation Requests State
   const [cancellationRequests, setCancellationRequests] = useState<CancellationRequest[]>([]);
@@ -218,10 +233,14 @@ export default function StaffDashboardPage() {
           }
           if (data.success && data.appointments) {
             setAppointments(data.appointments);
+            setAppointmentsError(null);
+          } else if (data.error) {
+            setAppointmentsError(data.error);
           }
         }
       } catch (err) {
         console.error('Error fetching staff data:', err);
+        if (active) setAppointmentsError('تعذر الاتصال بالخادم لجلب قائمة الحجوزات. يرجى المحاولة مجدداً.');
       } finally {
         if (active) setLoading(false);
       }
@@ -329,6 +348,18 @@ export default function StaffDashboardPage() {
   const loadCancellationRequests = useCallback(async () => {
     const token = localStorage.getItem('bsch_staff_token');
     if (!token) return;
+    // Doctors are not authorized to review cancellation requests; skip the
+    // request entirely instead of producing a 403 on every dashboard load.
+    try {
+      const savedUser = JSON.parse(localStorage.getItem('bsch_staff_user') || 'null');
+      if (savedUser?.role === 'DOCTOR') {
+        setCancellationRequests([]);
+        setLoadingCancellationRequests(false);
+        return;
+      }
+    } catch {
+      // Fall through to normal fetch if the saved profile is unreadable
+    }
     setLoadingCancellationRequests(true);
     try {
       const url = new URL('/api/staff/cancellation-requests', window.location.origin);
@@ -985,6 +1016,31 @@ export default function StaffDashboardPage() {
             >
               إغلاق
             </button>
+          </div>
+        )}
+
+        {/* Appointments Load Error Banner */}
+        {appointmentsError && (
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
+              <span className="text-xs sm:text-sm font-semibold">{appointmentsError}</span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setRefreshKey((k) => k + 1)}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-2xs sm:text-xs font-bold transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>إعادة المحاولة</span>
+              </button>
+              <button
+                onClick={() => setAppointmentsError(null)}
+                className="px-2.5 py-1.5 rounded-lg text-red-600 hover:bg-red-100 text-2xs sm:text-xs font-bold transition-colors"
+              >
+                إخفاء
+              </button>
+            </div>
           </div>
         )}
 

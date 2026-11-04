@@ -2,6 +2,23 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../../types/database.types.ts';
 
 /**
+ * Decodes the JWT payload of a Supabase API key and verifies it is a genuine
+ * service_role key. Prevents an anon/publishable key that was mistakenly placed
+ * in SUPABASE_SERVICE_ROLE_KEY from being silently used as an admin credential
+ * (which makes every "admin" query run as `anon` and get rejected by RLS).
+ */
+function isServiceRoleJwtKey(key: string): boolean {
+  try {
+    const parts = key.split('.');
+    if (parts.length !== 3) return false;
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    return Boolean(payload && payload.role === 'service_role');
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Creates an administrative Supabase client using the server-side Service Role Key.
  *
  * Security Invariants:
@@ -93,10 +110,10 @@ export function createUserClient(userJwtToken: string) {
 // Cached server-level system Supabase session for executing verified server operations
 let cachedSystemSession: { token: string; expiresAt: number; userId: string } | null = null;
 
-export async function getSystemSupabaseClient(): Promise<{ client: any; userId: string | null }> {
+export async function getSystemSupabaseClient(): Promise<{ client: any; userId: string | null; authenticated: boolean }> {
   if (isSupabaseAdminConfigured()) {
     try {
-      return { client: createAdminClient(), userId: null };
+      return { client: createAdminClient(), userId: null, authenticated: true };
     } catch {
       // Fall through to system account session
     }
@@ -110,7 +127,7 @@ export async function getSystemSupabaseClient(): Promise<{ client: any; userId: 
     '';
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    return { client: null, userId: null };
+    return { client: null, userId: null, authenticated: false };
   }
 
   if (cachedSystemSession && cachedSystemSession.expiresAt > Date.now()) {
@@ -118,7 +135,7 @@ export async function getSystemSupabaseClient(): Promise<{ client: any; userId: 
       global: { headers: { Authorization: `Bearer ${cachedSystemSession.token}` } },
       auth: { autoRefreshToken: false, persistSession: false },
     });
-    return { client: authClient, userId: cachedSystemSession.userId };
+    return { client: authClient, userId: cachedSystemSession.userId, authenticated: true };
   }
 
   try {
@@ -138,13 +155,15 @@ export async function getSystemSupabaseClient(): Promise<{ client: any; userId: 
         global: { headers: { Authorization: `Bearer ${cachedSystemSession.token}` } },
         auth: { autoRefreshToken: false, persistSession: false },
       });
-      return { client: authClient, userId: data.user.id };
+      return { client: authClient, userId: data.user.id, authenticated: true };
     }
   } catch (err) {
     console.warn('System Supabase sign-in fallback attempt warning:', err);
   }
 
-  return { client: createClient<Database>(supabaseUrl, supabaseAnonKey), userId: null };
+  // No usable server-side identity: return an unauthenticated (anon) client so
+  // callers can detect it via `authenticated: false` and fail with a clear message.
+  return { client: createClient<Database>(supabaseUrl, supabaseAnonKey), userId: null, authenticated: false };
 }
 
 /**
@@ -195,7 +214,10 @@ export function isSupabaseConfigured(): boolean {
 }
 
 /**
- * Validates if Supabase server-side service-role key is provided for administrative writes.
+ * Validates if a genuine Supabase server-side service-role key is provided.
+ * A key whose JWT payload role is not `service_role` (e.g. an anon key copied
+ * by mistake) is rejected so the app fails closed to the system-session path
+ * instead of running privileged operations as the `anon` role.
  */
 export function isSupabaseAdminConfigured(): boolean {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -206,7 +228,8 @@ export function isSupabaseAdminConfigured(): boolean {
     !url.includes('placeholder') &&
     serviceKey &&
     serviceKey.length > 20 &&
-    !serviceKey.includes('placeholder')
+    !serviceKey.includes('placeholder') &&
+    isServiceRoleJwtKey(serviceKey)
   );
 }
 
