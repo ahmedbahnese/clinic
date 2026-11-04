@@ -41,17 +41,6 @@ export async function submitBooking(data: BookingFormData): Promise<{
       };
     }
 
-    // 0.1 Cloudflare Turnstile Bot Verification (Only enforced if TURNSTILE_SECRET_KEY is configured in environment)
-    if (process.env.TURNSTILE_SECRET_KEY) {
-      const turnstileCheck = await verifyTurnstileToken(data.turnstileToken, clientIp);
-      if (!turnstileCheck.success) {
-        return {
-          success: false,
-          error: turnstileCheck.error || 'فشل التحقق الأمني من مكافحة الروبوتات.',
-        };
-      }
-    }
-
     // 1. Strict Business Logic Check: Walk-in Only services are rejected server-side
     if (data.serviceType === 'WALK_IN_PROCEDURE' || data.serviceType === 'EMERGENCY') {
       return {

@@ -47,8 +47,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 4. Turnstile Verification (When configured in production or token provided)
-    if (process.env.TURNSTILE_SECRET_KEY || turnstileToken) {
+    // 4. Turnstile Verification (Only when token provided and secret configured)
+    if (turnstileToken && process.env.TURNSTILE_SECRET_KEY) {
       const turnstileRes = await verifyTurnstileToken(turnstileToken, clientIp);
       if (!turnstileRes.success) {
         return NextResponse.json(

@@ -62,8 +62,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 4. Cloudflare Turnstile Bot Protection (When configured in environment)
-    if (process.env.TURNSTILE_SECRET_KEY) {
+    // 4. Cloudflare Turnstile Bot Protection (Only when provided by client)
+    if (turnstileToken && process.env.TURNSTILE_SECRET_KEY) {
       const turnstileCheck = await verifyTurnstileToken(turnstileToken, clientIp);
       if (!turnstileCheck.success) {
         return NextResponse.json(
