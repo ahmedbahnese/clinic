@@ -8,6 +8,7 @@ import {
   Stethoscope,
   LogOut,
   KeyRound,
+  Users,
   Search,
   CheckCircle2,
   Clock,
@@ -37,6 +38,7 @@ import {
   Phone,
 } from 'lucide-react';
 import CmsDashboard from '@/components/cms/CmsDashboard';
+import StaffManager from './components/StaffManager';
 import { Appointment, Clinic, ClinicService, ClinicScheduleException, AppointmentStatus, AuditLogItem, CancellationRequest } from '@/types';
 import { getStatusDisplay, formatArabicDate, formatLocalDate } from '@/lib/rules';
 
@@ -51,7 +53,7 @@ export default function StaffDashboardPage() {
   } | null>(null);
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState<'QUEUE' | 'CLINICS' | 'AUDIT' | 'CMS' | 'CANCELLATIONS'>('QUEUE');
+  const [activeTab, setActiveTab] = useState<'QUEUE' | 'CLINICS' | 'AUDIT' | 'CMS' | 'CANCELLATIONS' | 'STAFF'>('QUEUE');
 
   // Appointments & Clinics State
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -1192,6 +1194,18 @@ export default function StaffDashboardPage() {
                   <Globe className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   <span>إدارة الموقع (CMS)</span>
                 </button>
+
+                <button
+                  onClick={() => setActiveTab('STAFF')}
+                  className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all shrink-0 ${
+                    activeTab === 'STAFF'
+                      ? 'bg-[#087F78] text-white shadow-xs'
+                      : 'text-[#163C3A] hover:bg-slate-100 bg-white border border-[#E2E8EE]'
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span>إدارة الموظفين</span>
+                </button>
               </>
             )}
           </div>
@@ -2033,6 +2047,9 @@ export default function StaffDashboardPage() {
         {activeTab === 'CMS' && isAdmin && (
           <CmsDashboard currentUser={currentUser} />
         )}
+
+        {/* TAB 4.5: STAFF MANAGEMENT (ADMIN ONLY) */}
+        {activeTab === 'STAFF' && isAdmin && <StaffManager />}
 
         {/* TAB 5: CANCELLATION REQUESTS MANAGEMENT */}
         {activeTab === 'CANCELLATIONS' && (isReceptionist || isAdmin) && (
