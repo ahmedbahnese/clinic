@@ -328,25 +328,6 @@ function TrackContent() {
             </span>
           </div>
 
-          <div>
-            <label className="block text-xs sm:text-sm font-bold text-[#163C3A] mb-1.5">
-              الرقم المرجعي للحجز (اختياري)
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                dir="ltr"
-                value={refQuery}
-                onChange={(e) => setRefQuery(e.target.value)}
-                placeholder="BSCH-1001"
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-[#087F78] focus:ring-2 focus:ring-[#087F78]/15 text-xs sm:text-sm text-[#163C3A] text-right font-mono font-bold placeholder:text-slate-400 transition-all bg-white"
-              />
-            </div>
-            <span className="block text-[10.5px] text-slate-400 mt-1">
-              أدخل الرقم المرجعي إذا كنت ترغب في فك حجب بيانات التذكرة، رقم الدور، أو إلغاء الحجز مباشرة
-            </span>
-          </div>
-
           {errorMessage && (
             <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
