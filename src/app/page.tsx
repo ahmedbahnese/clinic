@@ -15,6 +15,8 @@ import {
 
 const defaultHospitalWebsite = "https://albahira.elyoser.cloud/";
 type CmsHome = { site_name: string; tagline: string; header_title: string; logo_url: string; hospital_website: string; notice_title: string; notice_body: string; notice_enabled: boolean };
+type CmsSection = { section_key: string; title: string; subtitle: string; body: string; is_visible: boolean };
+type CmsNav = { label: string; href: string; open_mode: string };
 
 const services = [
   {
@@ -45,7 +47,10 @@ const services = [
 
 export default function Home() {
   const [cms, setCms] = useState<CmsHome | null>(null);
-  useEffect(() => { const client = createSupabaseBrowserClient(); if (!client) return; void client.from("site_settings").select("site_name,tagline,header_title,logo_url,hospital_website,notice_title,notice_body,notice_enabled").eq("id", true).maybeSingle().then(({ data }) => { if (data) setCms(data as CmsHome); }); }, []);
+  const [sections, setSections] = useState<CmsSection[]>([]);
+  const [navLinks, setNavLinks] = useState<CmsNav[]>([]);
+  useEffect(() => { const client = createSupabaseBrowserClient(); if (!client) return; void Promise.all([client.from("site_settings").select("site_name,tagline,header_title,logo_url,hospital_website,notice_title,notice_body,notice_enabled").eq("id", true).maybeSingle(), client.from("site_sections").select("section_key,title,subtitle,body,is_visible").eq("is_visible", true).order("sort_order"), client.from("site_nav_links").select("label,href,open_mode").eq("is_visible", true).order("sort_order")]).then(([settingsResult, sectionsResult, navResult]) => { if (settingsResult.data) setCms(settingsResult.data as CmsHome); setSections((sectionsResult.data ?? []) as CmsSection[]); setNavLinks((navResult.data ?? []) as CmsNav[]); }); }, []);
+  const cmsSection = (key: string) => sections.find((item) => item.section_key === key);
   const hospitalWebsite = cms?.hospital_website || defaultHospitalWebsite;
   const siteName = cms?.site_name || "مستشفى الأطفال التخصصي بالبحيرة";
   return (
@@ -74,15 +79,7 @@ export default function Home() {
           </Link>
 
           <nav className="main-nav" aria-label="التنقل الرئيسي">
-            <Link className="nav-link nav-current" href="/">
-              الرئيسية
-            </Link>
-            <Link className="nav-link" href="/booking">
-              حجز موعد
-            </Link>
-            <Link className="nav-link" href="/track">
-              متابعة الحجز
-            </Link>
+            {(navLinks.length ? navLinks : [{ label: "الرئيسية", href: "/", open_mode: "same_tab" }, { label: "حجز موعد", href: "/booking", open_mode: "same_tab" }, { label: "متابعة الحجز", href: "/track", open_mode: "same_tab" }]).map((item) => <Link className={`nav-link${item.href === "/" ? " nav-current" : ""}`} href={item.href} key={`${item.label}-${item.href}`} target={item.open_mode === "new_tab" ? "_blank" : undefined} rel={item.open_mode === "new_tab" ? "noopener noreferrer" : undefined}>{item.label}</Link>)}
           </nav>
 
           <Link className="header-staff-link" href="/staff/login">
@@ -101,10 +98,9 @@ export default function Home() {
                 {siteName}
               </div>
               <p className="system-label">BSCH CLINICS <span>·</span> العيادات الخارجية</p>
-              <h1 id="welcome-title">رعاية تبدأ بخطوة <span>واضحة.</span></h1>
+              <h1 id="welcome-title">{cmsSection("hero")?.title || <>رعاية تبدأ بخطوة <span>واضحة.</span></>}</h1>
               <p className="welcome-description">
-                بوابتك الإلكترونية لخدمات العيادات الخارجية. قدّم طلب الحجز، وتابع حالته،
-                واطّلع على الخطوة التالية بكل سهولة.
+                {cmsSection("hero")?.body || "بوابتك الإلكترونية لخدمات العيادات الخارجية. قدّم طلب الحجز، وتابع حالته، واطّلع على الخطوة التالية بكل سهولة."}
               </p>
               <div className="welcome-actions">
                 <Link className="button button-primary" href="/booking">
@@ -155,9 +151,9 @@ export default function Home() {
           <div className="section-heading">
             <div>
               <span className="section-kicker">خدمات إلكترونية</span>
-              <h2 id="services-title">كيف يمكننا مساعدتك؟</h2>
+              <h2 id="services-title">{cmsSection("services")?.title || "كيف يمكننا مساعدتك؟"}</h2>
             </div>
-            <p>اختر الخدمة المناسبة للانتقال مباشرة إلى وجهتك.</p>
+            <p>{cmsSection("services")?.body || "اختر الخدمة المناسبة للانتقال مباشرة إلى وجهتك."}</p>
           </div>
 
           <div className="service-grid">
