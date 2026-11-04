@@ -43,6 +43,7 @@ export default function StaffDashboardPage() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<{
     id: string;
+    username?: string;
     name: string;
     role: string;
     clinicId?: string;
@@ -860,7 +861,7 @@ export default function StaffDashboardPage() {
 
   const isAdmin = currentUser?.role === 'ADMIN';
   const isDoctor = currentUser?.role === 'DOCTOR';
-  const isReceptionist = currentUser?.role === 'RECEPTIONIST';
+  const isReceptionist = currentUser?.role === 'RECEPTIONIST' || currentUser?.username === 'reception';
 
   return (
     <div className="min-h-screen bg-[#F6F9FB] flex flex-col text-right">
@@ -924,11 +925,11 @@ export default function StaffDashboardPage() {
             {(isReceptionist || isAdmin) && (
               <button
                 onClick={() => setShowWalkInModal(true)}
-                className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-2xs sm:text-xs font-bold shadow-xs transition-colors shrink-0"
+                className="inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-2xs sm:text-xs font-bold shadow-xs transition-colors shrink-0"
                 title="تسجيل مريض حضر للمستشفى مباشرة"
               >
                 <UserPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                <span>حجز حضوري</span>
+                <span>حجز حضوري سريع</span>
               </button>
             )}
 
@@ -1204,7 +1205,7 @@ export default function StaffDashboardPage() {
                       title="تسجيل مريض حضر للمستشفى مباشرة"
                     >
                       <UserPlus className="w-4 h-4" />
-                      <span>تسجيل حجز حضوري</span>
+                      <span>حجز حضوري سريع</span>
                     </button>
                   )}
                   <button

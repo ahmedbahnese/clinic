@@ -1636,6 +1636,7 @@ class AppointmentServiceStore {
           staffUser.clinicId &&
           staffUser.clinicId !== 'general' &&
           staffUser.clinicId !== 'all' &&
+          staffUser.username !== 'reception' &&
           apt.clinicId !== staffUser.clinicId
         ) {
           return { success: false, error: 'غير مصرح لموظف الاستقبال بتعديل مواعيد خاصة بعيادة أخرى' };
@@ -1758,7 +1759,14 @@ class AppointmentServiceStore {
     if (staffUser.role === 'DOCTOR' && staffUser.clinicId && staffUser.clinicId !== apt.clinicId) {
       return { success: false, error: 'غير مصرح للطبيب بنداء مرضى عيادة أخرى' };
     }
-    if (staffUser.role === 'RECEPTIONIST' && staffUser.clinicId && staffUser.clinicId !== apt.clinicId) {
+    if (
+      staffUser.role === 'RECEPTIONIST' &&
+      staffUser.clinicId &&
+      staffUser.clinicId !== 'general' &&
+      staffUser.clinicId !== 'all' &&
+      staffUser.username !== 'reception' &&
+      staffUser.clinicId !== apt.clinicId
+    ) {
       return { success: false, error: 'غير مصرح لموظف الاستقبال بنداء مرضى عيادة أخرى' };
     }
 
@@ -1838,7 +1846,13 @@ class AppointmentServiceStore {
         return { success: false, error: 'الطبيب مصرح له فقط بتحويل الحالات المسجلة بعيادته الخاصة' };
       }
     }
-    if (staffUser.role === 'RECEPTIONIST' && staffUser.clinicId) {
+    if (
+      staffUser.role === 'RECEPTIONIST' &&
+      staffUser.clinicId &&
+      staffUser.clinicId !== 'general' &&
+      staffUser.clinicId !== 'all' &&
+      staffUser.username !== 'reception'
+    ) {
       if (apt.clinicId !== staffUser.clinicId) {
         return { success: false, error: 'موظف الاستقبال غير مصرح له بتحويل حالات من عيادة أخرى' };
       }
@@ -2017,7 +2031,14 @@ class AppointmentServiceStore {
           if (caller.staffUser.role === 'DOCTOR' && caller.staffUser.clinicId && apt.clinicId !== caller.staffUser.clinicId) {
             return { success: false, error: 'غير مصرح للطبيب بإلغاء حجز تابع لعيادة أخرى' };
           }
-          if (caller.staffUser.role === 'RECEPTIONIST' && caller.staffUser.clinicId && apt.clinicId !== caller.staffUser.clinicId) {
+          if (
+            caller.staffUser.role === 'RECEPTIONIST' &&
+            caller.staffUser.clinicId &&
+            caller.staffUser.clinicId !== 'general' &&
+            caller.staffUser.clinicId !== 'all' &&
+            caller.staffUser.username !== 'reception' &&
+            apt.clinicId !== caller.staffUser.clinicId
+          ) {
             return { success: false, error: 'غير مصرح لموظف الاستقبال بإلغاء حجز تابع لعيادة أخرى' };
           }
         } else {
@@ -2066,7 +2087,14 @@ class AppointmentServiceStore {
       if (caller.staffUser.role === 'DOCTOR' && caller.staffUser.clinicId && apt.clinicId !== caller.staffUser.clinicId) {
         return { success: false, error: 'غير مصرح للطبيب بإلغاء حجز تابع لعيادة أخرى' };
       }
-      if (caller.staffUser.role === 'RECEPTIONIST' && caller.staffUser.clinicId && apt.clinicId !== caller.staffUser.clinicId) {
+      if (
+        caller.staffUser.role === 'RECEPTIONIST' &&
+        caller.staffUser.clinicId &&
+        caller.staffUser.clinicId !== 'general' &&
+        caller.staffUser.clinicId !== 'all' &&
+        caller.staffUser.username !== 'reception' &&
+        apt.clinicId !== caller.staffUser.clinicId
+      ) {
         return { success: false, error: 'غير مصرح لموظف الاستقبال بإلغاء حجز تابع لعيادة أخرى' };
       }
     } else {

@@ -41,6 +41,7 @@ export async function GET(req: NextRequest) {
       success: true,
       user: {
         id: staffUser.id,
+        username: staffUser.username,
         name: staffUser.name,
         role: staffUser.role,
         clinicId: staffUser.clinicId,
