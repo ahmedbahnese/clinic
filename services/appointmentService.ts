@@ -2,7 +2,7 @@ import type { Clinic, ClinicService, ClinicScheduleException, Appointment, Appoi
 import { normalizeAndValidateEgyptianPhone, validatePatientName, generateReferenceNumber, canTransitionStatus, formatLocalDate, getTodayCairoDateString, validateGuardianNationalId, maskPatientName } from '../lib/rules.ts';
 import { generateBookingCode, hashBookingCode } from '../lib/trackingAccess.ts';
 import { createClient } from '@supabase/supabase-js';
-import { createAdminClient, createUserClient, getSystemSupabaseClient, isSupabaseConfigured, isSupabaseAdminConfigured, isMockStoreAllowed } from '../lib/supabase/admin.ts';
+import { createAdminClient, createUserClient, getSystemSupabaseClient, getAuthenticatedServerClient, isSupabaseConfigured, isSupabaseAdminConfigured, isMockStoreAllowed } from '../lib/supabase/admin.ts';
 import type { Database } from '../types/database.types.ts';
 
 const isValidUuid = (id?: string | null): boolean =>
@@ -435,11 +435,7 @@ class AppointmentServiceStore {
 
     if (isSupabaseConfigured()) {
       try {
-        const supabase = userToken
-          ? createUserClient(userToken)
-          : (isSupabaseAdminConfigured()
-              ? createAdminClient()
-              : createClient(process.env.NEXT_PUBLIC_SUPABASE_URL || '', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''));
+        const { client: supabase } = await getAuthenticatedServerClient(userToken);
         const { error } = await (supabase as any).from('clinic_services').insert({
           id: newService.id,
           clinic_id: newService.clinicId,
@@ -480,11 +476,7 @@ class AppointmentServiceStore {
 
     if (isSupabaseConfigured()) {
       try {
-        const supabase = userToken
-          ? createUserClient(userToken)
-          : (isSupabaseAdminConfigured()
-              ? createAdminClient()
-              : createClient(process.env.NEXT_PUBLIC_SUPABASE_URL || '', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''));
+        const { client: supabase } = await getAuthenticatedServerClient(userToken);
         const { error } = await (supabase as any)
           .from('clinic_services')
           .update({
@@ -535,11 +527,7 @@ class AppointmentServiceStore {
     let hasAppointments = false;
     if (isSupabaseConfigured()) {
       try {
-        const supabase = userToken
-          ? createUserClient(userToken)
-          : (isSupabaseAdminConfigured()
-              ? createAdminClient()
-              : createClient(process.env.NEXT_PUBLIC_SUPABASE_URL || '', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''));
+        const { client: supabase } = await getAuthenticatedServerClient(userToken);
         const { count } = await (supabase as any)
           .from('appointments')
           .select('id', { count: 'exact', head: true })
@@ -564,11 +552,7 @@ class AppointmentServiceStore {
 
     if (isSupabaseConfigured()) {
       try {
-        const supabase = userToken
-          ? createUserClient(userToken)
-          : (isSupabaseAdminConfigured()
-              ? createAdminClient()
-              : createClient(process.env.NEXT_PUBLIC_SUPABASE_URL || '', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''));
+        const { client: supabase } = await getAuthenticatedServerClient(userToken);
         await (supabase as any).from('clinic_services').delete().eq('id', serviceId);
       } catch (err) {
         return { success: false, error: 'تعذر حذف الخدمة من قاعدة البيانات' };
@@ -582,7 +566,7 @@ class AppointmentServiceStore {
     const allServices = await this.getClinicServices();
     if (isSupabaseConfigured()) {
       try {
-        const supabase = createAdminClient();
+        const { client: supabase } = await getAuthenticatedServerClient();
         const { data, error } = await supabase
           .from('clinics')
           .select('*')
@@ -1571,7 +1555,7 @@ class AppointmentServiceStore {
 
     if (isSupabaseConfigured()) {
       try {
-        const client = userToken ? createUserClient(userToken) : createAdminClient();
+        const { client } = await getAuthenticatedServerClient(userToken);
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
         let query = (client as any).from('appointments').select('*');
         if (isUUID) {
@@ -1780,11 +1764,23 @@ class AppointmentServiceStore {
 
     if (isSupabaseConfigured()) {
       try {
-        const client = userToken ? createUserClient(userToken) : createAdminClient();
+        const isRealJwt = userToken && userToken.startsWith('eyJ') && userToken.split('.').length === 3;
+        let client: any = null;
+        let staffUserId: string | null = null;
+
+        if (isRealJwt) {
+          client = createUserClient(userToken);
+          staffUserId = isValidUuid(staffUser.id) ? staffUser.id : null;
+        } else {
+          const sys = await getSystemSupabaseClient();
+          client = sys.client;
+          staffUserId = sys.userId || (isValidUuid(staffUser.id) ? staffUser.id : null);
+        }
+
         const { data, error: rpcError } = await (client as any).rpc('update_appointment_status_atomic', {
           p_appointment_id: apt.id,
           p_target_status: 'CHECKED_IN',
-          p_staff_user_id: staffUser.id || null,
+          p_staff_user_id: staffUserId,
           p_note: recallNote,
           p_caller_phone: null,
         });
@@ -1891,11 +1887,23 @@ class AppointmentServiceStore {
     let targetDayCount = 0;
     if (isSupabaseConfigured()) {
       try {
-        const client = userToken ? createUserClient(userToken) : createAdminClient();
+        const isRealJwt = userToken && userToken.startsWith('eyJ') && userToken.split('.').length === 3;
+        let client: any = null;
+        let staffUserId: string | null = null;
+
+        if (isRealJwt) {
+          client = createUserClient(userToken);
+          staffUserId = isValidUuid(staffUser.id) ? staffUser.id : null;
+        } else {
+          const sys = await getSystemSupabaseClient();
+          client = sys.client;
+          staffUserId = sys.userId || (isValidUuid(staffUser.id) ? staffUser.id : null);
+        }
+
         const { data, error: rpcError } = await (client as any).rpc('transfer_appointment_clinic_atomic', {
           p_appointment_id: apt.id,
           p_target_clinic_id: targetClinicId,
-          p_staff_user_id: staffUser.id || null,
+          p_staff_user_id: staffUserId,
           p_reason: reason || null,
         });
 
@@ -1992,7 +2000,18 @@ class AppointmentServiceStore {
 
     if (isSupabaseConfigured()) {
       try {
-        const client = caller?.userToken ? createUserClient(caller.userToken) : createAdminClient();
+        const isRealJwt = caller?.userToken && caller.userToken.startsWith('eyJ') && caller.userToken.split('.').length === 3;
+        let client: any = null;
+        let staffUserId: string | null = null;
+
+        if (isRealJwt) {
+          client = createUserClient(caller!.userToken!);
+          staffUserId = caller?.staffUser && isValidUuid(caller.staffUser.id) ? caller.staffUser.id : null;
+        } else {
+          const sys = await getSystemSupabaseClient();
+          client = sys.client;
+          staffUserId = sys.userId || (caller?.staffUser && isValidUuid(caller.staffUser.id) ? caller.staffUser.id : null);
+        }
         if (!apt) {
           const { data: dbApt } = await (client as any)
             .from('appointments')
@@ -2050,7 +2069,7 @@ class AppointmentServiceStore {
         const { data, error: rpcError } = await (client as any).rpc('update_appointment_status_atomic', {
           p_appointment_id: apt.id,
           p_target_status: 'CANCELLED',
-          p_staff_user_id: caller.staffUser.id || null,
+          p_staff_user_id: staffUserId,
           p_note: cancelNote,
           p_caller_phone: null,
         });
@@ -2261,7 +2280,7 @@ class AppointmentServiceStore {
 
     if (isSupabaseConfigured()) {
       try {
-        const supabase = createAdminClient();
+        const { client: supabase } = await getAuthenticatedServerClient();
         let query = (supabase as any)
           .from('cancellation_requests')
           .select(`
@@ -2542,14 +2561,7 @@ class AppointmentServiceStore {
 
     if (isSupabaseConfigured()) {
       try {
-        let supabase: any = createAdminClient();
-        if (userToken) {
-          try {
-            supabase = createUserClient(userToken);
-          } catch {
-            supabase = createAdminClient();
-          }
-        }
+        const { client: supabase } = await getAuthenticatedServerClient(userToken);
 
         let query = supabase
           .from('appointments')
@@ -2572,24 +2584,24 @@ class AppointmentServiceStore {
         }
 
         let { data, error } = await query;
-        if (error && userToken) {
-          // If user client hit permission issue, fallback to admin client
-          const adminSupabase = createAdminClient();
-          let adminQuery = adminSupabase
+        if (error) {
+          // If user client hit permission issue, fallback to system client
+          const { client: systemClient } = await getSystemSupabaseClient();
+          let fallbackQuery = systemClient
             .from('appointments')
             .select('id, reference_number, clinic_id, clinic_name, patient_name, phone_number, patient_age, patient_address, appointment_date, appointment_time, status, queue_number, last_called_at, called_count, notes, created_at, updated_at')
             .order('appointment_date', { ascending: true })
             .order('queue_number', { ascending: true });
-          if (effectiveClinicId && effectiveClinicId !== 'ALL') adminQuery = adminQuery.eq('clinic_id', effectiveClinicId);
-          if (filters?.status && filters.status !== 'ALL') adminQuery = adminQuery.eq('status', filters.status as any);
-          if (filters?.date && filters.date !== 'ALL') adminQuery = adminQuery.eq('appointment_date', filters.date);
+          if (effectiveClinicId && effectiveClinicId !== 'ALL') fallbackQuery = fallbackQuery.eq('clinic_id', effectiveClinicId);
+          if (filters?.status && filters.status !== 'ALL') fallbackQuery = fallbackQuery.eq('status', filters.status as any);
+          if (filters?.date && filters.date !== 'ALL') fallbackQuery = fallbackQuery.eq('appointment_date', filters.date);
           if (filters?.search) {
             const q = filters.search.trim();
-            adminQuery = adminQuery.or(`patient_name.ilike.%${q}%,phone_number.ilike.%${q}%,reference_number.ilike.%${q}%`);
+            fallbackQuery = fallbackQuery.or(`patient_name.ilike.%${q}%,phone_number.ilike.%${q}%,reference_number.ilike.%${q}%`);
           }
-          const adminRes = await adminQuery;
-          if (!adminRes.error) {
-            data = adminRes.data;
+          const fallbackRes = await fallbackQuery;
+          if (!fallbackRes.error) {
+            data = fallbackRes.data;
             error = null;
           }
         }

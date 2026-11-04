@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -468,6 +469,30 @@ function NewAppointmentForm() {
               ref={ticketRef}
               className="mt-8 max-w-xl mx-auto bg-gradient-to-b from-[#F6F9FB] to-white border-2 border-dashed border-[#79C7C1] rounded-[24px] p-6 relative overflow-hidden shadow-2xs"
             >
+              {/* Hospital Official Branding Header with Logo */}
+              <div className="flex items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-200">
+                <div className="flex items-center gap-3">
+                  <Image
+                    src="/logo-main.png"
+                    alt="شعار مستشفى الأطفال التخصصي بالبحيرة"
+                    width={56}
+                    height={56}
+                    className="w-12 h-12 sm:w-14 sm:h-14 object-contain"
+                  />
+                  <div>
+                    <h3 className="text-xs sm:text-sm font-extrabold text-[#124E4A] leading-tight">
+                      مستشفى الأطفال التخصصي بالبحيرة
+                    </h3>
+                    <p className="text-[10px] sm:text-xs text-slate-500 font-semibold">
+                      إيصال حجز رسمي — العيادات الخارجية
+                    </p>
+                  </div>
+                </div>
+                <div className="text-left text-3xs sm:text-2xs text-slate-400 font-mono">
+                  {new Date().toLocaleDateString('ar-EG')}
+                </div>
+              </div>
+
               {/* Reference Header */}
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-5 border-b border-slate-200">
                 <div>
@@ -633,8 +658,15 @@ function NewAppointmentForm() {
           <div className="bg-white rounded-3xl sm:rounded-[32px] border border-slate-200/80 p-6 sm:p-10 shadow-sm text-right">
             {/* Header of Form */}
             <div className="text-center mb-8 sm:mb-10 space-y-2">
-              <div className="w-14 h-14 rounded-2xl bg-teal-50 border border-teal-100 flex items-center justify-center text-[#087F78] mx-auto shadow-2xs">
-                <CalendarPlus className="w-7 h-7 stroke-[2]" />
+              <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-2 flex items-center justify-center">
+                <Image
+                  src="/logo-main.png"
+                  alt="شعار مستشفى الأطفال التخصصي بالبحيرة"
+                  width={80}
+                  height={80}
+                  priority
+                  className="w-full h-full object-contain drop-shadow-xs"
+                />
               </div>
               <h1 className="text-2xl sm:text-3xl font-black text-[#124E4A] tracking-tight">
                 حجز موعد جديد بالعيادات الخارجية

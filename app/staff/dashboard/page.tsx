@@ -208,12 +208,16 @@ export default function StaffDashboardPage() {
         }
 
         const data = await res.json();
-        if (active && data.success) {
-          setAppointments(data.appointments || []);
-          setCurrentUser(data.user);
-          // Auto filter doctor to their clinic if not set
-          if (data.user?.role === 'DOCTOR' && data.user?.clinicId && selectedClinic === 'ALL') {
-            setSelectedClinic(data.user.clinicId);
+        if (active) {
+          if (data.user) {
+            setCurrentUser(data.user);
+            // Auto filter doctor to their clinic if not set
+            if (data.user?.role === 'DOCTOR' && data.user?.clinicId && selectedClinic === 'ALL') {
+              setSelectedClinic(data.user.clinicId);
+            }
+          }
+          if (data.success && data.appointments) {
+            setAppointments(data.appointments);
           }
         }
       } catch (err) {
@@ -934,8 +938,8 @@ export default function StaffDashboardPage() {
             )}
 
             {currentUser && (
-              <div className="hidden lg:flex flex-col text-left text-xs bg-slate-50 px-3 py-1 rounded-xl border border-slate-200">
-                <span className="font-bold text-[#163C3A]">{currentUser.name}</span>
+              <div className="flex flex-col text-left text-2xs sm:text-xs bg-slate-50 px-2 sm:px-3 py-1 rounded-xl border border-slate-200 shrink-0">
+                <span className="font-bold text-[#163C3A] max-w-[120px] sm:max-w-[200px] truncate">{currentUser.name}</span>
                 <span className="text-[#087F78] text-3xs font-semibold">
                   {currentUser.role === 'ADMIN'
                     ? '🛡️ مدير النظام'
@@ -2414,9 +2418,18 @@ export default function StaffDashboardPage() {
               className="bg-white rounded-2xl border-2 border-teal-600/30 p-5 space-y-4 text-xs"
             >
               <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-                <div>
-                  <h4 className="text-base font-black text-[#124E4A]">مستشفى الأطفال التخصصي بالبحيرة</h4>
-                  <p className="text-[11px] text-slate-500">إيصال حجز كشف حضوري معتمد</p>
+                <div className="flex items-center gap-2.5">
+                  <Image
+                    src="/logo-main.png"
+                    alt="شعار مستشفى الأطفال التخصصي بالبحيرة"
+                    width={44}
+                    height={44}
+                    className="w-10 h-10 object-contain"
+                  />
+                  <div>
+                    <h4 className="text-base font-black text-[#124E4A]">مستشفى الأطفال التخصصي بالبحيرة</h4>
+                    <p className="text-[11px] text-slate-500">إيصال حجز كشف حضوري معتمد</p>
+                  </div>
                 </div>
                 <div className="text-left font-mono">
                   <span className="text-[10px] text-slate-400 block font-semibold">رقم التذكرة</span>

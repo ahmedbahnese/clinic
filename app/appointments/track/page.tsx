@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, Suspense } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
 import { toPng } from 'html-to-image';
 import {
@@ -294,8 +295,15 @@ function TrackContent() {
 
       {/* Header */}
       <div className="text-center mb-6 space-y-2 no-print">
-        <div className="w-14 h-14 rounded-2xl bg-teal-50 border border-teal-100 text-[#087F78] flex items-center justify-center mx-auto shadow-2xs">
-          <Search className="w-7 h-7 stroke-[2]" />
+        <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-2 flex items-center justify-center">
+          <Image
+            src="/logo-main.png"
+            alt="شعار مستشفى الأطفال التخصصي بالبحيرة"
+            width={80}
+            height={80}
+            priority
+            className="w-full h-full object-contain drop-shadow-xs"
+          />
         </div>
         <h1 className="text-2xl sm:text-3xl font-black text-[#124E4A] tracking-tight">
           متابعة الحجز واستعراض التذاكر
@@ -503,13 +511,22 @@ function TrackContent() {
                     className="bg-white rounded-3xl border-2 border-slate-200 p-6 sm:p-8 space-y-6 shadow-sm"
                   >
                     <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                      <div>
-                        <h4 className="text-base sm:text-lg font-black text-[#124E4A]">
-                          مستشفى الأطفال التخصصي بالبحيرة
-                        </h4>
-                        <p className="text-2xs text-slate-400">
-                          بوابة العيادات الخارجية التخصصية — تذكرة مراجعة الحجز
-                        </p>
+                      <div className="flex items-center gap-3">
+                        <Image
+                          src="/logo-main.png"
+                          alt="شعار مستشفى الأطفال التخصصي بالبحيرة"
+                          width={48}
+                          height={48}
+                          className="w-10 h-10 sm:w-12 sm:h-12 object-contain"
+                        />
+                        <div>
+                          <h4 className="text-base sm:text-lg font-black text-[#124E4A]">
+                            مستشفى الأطفال التخصصي بالبحيرة
+                          </h4>
+                          <p className="text-2xs text-slate-400">
+                            بوابة العيادات الخارجية التخصصية — تذكرة مراجعة الحجز
+                          </p>
+                        </div>
                       </div>
                       <div className="text-left font-mono">
                         <span className="text-[10px] text-slate-400 block font-semibold">كود التذكرة</span>

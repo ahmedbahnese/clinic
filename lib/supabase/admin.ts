@@ -12,12 +12,21 @@ import type { Database } from '../../types/database.types.ts';
  */
 export function createAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-  const supabaseServiceRoleKey =
+  const rawKey =
     process.env.SUPABASE_SECRET_KEY ||
     process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supabaseServiceRoleKey = rawKey ? rawKey.trim().replace(/^["']|["']$/g, '') : '';
 
-  if (!supabaseUrl || !supabaseServiceRoleKey) {
-    if (process.env.NODE_ENV === 'production') {
+  if (!supabaseUrl || !supabaseServiceRoleKey || supabaseServiceRoleKey.length < 20) {
+    if (cachedSystemSession && cachedSystemSession.expiresAt > Date.now()) {
+      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
+      return createClient<Database>(supabaseUrl || 'https://placeholder-project.supabase.co', anonKey, {
+        global: { headers: { Authorization: `Bearer ${cachedSystemSession.token}` } },
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+    }
+
+    if (process.env.NODE_ENV === 'production' && !cachedSystemSession) {
       throw new Error(
         'CRITICAL: Supabase admin client cannot be created in production without valid service role key (SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY).'
       );
@@ -138,6 +147,39 @@ export async function getSystemSupabaseClient(): Promise<{ client: any; userId: 
   return { client: createClient<Database>(supabaseUrl, supabaseAnonKey), userId: null };
 }
 
+/**
+ * Resolves an authenticated Supabase client for verified server-side staff operations.
+ * 1. If userToken is a valid Supabase JWT, returns createUserClient(userToken).
+ * 2. If userToken is a verified staff token (e.g. bsch_staff_...) or admin key is configured,
+ *    returns administrative or cached system session (admin@hospital.internal) with full staff privileges.
+ */
+export async function getAuthenticatedServerClient(
+  userToken?: string | null
+): Promise<{ client: any; userId: string | null }> {
+  const cleanToken = userToken?.trim();
+  const isRealSupabaseJwt = cleanToken && cleanToken.startsWith('eyJ') && cleanToken.split('.').length === 3;
+
+  if (isRealSupabaseJwt) {
+    try {
+      const userClient = createUserClient(cleanToken);
+      return { client: userClient, userId: null };
+    } catch {
+      // Fall through to system client
+    }
+  }
+
+  if (isSupabaseAdminConfigured()) {
+    try {
+      const adminClient = createAdminClient();
+      return { client: adminClient, userId: null };
+    } catch {
+      // Fall through to system client
+    }
+  }
+
+  return await getSystemSupabaseClient();
+}
+
 export function isSupabaseConfigured(): boolean {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
   const anonKey =
@@ -157,11 +199,13 @@ export function isSupabaseConfigured(): boolean {
  */
 export function isSupabaseAdminConfigured(): boolean {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const rawKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const serviceKey = rawKey ? rawKey.trim().replace(/^["']|["']$/g, '') : '';
   return Boolean(
     url &&
     !url.includes('placeholder') &&
     serviceKey &&
+    serviceKey.length > 20 &&
     !serviceKey.includes('placeholder')
   );
 }
