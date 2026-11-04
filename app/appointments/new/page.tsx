@@ -483,11 +483,9 @@ function NewAppointmentForm() {
                     <Clock className="w-3.5 h-3.5" />
                     <span>قيد المراجعة</span>
                   </span>
-                  {confirmedAppointment.queueNumber && (
-                    <span className="block text-[11px] text-slate-500 mt-1 font-mono">
-                      رقم الدور المبدئي: #{confirmedAppointment.queueNumber}
-                    </span>
-                  )}
+                  <span className="block text-[11px] text-slate-500 mt-1">
+                    حالة الإيصال: <strong className="text-amber-800 font-bold">في انتظار التأكيد</strong>
+                  </span>
                 </div>
               </div>
 

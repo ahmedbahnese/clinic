@@ -34,7 +34,9 @@ export async function GET(req: NextRequest) {
           { status: 403 }
         );
       }
-      clinicId = staffUser.clinicId;
+      if (staffUser.clinicId !== 'general' && staffUser.clinicId !== 'all') {
+        clinicId = staffUser.clinicId;
+      }
     }
 
     const requests = await appointmentStore.getCancellationRequests(

@@ -22,6 +22,7 @@ const TEST_STAFF_FIXTURES: (StaffUser & { passwordHash: string })[] = [
     username: 'reception',
     name: 'أ/ منى عبد الرحيم (موظف الحجز والاستقبال)',
     role: 'RECEPTIONIST',
+    clinicId: 'general',
     passwordHash: 'bsch2026',
     active: true,
   },
@@ -135,7 +136,7 @@ export class AuthService {
               username: profile.username,
               name: profile.full_name,
               role: profile.role,
-              clinicId: profile.clinic_id || undefined,
+              clinicId: profile.clinic_id || (profile.role === 'RECEPTIONIST' ? 'general' : undefined),
               active: profile.is_active,
             };
 

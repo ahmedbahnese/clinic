@@ -568,12 +568,26 @@ function TrackContent() {
                         </p>
                       </div>
 
-                      {selectedAppointment.queueNumber && (
-                        <div>
-                          <span className="text-slate-400 block text-2xs mb-0.5">رقم الدور في اليوم</span>
-                          <strong className="text-sm font-black text-[#087F78]">{selectedAppointment.queueNumber}</strong>
-                        </div>
-                      )}
+                      <div>
+                        <span className="text-slate-400 block text-2xs mb-0.5">حالة الإيصال</span>
+                        {selectedAppointment.status === 'CONFIRMED' || selectedAppointment.status === 'CHECKED_IN' ? (
+                          <strong className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            مؤكد
+                          </strong>
+                        ) : selectedAppointment.status === 'CANCELLED' ? (
+                          <strong className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-red-100 text-red-800 border border-red-300">
+                            ملغي
+                          </strong>
+                        ) : selectedAppointment.status === 'COMPLETED' ? (
+                          <strong className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-blue-100 text-blue-800 border border-blue-300">
+                            مكتمل (تم الكشف)
+                          </strong>
+                        ) : (
+                          <strong className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-100 text-amber-800 border border-amber-300">
+                            في انتظار التأكيد
+                          </strong>
+                        )}
+                      </div>
                     </div>
 
                     {/* Instructions & Required Documents */}

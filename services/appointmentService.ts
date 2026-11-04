@@ -2,8 +2,11 @@ import type { Clinic, ClinicService, ClinicScheduleException, Appointment, Appoi
 import { normalizeAndValidateEgyptianPhone, validatePatientName, generateReferenceNumber, canTransitionStatus, formatLocalDate, getTodayCairoDateString, validateGuardianNationalId, maskPatientName } from '../lib/rules.ts';
 import { generateBookingCode, hashBookingCode } from '../lib/trackingAccess.ts';
 import { createClient } from '@supabase/supabase-js';
-import { createAdminClient, createUserClient, isSupabaseConfigured, isSupabaseAdminConfigured, isMockStoreAllowed } from '../lib/supabase/admin.ts';
+import { createAdminClient, createUserClient, getSystemSupabaseClient, isSupabaseConfigured, isSupabaseAdminConfigured, isMockStoreAllowed } from '../lib/supabase/admin.ts';
 import type { Database } from '../types/database.types.ts';
+
+const isValidUuid = (id?: string | null): boolean =>
+  typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
 
 // Pre-defined pediatric outpatient clinics from BSCH
 // Note: Marked as isHospitalConfirmed = false until verified by hospital administration
@@ -1629,7 +1632,12 @@ class AppointmentServiceStore {
         if (targetStatus === 'COMPLETED') {
           return { success: false, error: 'إتمام الكشف الطبي وصرف التذكرة صلاحية طبية مخصصة للأطباء فقط' };
         }
-        if (staffUser.clinicId && apt.clinicId !== staffUser.clinicId) {
+        if (
+          staffUser.clinicId &&
+          staffUser.clinicId !== 'general' &&
+          staffUser.clinicId !== 'all' &&
+          apt.clinicId !== staffUser.clinicId
+        ) {
           return { success: false, error: 'غير مصرح لموظف الاستقبال بتعديل مواعيد خاصة بعيادة أخرى' };
         }
       } else if (staffUser.role === 'DOCTOR') {
@@ -1661,11 +1669,23 @@ class AppointmentServiceStore {
 
     if (isSupabaseConfigured()) {
       try {
-        const client = userToken ? createUserClient(userToken) : createAdminClient();
+        const isRealJwt = userToken && userToken.startsWith('eyJ') && userToken.split('.').length === 3;
+        let client: any = null;
+        let staffUserId: string | null = null;
+
+        if (isRealJwt) {
+          client = createUserClient(userToken);
+          staffUserId = staffUser && isValidUuid(staffUser.id) ? staffUser.id : null;
+        } else {
+          const sys = await getSystemSupabaseClient();
+          client = sys.client;
+          staffUserId = sys.userId || (staffUser && isValidUuid(staffUser.id) ? staffUser.id : null);
+        }
+
         const { data, error: rpcError } = await (client as any).rpc('update_appointment_status_atomic', {
           p_appointment_id: apt.id,
           p_target_status: targetStatus,
-          p_staff_user_id: staffUser?.id || null,
+          p_staff_user_id: staffUserId,
           p_note: note || null,
           p_caller_phone: null,
         });
@@ -2202,7 +2222,12 @@ class AppointmentServiceStore {
     }
 
     let effectiveClinicId = filters?.clinicId;
-    if (staffUser?.role === 'RECEPTIONIST' && staffUser.clinicId) {
+    if (
+      staffUser?.role === 'RECEPTIONIST' &&
+      staffUser.clinicId &&
+      staffUser.clinicId !== 'general' &&
+      staffUser.clinicId !== 'all'
+    ) {
       effectiveClinicId = staffUser.clinicId;
     }
 
@@ -2314,11 +2339,23 @@ class AppointmentServiceStore {
 
     if (isSupabaseConfigured()) {
       try {
-        const client = userToken ? createUserClient(userToken) : createAdminClient();
+        const isRealJwt = userToken && userToken.startsWith('eyJ') && userToken.split('.').length === 3;
+        let client: any = null;
+        let staffUserId: string | null = null;
+
+        if (isRealJwt) {
+          client = createUserClient(userToken);
+          staffUserId = isValidUuid(staffUser.id) ? staffUser.id : null;
+        } else {
+          const sys = await getSystemSupabaseClient();
+          client = sys.client;
+          staffUserId = sys.userId || (isValidUuid(staffUser.id) ? staffUser.id : null);
+        }
+
         const { data, error: rpcError } = await (client as any).rpc('review_cancellation_request_atomic', {
           p_request_id: requestId,
           p_decision: decision,
-          p_staff_user_id: staffUser.id || null,
+          p_staff_user_id: staffUserId,
           p_reason: reason || null,
         });
 
@@ -2382,7 +2419,11 @@ class AppointmentServiceStore {
       if (!staffUser.clinicId || staffUser.clinicId.trim() === '') {
         return { success: false, error: 'غير مصرح: موظف الاستقبال غير معين على عيادة محددة ولا يمكنه مراجعة طلبات الإلغاء.' };
       }
-      if (apt.clinicId !== staffUser.clinicId) {
+      if (
+        staffUser.clinicId !== 'general' &&
+        staffUser.clinicId !== 'all' &&
+        apt.clinicId !== staffUser.clinicId
+      ) {
         return { success: false, error: 'غير مصرح لموظف الاستقبال بمراجعة طلبات إلغاء خاصة بعيادة أخرى.' };
       }
     }

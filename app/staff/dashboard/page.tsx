@@ -32,6 +32,7 @@ import {
   Trash2,
   CalendarX,
   CalendarDays,
+  XCircle,
 } from 'lucide-react';
 import CmsDashboard from '@/components/cms/CmsDashboard';
 import { Appointment, Clinic, ClinicService, ClinicScheduleException, AppointmentStatus, AuditLogItem, CancellationRequest } from '@/types';
@@ -1194,6 +1195,16 @@ export default function StaffDashboardPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                  {(isReceptionist || isAdmin) && (
+                    <button
+                      onClick={() => setShowWalkInModal(true)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-xs transition-colors"
+                      title="تسجيل مريض حضر للمستشفى مباشرة"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      <span>تسجيل حجز حضوري</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => setRefreshKey((k) => k + 1)}
                     className="p-2 rounded-xl border border-[#E2E8EE] hover:bg-slate-50 text-[#8493A6] hover:text-[#087F78] transition-colors"
@@ -1346,23 +1357,47 @@ export default function StaffDashboardPage() {
                                       <span>تأكيد الحجز</span>
                                     </button>
                                     <button
-                                      onClick={() => handleStatusChange(apt.id, 'CANCELLED', 'إلغاء الحجز لعدم استيفاء الشروط')}
-                                      className="px-2 py-1 rounded-lg text-2xs text-red-600 hover:bg-red-50"
+                                      onClick={() => {
+                                        const reason = window.prompt('يرجى إدخال سبب إلغاء الحجز (اختياري):', 'اعتذار من ولي الأمر');
+                                        if (reason !== null) {
+                                          handleStatusChange(apt.id, 'CANCELLED', reason || 'إلغاء الحجز لعدم استيفاء الشروط');
+                                        }
+                                      }}
+                                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-2xs text-red-600 hover:bg-red-50 border border-red-200"
+                                      title="إلغاء طلب الحجز"
                                     >
-                                      إلغاء
+                                      <XCircle className="w-3 h-3 text-red-500" />
+                                      <span>إلغاء</span>
                                     </button>
                                   </>
                                 )}
 
                                 {/* Action: Call Patient */}
                                 {apt.status === 'CONFIRMED' && (
-                                  <button
-                                    onClick={() => handleStatusChange(apt.id, 'CHECKED_IN', 'حضر المريض وتم تسجيل الدور ونداؤه')}
-                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#2563EB] hover:bg-blue-700 text-white text-2xs font-bold shadow-2xs"
-                                  >
-                                    <UserCheck className="w-3 h-3" />
-                                    <span>حضور ونداء المريض</span>
-                                  </button>
+                                  <>
+                                    <button
+                                      onClick={() => handleStatusChange(apt.id, 'CHECKED_IN', 'حضر المريض وتم تسجيل الدور ونداؤه')}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#2563EB] hover:bg-blue-700 text-white text-2xs font-bold shadow-2xs"
+                                    >
+                                      <UserCheck className="w-3 h-3" />
+                                      <span>حضور ونداء المريض</span>
+                                    </button>
+                                    {(isReceptionist || isAdmin) && (
+                                      <button
+                                        onClick={() => {
+                                          const reason = window.prompt('يرجى إدخال سبب إلغاء الحجز (اختياري):', 'اعتذار من ولي الأمر');
+                                          if (reason !== null) {
+                                            handleStatusChange(apt.id, 'CANCELLED', reason || 'إلغاء الحجز بواسطة موظف الاستقبال');
+                                          }
+                                        }}
+                                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-2xs text-red-600 hover:bg-red-50 border border-red-200"
+                                        title="إلغاء هذا الحجز المؤكد"
+                                      >
+                                        <XCircle className="w-3 h-3 text-red-500" />
+                                        <span>إلغاء الحجز</span>
+                                      </button>
+                                    )}
+                                  </>
                                 )}
 
                                 {/* Action: Recall Patient (Re-triggers call on TV and audio chime) */}
@@ -1377,13 +1412,31 @@ export default function StaffDashboardPage() {
                                       <span>إعادة النداء 🔊</span>
                                     </button>
 
-                                    <button
-                                      onClick={() => handleStatusChange(apt.id, 'COMPLETED', 'تم الكشف وصرف العلاج بنجاح')}
-                                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#15803D] hover:bg-emerald-800 text-white text-2xs font-bold shadow-2xs"
-                                    >
-                                      <CheckCircle2 className="w-3 h-3" />
-                                      <span>إتمام الكشف</span>
-                                    </button>
+                                    {(isDoctor || isAdmin) && (
+                                      <button
+                                        onClick={() => handleStatusChange(apt.id, 'COMPLETED', 'تم الكشف وصرف العلاج بنجاح')}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#15803D] hover:bg-emerald-800 text-white text-2xs font-bold shadow-2xs"
+                                      >
+                                        <CheckCircle2 className="w-3 h-3" />
+                                        <span>إتمام الكشف</span>
+                                      </button>
+                                    )}
+
+                                    {(isReceptionist || isAdmin) && (
+                                      <button
+                                        onClick={() => {
+                                          const reason = window.prompt('يرجى إدخال سبب إلغاء الحجز (اختياري):', 'انصراف المريض قبل استكمال الكشف');
+                                          if (reason !== null) {
+                                            handleStatusChange(apt.id, 'CANCELLED', reason || 'إلغاء بواسطة موظف الاستقبال');
+                                          }
+                                        }}
+                                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-2xs text-red-600 hover:bg-red-50 border border-red-200"
+                                        title="إلغاء الحجز"
+                                      >
+                                        <XCircle className="w-3 h-3 text-red-500" />
+                                        <span>إلغاء</span>
+                                      </button>
+                                    )}
                                   </>
                                 )}
 
@@ -2064,12 +2117,12 @@ export default function StaffDashboardPage() {
                     {formatArabicDate(walkInSuccessReceipt.appointmentDate)} — الحضور صباحاً بأسبقية الحضور
                   </strong>
                 </div>
-                {walkInSuccessReceipt.queueNumber && (
-                  <div>
-                    <span className="text-slate-400 block text-[10.5px]">رقم الدور في اليوم</span>
-                    <strong className="text-base font-black text-[#087F78]">#{walkInSuccessReceipt.queueNumber}</strong>
-                  </div>
-                )}
+                <div>
+                  <span className="text-slate-400 block text-[10.5px]">حالة الإيصال</span>
+                  <strong className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                    مؤكد
+                  </strong>
+                </div>
                 {walkInSuccessReceipt.patientAge && (
                   <div>
                     <span className="text-slate-400 block text-[10.5px]">السن</span>

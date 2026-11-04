@@ -26,8 +26,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Strict Clinic Authorization: Receptionist assigned to a clinic cannot book in other clinics
-    if (staffUser.role === 'RECEPTIONIST' && staffUser.clinicId && staffUser.clinicId !== clinicId) {
+    // Strict Clinic Authorization: Receptionist assigned to a specific clinic cannot book in other clinics
+    if (
+      staffUser.role === 'RECEPTIONIST' &&
+      staffUser.clinicId &&
+      staffUser.clinicId !== 'general' &&
+      staffUser.clinicId !== 'all' &&
+      staffUser.clinicId !== clinicId
+    ) {
       return NextResponse.json(
         { error: 'موظف الاستقبال غير مخول بالحجز لعيادة أخرى غير العيادة المخصصة له.' },
         { status: 403 }
@@ -47,7 +53,7 @@ export async function POST(req: NextRequest) {
       appointmentDate: targetDate,
       appointmentTime: appointmentTime || '09:00',
       isWalkIn: true,
-      staffUserId: staffUser.id,
+      staffUserId: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(staffUser.id) ? staffUser.id : undefined,
     });
 
     if (!result.success || !result.appointment) {
