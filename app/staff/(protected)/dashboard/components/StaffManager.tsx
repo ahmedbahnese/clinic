@@ -7,13 +7,14 @@ import {
   Users,
   UserPlus,
   Pencil,
+  Trash2,
   RefreshCw,
   AlertCircle,
   CheckCircle2,
   X,
   ShieldCheck,
 } from 'lucide-react';
-import { createOrUpdateStaff } from '@/app/staff/actions/staffManagement';
+import { createOrUpdateStaff, deleteStaff } from '@/app/staff/actions/staffManagement';
 import {
   staffFormSchema,
   StaffFormValues,
@@ -47,6 +48,7 @@ export default function StaffManager() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<StaffMemberRecord | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
 
   const {
@@ -166,6 +168,33 @@ export default function StaffManager() {
     }
   }
 
+  async function handleDelete(member: StaffMemberRecord) {
+    if (deletingId) return;
+    const confirmed = window.confirm(
+      `هل أنت متأكد من حذف الموظف "${member.full_name}"؟ لا يمكن التراجع عن هذا الإجراء.`
+    );
+    if (!confirmed) return;
+
+    setDeletingId(member.id);
+    try {
+      const result = await deleteStaff(member.id);
+      if (!result.success) {
+        setToast({ kind: 'error', text: result.error || 'تعذر حذف الموظف.' });
+        return;
+      }
+      setToast({ kind: 'success', text: result.message || 'تم حذف الموظف بنجاح.' });
+      await loadStaff();
+    } catch (err) {
+      console.error('Staff delete action error:', err);
+      setToast({
+        kind: 'error',
+        text: err instanceof Error ? err.message : 'انتهت الجلسة أو لا تملك الصلاحية، يرجى إعادة تسجيل الدخول.',
+      });
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   function clinicName(clinicId: string | null): string {
     if (!clinicId) return '—';
     return clinics.find((c) => c.id === clinicId)?.name || clinicId;
@@ -252,13 +281,33 @@ export default function StaffManager() {
                   </td>
                   <td className="px-3 py-2.5 text-[#8493A6]">{clinicName(member.clinic_id)}</td>
                   <td className="px-3 py-2.5 text-left">
-                    <button
-                      onClick={() => openEdit(member)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#087F78]/40 text-[#087F78] hover:bg-emerald-50 text-2xs font-bold transition-colors"
-                    >
-                      <Pencil className="w-3 h-3" />
-                      <span>تعديل</span>
-                    </button>
+                    <div className="flex items-center justify-start gap-1.5">
+                      <button
+                        onClick={() => openEdit(member)}
+                        disabled={deletingId === member.id}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#087F78]/40 text-[#087F78] hover:bg-emerald-50 text-2xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <Pencil className="w-3 h-3" />
+                        <span>تعديل</span>
+                      </button>
+                      <button
+                        onClick={() => handleDelete(member)}
+                        disabled={deletingId === member.id}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 text-2xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {deletingId === member.id ? (
+                          <>
+                            <RefreshCw className="w-3 h-3 animate-spin" />
+                            <span>جاري الحذف...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 className="w-3 h-3" />
+                            <span>حذف</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

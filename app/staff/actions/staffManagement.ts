@@ -201,3 +201,85 @@ export async function createOrUpdateStaff(
 
   return { success: true, message: 'تم تحديث بيانات الموظف بنجاح.' };
 }
+
+/**
+ * BSCH Clinics — Secure Staff Deletion Server Action (ADMIN only)
+ *
+ * Security chain:
+ * 1. Session token is read from the httpOnly STAFF_SESSION_COOKIE.
+ * 2. AuthService.verifySession re-reads the role from staff_profiles.
+ * 3. Strict assertion: role === 'ADMIN', otherwise the call throws.
+ * 4. Anti-lockout: the admin can NEVER delete their own account.
+ * 5. Deletion requires the genuine service_role key (fail with a clear
+ *    Arabic message otherwise) and removes the profile row first, then the
+ *    auth user — doubly safe even before the ON DELETE CASCADE.
+ */
+export async function deleteStaff(
+  targetUserId: string
+): Promise<StaffActionResult> {
+  // 1. Session from the server-issued httpOnly cookie
+  const cookieStore = await cookies();
+  const token = cookieStore.get(STAFF_SESSION_COOKIE)?.value;
+  const staffUser = token ? await AuthService.verifySession(token) : null;
+  if (!staffUser) {
+    throw new Error('غير مصرح: انتهت الجلسة، يرجى تسجيل الدخول مرة أخرى.');
+  }
+
+  // 2. Strict ADMIN-only assertion
+  if (staffUser.role !== 'ADMIN') {
+    throw new Error('غير مصرح: إدارة الموظفين متاحة لمدير النظام فقط.');
+  }
+
+  // 3. Anti-lockout: the admin cannot delete their own account
+  if (targetUserId === staffUser.id) {
+    return {
+      success: false,
+      error: 'لا يمكن حذف حسابك الحالي (مدير النظام).',
+    };
+  }
+
+  if (!targetUserId || typeof targetUserId !== 'string') {
+    return { success: false, error: 'معرف الموظف المطلوب حذفه غير صالح.' };
+  }
+
+  // 4. Database availability (fail closed)
+  if (!isSupabaseConfigured()) {
+    throw new Error('قاعدة البيانات غير مهيأة حالياً، يرجى المحاولة لاحقاً.');
+  }
+
+  // 5. Deletion requires the genuine service_role key
+  if (!isSupabaseAdminConfigured()) {
+    return {
+      success: false,
+      error:
+        'حذف حساب يتطلب مفتاح خدمة service_role صحيح في متغيرات البيئة (SUPABASE_SERVICE_ROLE_KEY). تواصل مع المسؤول التقني.',
+    };
+  }
+
+  const adminClient = createAdminClient();
+
+  // 6. Delete the staff_profiles row first (safe even before the cascade),
+  //    then remove the auth user — no orphan login credential remains.
+  const { error: profileErr } = await (adminClient as any)
+    .from('staff_profiles')
+    .delete()
+    .eq('id', targetUserId);
+  if (profileErr) {
+    return {
+      success: false,
+      error: `تعذر حذف ملف الموظف: ${profileErr.message || 'خطأ غير معروف'}`,
+    };
+  }
+
+  const { error: authErr } = await adminClient.auth.admin.deleteUser(
+    targetUserId
+  );
+  if (authErr) {
+    return {
+      success: false,
+      error: `تعذر حذف حساب الدخول: ${authErr.message || 'خطأ غير معروف'}`,
+    };
+  }
+
+  return { success: true, message: 'تم حذف حساب الموظف نهائياً من النظام.' };
+}
