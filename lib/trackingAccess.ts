@@ -2,32 +2,26 @@
  * BSCH Clinics — Modular Tracking Access Verification & Booking Code Service
  *
  * Design Invariants:
- * 1. Isolates tracking verification logic into `verifyTrackingAccess` to allow seamless switching
- *    between:
- *    (a) OTP via SMS (`OTP_SMS`)
- *    (b) Phone number + CSPRNG Booking Code printed on the receipt ticket (`BOOKING_CODE`).
+ * 1. Tracking verification uses Phone number + CSPRNG Booking Code printed on the
+ *    receipt ticket (BOOKING_CODE). The SMS/OTP verification mode (OTP_SMS) has been
+ *    permanently disabled by hospital decision (no SMS gateway contracted), so the
+ *    mode can no longer be switched through environment variables.
  * 2. Booking Code Security:
  *    - Generated via CSPRNG with 12 characters from an unambiguous alphabet (no 0/O, 1/I/L).
  *    - Only its HMAC-SHA256 hash is persisted in the database (`booking_code_hash`).
  *    - The unhashed code is returned ONCE to the user upon initial booking confirmation, and never again.
  *    - Verification uses constant-time hash comparison to prevent timing attacks.
- * 3. Active Mode:
- *    - Currently `OTP_SMS` is active by default to honor the hospital client's explicit requirement:
- *      ("متابعة الحجز برقم الهاتف فقط مع رمز تحقق OTP").
- *    - In staging or when an SMS gateway is not yet contracted, switching `TRACKING_ACCESS_MODE=BOOKING_CODE`
- *      in environment variables immediately switches the verification mechanism without rewriting the UI.
  */
 
 import { randomInt, createHmac } from 'crypto';
-import { verifyOtp, constantTimeHashCompare } from './otp.ts';
+import { constantTimeHashCompare } from './otp.ts';
 
 // Unambiguous alphabet (omits 0, O, 1, I, L)
 const UNAMBIGUOUS_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 
-export type TrackingAccessMode = 'OTP_SMS' | 'BOOKING_CODE';
+export type TrackingAccessMode = 'BOOKING_CODE';
 
-export const TRACKING_ACCESS_MODE: TrackingAccessMode =
-  process.env.TRACKING_ACCESS_MODE === 'OTP_SMS' ? 'OTP_SMS' : 'BOOKING_CODE';
+export const TRACKING_ACCESS_MODE: TrackingAccessMode = 'BOOKING_CODE';
 
 /**
  * Generates a cryptographically secure 12-character booking code.
@@ -57,7 +51,6 @@ export function hashBookingCode(code: string): string {
 
 export interface VerifyTrackingAccessParams {
   phone: string;
-  otp?: string;
   bookingCode?: string;
   expectedBookingCodeHash?: string;
   validBookingCodeHashes?: string[];
@@ -67,7 +60,6 @@ export interface TrackingAccessResult {
   valid: boolean;
   error?: string;
   modeUsed: TrackingAccessMode;
-  attemptsRemaining?: number;
 }
 
 /**
@@ -76,28 +68,7 @@ export interface TrackingAccessResult {
 export async function verifyTrackingAccess(
   params: VerifyTrackingAccessParams
 ): Promise<TrackingAccessResult> {
-  const mode = TRACKING_ACCESS_MODE;
-
-  // Mode A: OTP verification
-  if (mode === 'OTP_SMS') {
-    if (!params.otp) {
-      return {
-        valid: false,
-        error: 'يرجى إدخال رمز التحقق المكون من 6 أرقام.',
-        modeUsed: 'OTP_SMS',
-      };
-    }
-
-    const otpRes = await verifyOtp(params.phone, params.otp);
-    return {
-      valid: otpRes.valid,
-      error: otpRes.error,
-      modeUsed: 'OTP_SMS',
-      attemptsRemaining: otpRes.attemptsRemaining,
-    };
-  }
-
-  // Mode B: Phone + CSPRNG Booking Code from printed receipt
+  // Phone + CSPRNG Booking Code from printed receipt
   if (!params.bookingCode || params.bookingCode.trim() === '') {
     return {
       valid: false,
@@ -141,4 +112,3 @@ export async function verifyTrackingAccess(
     modeUsed: 'BOOKING_CODE',
   };
 }
-

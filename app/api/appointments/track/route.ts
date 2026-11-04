@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { appointmentStore } from '@/services/appointmentService';
 import { normalizeAndValidateEgyptianPhone, maskPatientName } from '@/lib/rules';
-import { checkIpRateLimit, checkRateLimit, verifyOtp } from '@/lib/otp';
+import { checkIpRateLimit, checkRateLimit } from '@/lib/otp';
 import { verifyTurnstileToken } from '@/lib/turnstile';
 
 /**
@@ -10,13 +10,14 @@ import { verifyTurnstileToken } from '@/lib/turnstile';
  *
  * Privacy & Security Invariants:
  * 1. Look up appointments by Egyptian guardian phone number.
- * 2. If queried by phone alone (without matching reference number or OTP):
+ * 2. If queried by phone alone (without matching reference number):
  *    - STAGE 1: Returns a high-level summary list (clinic, service, date, status, guidance).
  *    - COMPLETELY REDACTS child's name ("[بيانات الطفل محجوبة لحماية الخصوصية]").
  *    - Masks reference number ("BSCH-****") and omits queue number.
  *    - Never exposes National ID, address, age, physician internal notes, or database UUIDs.
- * 3. If caller provides matching reference number or valid OTP:
+ * 3. If caller provides the matching reference number:
  *    - STAGE 2: Unlocks full ticket receipt (masked name "أحمد ك*** م***", reference number, queue number, cancellation).
+ * 4. SMS/OTP verification has been permanently disabled by hospital decision (BOOKING_CODE mode only).
  * 4. Bot & Abuse Mitigation:
  *    - Cloudflare Turnstile bot verification (fail-secure in production).
  *    - Persistent IP rate limiting (15 requests / 10 minutes).
@@ -29,7 +30,6 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const phone = (body.phone || body.phoneNumber || '').toString().trim();
     const referenceNumber = (body.referenceNumber || body.ref || '').toString().trim().toUpperCase();
-    const otpCode = (body.otp || body.code || '').toString().trim();
     const turnstileToken = body.turnstileToken || body.token || '';
 
     // 1. Validate Egyptian phone format
@@ -93,19 +93,12 @@ export async function POST(req: NextRequest) {
     }
 
     // 5.1 Verification Check: Per hospital requirements, phone-only lookup directly verifies caller ownership
-    // while preserving compatibility with optional referenceNumber / OTP filters.
-    const directPhoneLookup = true;
-    let isCallerVerified = directPhoneLookup;
+    // while preserving compatibility with optional referenceNumber filter.
+    let isCallerVerified = true;
     if (referenceNumber) {
       isCallerVerified = appointments.some(
         (a) => a.referenceNumber.toUpperCase() === referenceNumber
       );
-    }
-    if (!isCallerVerified && otpCode) {
-      const otpCheck = await verifyOtp(normalizedPhone, otpCode);
-      if (otpCheck.valid) {
-        isCallerVerified = true;
-      }
     }
 
     // 6. Strict Data Minimization on response payload
