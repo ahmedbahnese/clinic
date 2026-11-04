@@ -148,32 +148,9 @@ export class AuthService {
           }
         }
 
-        // Fallback for authorized built-in staff members when not provisioned in Supabase Auth
-        const fixtureUser = TEST_STAFF_FIXTURES.find(
-          (u) => u.username.toLowerCase() === cleanUser.toLowerCase() && u.active
-        );
-        if (fixtureUser && fixtureUser.passwordHash === cleanPass) {
-          const { passwordHash: _, ...safeUser } = fixtureUser;
-          const secret = process.env.STAFF_SESSION_SECRET || 'bsch_fallback_secret_key_2026';
-          const payload = {
-            id: safeUser.id,
-            username: safeUser.username,
-            role: safeUser.role,
-            clinicId: safeUser.clinicId || null,
-            exp: Date.now() + 1000 * 60 * 60 * 8, // 8 hours
-          };
-          const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
-          const sig = crypto.createHmac('sha256', secret).update(payloadB64).digest('hex');
-          const token = `bsch_staff_${payloadB64}.${sig}`;
-          const session: AuthSession = {
-            user: safeUser,
-            token,
-            expiresAt: payload.exp,
-          };
-          memoryActiveSessions.set(token, session);
-          return session;
-        }
-
+        // Strict production rule: when Supabase Auth is configured, login
+        // relies purely on signInWithPassword + an active staff_profiles row.
+        // Hardcoded fixture credentials are NEVER accepted in this path.
         return null;
       } catch (err) {
         console.error('Supabase signInWithPassword exception:', err);
@@ -326,6 +303,102 @@ export class AuthService {
       return null;
     }
     return session.user;
+  }
+
+  /**
+   * Change the password of a verified staff user.
+   * Re-authenticates the current password via Supabase signInWithPassword,
+   * then updates it using the user's own live session (supabase.auth.updateUser).
+   * All OTHER sessions of the user are revoked afterwards (best effort).
+   */
+  public static async changePassword(
+    staffUser: StaffUser,
+    currentPassword: string,
+    newPassword: string
+  ): Promise<{ success: boolean; error?: string }> {
+    const cleanCurrent = (currentPassword || '').toString();
+    const cleanNew = (newPassword || '').toString();
+
+    if (cleanNew.length < 8) {
+      return { success: false, error: 'كلمة المرور الجديدة يجب ألا تقل عن 8 أحرف.' };
+    }
+    if (cleanNew.length > 72) {
+      return { success: false, error: 'كلمة المرور الجديدة طويلة جداً (الحد الأقصى 72 حرفاً).' };
+    }
+    if (!/[A-Za-z]/.test(cleanNew) || !/[0-9]/.test(cleanNew)) {
+      return { success: false, error: 'كلمة المرور الجديدة يجب أن تحتوي على أحرف وأرقام معاً.' };
+    }
+    if (cleanNew === cleanCurrent) {
+      return { success: false, error: 'كلمة المرور الجديدة يجب أن تختلف عن كلمة المرور الحالية.' };
+    }
+
+    // 1. Supabase Auth Path
+    if (isSupabaseConfigured()) {
+      try {
+        const staffDomain = process.env.STAFF_AUTH_DOMAIN || 'hospital.internal';
+        const email = staffUser.username.includes('@')
+          ? staffUser.username
+          : `${staffUser.username.toLowerCase()}@${staffDomain}`;
+
+        // Re-authenticate the current password before allowing any change
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
+        const supabaseAnonKey =
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+          process.env.SUPABASE_ANON_KEY ||
+          process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+          '';
+        const authClient = createClient(supabaseUrl, supabaseAnonKey);
+
+        const { data, error } = await authClient.auth.signInWithPassword({
+          email,
+          password: cleanCurrent,
+        });
+        if (error || !data?.session) {
+          return { success: false, error: 'كلمة المرور الحالية غير صحيحة.' };
+        }
+
+        // Update the password using the user's own live session
+        const { error: updateError } = await authClient.auth.updateUser({
+          password: cleanNew,
+        });
+        if (updateError) {
+          console.error('Supabase updateUser password error:', updateError.code);
+          return { success: false, error: 'تعذر تغيير كلمة المرور، يرجى المحاولة لاحقاً.' };
+        }
+
+        // Revoke all OTHER sessions of this user (best effort)
+        if (isSupabaseAdminConfigured()) {
+          try {
+            const adminClient = createAdminClient();
+            await adminClient.auth.admin
+              .signOut(data.session.access_token, 'others')
+              .catch(() => {});
+          } catch {
+            // Best effort only
+          }
+        }
+
+        return { success: true };
+      } catch (err) {
+        console.error('Supabase changePassword exception');
+        return { success: false, error: 'حدث خطأ أثناء تغيير كلمة المرور.' };
+      }
+    }
+
+    // 2. Production safety: password changes require a configured auth DB
+    if (!isMockStoreAllowed()) {
+      throw new Error('تغيير كلمة المرور غير متاح: قاعدة بيانات المصادقة غير مهيأة في بيئة الإنتاج.');
+    }
+
+    // 3. Offline Dev / Unit Test Fallback (in-memory fixtures)
+    const fixture = TEST_STAFF_FIXTURES.find(
+      (u) => u.username.toLowerCase() === staffUser.username.toLowerCase() && u.active
+    );
+    if (!fixture || fixture.passwordHash !== cleanCurrent) {
+      return { success: false, error: 'كلمة المرور الحالية غير صحيحة.' };
+    }
+    fixture.passwordHash = cleanNew;
+    return { success: true };
   }
 
   /**

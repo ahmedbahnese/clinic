@@ -8,9 +8,6 @@ import {
   ShieldCheck,
   ArrowRight,
   AlertCircle,
-  UserCheck,
-  Stethoscope,
-  ShieldAlert,
   Home,
 } from 'lucide-react';
 
@@ -28,11 +25,8 @@ export default function StaffLoginPage() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  async function handleLogin(u?: string, p?: string) {
-    const userToLogin = u || username;
-    const passToLogin = p || password;
-
-    if (!userToLogin || !passToLogin) {
+  async function handleLogin() {
+    if (!username || !password) {
       setErrorMessage('يرجى إدخال اسم المستخدم وكلمة المرور');
       return;
     }
@@ -45,8 +39,8 @@ export default function StaffLoginPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          username: userToLogin,
-          password: passToLogin,
+          username,
+          password,
         }),
       });
 
@@ -65,12 +59,6 @@ export default function StaffLoginPage() {
     } finally {
       setLoading(false);
     }
-  }
-
-  function fillDemoAccount(demoUser: string, demoPass: string) {
-    setUsername(demoUser);
-    setPassword(demoPass);
-    handleLogin(demoUser, demoPass);
   }
 
   if (!mounted) {
@@ -148,7 +136,7 @@ export default function StaffLoginPage() {
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="اسم المستخدم (reception, doctor.echo, admin)"
+                placeholder="اسم المستخدم"
                 className="w-full px-4 py-3 rounded-xl border border-[#E2E8EE] focus:border-[#087F78] focus:ring-1 focus:ring-[#087F78]/20 bg-[#F6F9FB]/40 text-sm text-[#163C3A] text-right placeholder:text-[#8493A6] transition-all"
               />
             </div>
@@ -176,53 +164,6 @@ export default function StaffLoginPage() {
               {loading ? 'جاري التحقق...' : 'تسجيل الدخول'}
             </button>
           </form>
-
-          {/* Quick Demo Credentials Panel for testing / grading */}
-          <div className="mt-8 pt-6 border-t border-slate-100 space-y-3">
-            <span className="text-2xs font-bold text-[#8493A6] block text-center uppercase tracking-wider">
-              حسابات تجريبية للاختبار السريع (اضغط للدخول المباشر):
-            </span>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-2xs">
-              <button
-                type="button"
-                onClick={() => fillDemoAccount('reception', 'bsch2026')}
-                className="p-2.5 rounded-xl bg-slate-50 hover:bg-emerald-50 hover:border-[#087F78] border border-slate-200 text-right transition-all group"
-              >
-                <span className="font-bold text-[#124E4A] group-hover:text-[#087F78] flex items-center gap-1">
-                  <UserCheck className="w-3.5 h-3.5 text-[#087F78]" />
-                  <span>الاستقبال</span>
-                </span>
-                <span className="text-[#8493A6] block mt-1 font-mono text-3xs">reception</span>
-                <span className="text-3xs text-emerald-700 font-semibold block mt-0.5">صلاحيات الحجز والتأكيد والنداء</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => fillDemoAccount('doctor.echo', 'bsch2026')}
-                className="p-2.5 rounded-xl bg-slate-50 hover:bg-emerald-50 hover:border-[#087F78] border border-slate-200 text-right transition-all group"
-              >
-                <span className="font-bold text-[#124E4A] group-hover:text-[#087F78] flex items-center gap-1">
-                  <Stethoscope className="w-3.5 h-3.5 text-[#087F78]" />
-                  <span>طبيب العيادة</span>
-                </span>
-                <span className="text-[#8493A6] block mt-1 font-mono text-3xs">doctor.echo</span>
-                <span className="text-3xs text-blue-700 font-semibold block mt-0.5">طابور الإيكو، الكشف، والتحويل</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => fillDemoAccount('admin', 'admin2026')}
-                className="p-2.5 rounded-xl bg-slate-50 hover:bg-purple-50 hover:border-purple-600 border border-slate-200 text-right transition-all group"
-              >
-                <span className="font-bold text-[#124E4A] group-hover:text-purple-700 flex items-center gap-1">
-                  <ShieldAlert className="w-3.5 h-3.5 text-purple-600" />
-                  <span>مدير النظام</span>
-                </span>
-                <span className="text-[#8493A6] block mt-1 font-mono text-3xs">admin</span>
-                <span className="text-3xs text-purple-700 font-semibold block mt-0.5">إدارة العيادات والسجلات والكل</span>
-              </button>
-            </div>
-          </div>
 
         </div>
       </div>

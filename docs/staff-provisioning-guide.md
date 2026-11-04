@@ -56,3 +56,20 @@ SELECT public.provision_staff_member(
 - `'RECEPTIONIST'`: Front-desk check-in, walk-in ticketing, queue management across all clinics. Cannot complete medical consultations.
 - `'DOCTOR'`: Outpatient physician. Strictly isolated to their assigned `clinic_id`.
 
+---
+
+## 3. One-Shot Handover Script (Recommended)
+
+Instead of creating accounts manually, run the ready-to-use idempotent script:
+
+- **File:** `supabase/scripts/20261104_provision_initial_staff_accounts.sql`
+
+It creates the real `admin`, `reception`, and `doctor.echo` Supabase Auth users
+with random temporary passwords, links them to `staff_profiles` via
+`provision_staff_member`, and is safe to re-run (existing users only get their
+temporary password reset).
+
+After first login, each staff member must change their temporary password
+immediately from the dashboard via **"تغيير كلمة المرور"** (Change Password).
+
+

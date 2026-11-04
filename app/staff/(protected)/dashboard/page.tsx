@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import {
   Stethoscope,
   LogOut,
+  KeyRound,
   Search,
   CheckCircle2,
   Clock,
@@ -113,6 +114,15 @@ export default function StaffDashboardPage() {
   const [walkInError, setWalkInError] = useState<string | null>(null);
   const [walkInServicesList, setWalkInServicesList] = useState<ClinicService[]>([]);
   const [walkInSuccessReceipt, setWalkInSuccessReceipt] = useState<Appointment | null>(null);
+
+  // Change Password Modal State
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [currentPwd, setCurrentPwd] = useState('');
+  const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [pwdSubmitting, setPwdSubmitting] = useState(false);
+  const [pwdError, setPwdError] = useState<string | null>(null);
+  const [pwdSuccess, setPwdSuccess] = useState<string | null>(null);
 
   // Clinic Services in Edit Clinic Modal
   const [editingClinicServices, setEditingClinicServices] = useState<ClinicService[]>([]);
@@ -887,6 +897,57 @@ export default function StaffDashboardPage() {
     router.push('/staff/login');
   }
 
+  async function handleChangePasswordSubmit() {
+    if (!currentPwd || !newPwd || !confirmPwd) {
+      setPwdError('يرجى تعبئة جميع الحقول.');
+      return;
+    }
+    if (newPwd !== confirmPwd) {
+      setPwdError('تأكيد كلمة المرور الجديدة غير مطابق.');
+      return;
+    }
+
+    setPwdSubmitting(true);
+    setPwdError(null);
+    setPwdSuccess(null);
+
+    try {
+      const token = localStorage.getItem('bsch_staff_token');
+      const res = await fetch('/api/staff/auth/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          currentPassword: currentPwd,
+          newPassword: newPwd,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        setPwdError(data.error || 'تعذر تغيير كلمة المرور.');
+        if (res.status === 401) {
+          localStorage.removeItem('bsch_staff_token');
+          localStorage.removeItem('bsch_staff_user');
+          router.push('/staff/login');
+        }
+      } else {
+        setPwdSuccess(data.message || 'تم تغيير كلمة المرور بنجاح.');
+        setCurrentPwd('');
+        setNewPwd('');
+        setConfirmPwd('');
+        setTimeout(() => setShowChangePassword(false), 1600);
+      }
+    } catch {
+      setPwdError('حدث خطأ أثناء الاتصال بالنظام.');
+    } finally {
+      setPwdSubmitting(false);
+    }
+  }
+
   // Metrics
   const totalCount = appointments.length;
   const pendingCount = appointments.filter((a) => a.status === 'PENDING_REVIEW').length;
@@ -980,6 +1041,22 @@ export default function StaffDashboardPage() {
                 </span>
               </div>
             )}
+
+            <button
+              onClick={() => {
+                setPwdError(null);
+                setPwdSuccess(null);
+                setCurrentPwd('');
+                setNewPwd('');
+                setConfirmPwd('');
+                setShowChangePassword(true);
+              }}
+              className="inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl text-2xs sm:text-xs font-semibold text-[#087F78] hover:bg-emerald-50 border border-emerald-200 transition-colors shrink-0"
+              title="تغيير كلمة المرور"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">تغيير كلمة المرور</span>
+            </button>
 
             <button
               onClick={handleLogout}
@@ -2443,6 +2520,117 @@ export default function StaffDashboardPage() {
                     </>
                   ) : (
                     <span>تسجيل وحفظ الحجز وإصدار الإيصال</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: CHANGE PASSWORD */}
+      {showChangePassword && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-md w-full p-4 sm:p-6 text-right shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="text-sm sm:text-base font-bold text-[#124E4A] flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-[#087F78]" />
+                <span>تغيير كلمة المرور</span>
+              </h3>
+              <button
+                onClick={() => setShowChangePassword(false)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {pwdError && (
+              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-start gap-2.5 text-right">
+                <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                <span>{pwdError}</span>
+              </div>
+            )}
+
+            {pwdSuccess && (
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs flex items-start gap-2.5 text-right">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <span>{pwdSuccess}</span>
+              </div>
+            )}
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleChangePasswordSubmit();
+              }}
+              className="space-y-3.5"
+            >
+              <div>
+                <label className="block text-xs font-bold text-[#163C3A] mb-1">
+                  كلمة المرور الحالية <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={currentPwd}
+                  onChange={(e) => setCurrentPwd(e.target.value)}
+                  placeholder="كلمة المرور الحالية"
+                  autoComplete="current-password"
+                  className="w-full px-3 py-2.5 rounded-xl border border-[#E2E8EE] text-sm text-[#163C3A] focus:border-[#087F78]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#163C3A] mb-1">
+                  كلمة المرور الجديدة <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={newPwd}
+                  onChange={(e) => setNewPwd(e.target.value)}
+                  placeholder="8 أحرف على الأقل (أحرف وأرقام)"
+                  autoComplete="new-password"
+                  className="w-full px-3 py-2.5 rounded-xl border border-[#E2E8EE] text-sm text-[#163C3A] focus:border-[#087F78]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#163C3A] mb-1">
+                  تأكيد كلمة المرور الجديدة <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={confirmPwd}
+                  onChange={(e) => setConfirmPwd(e.target.value)}
+                  placeholder="إعادة إدخال كلمة المرور الجديدة"
+                  autoComplete="new-password"
+                  className="w-full px-3 py-2.5 rounded-xl border border-[#E2E8EE] text-sm text-[#163C3A] focus:border-[#087F78]"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowChangePassword(false)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="submit"
+                  disabled={pwdSubmitting}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#087F78] hover:bg-[#066560] text-white shadow-xs cursor-pointer flex items-center gap-1.5 disabled:opacity-60"
+                >
+                  {pwdSubmitting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>جاري التغيير...</span>
+                    </>
+                  ) : (
+                    <span>حفظ كلمة المرور الجديدة</span>
                   )}
                 </button>
               </div>
