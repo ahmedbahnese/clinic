@@ -10,6 +10,7 @@ import {
   Trash2,
   RefreshCw,
   AlertCircle,
+  AlertTriangle,
   CheckCircle2,
   X,
   ShieldCheck,
@@ -48,6 +49,7 @@ export default function StaffManager() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<StaffMemberRecord | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<StaffMemberRecord | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
 
@@ -168,22 +170,32 @@ export default function StaffManager() {
     }
   }
 
-  async function handleDelete(member: StaffMemberRecord) {
+  function openDeleteModal(member: StaffMemberRecord) {
     if (deletingId) return;
-    const confirmed = window.confirm(
-      `هل أنت متأكد من حذف الموظف "${member.full_name}"؟ لا يمكن التراجع عن هذا الإجراء.`
-    );
-    if (!confirmed) return;
+    setDeleteTarget(member);
+  }
 
-    setDeletingId(member.id);
+  function closeDeleteModal() {
+    if (deletingId) return;
+    setDeleteTarget(null);
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteTarget || deletingId) return;
+    const targetUserId = deleteTarget.id;
+    setDeletingId(targetUserId);
+
     try {
-      const result = await deleteStaff(member.id);
+      const result = await deleteStaff(targetUserId);
       if (!result.success) {
         setToast({ kind: 'error', text: result.error || 'تعذر حذف الموظف.' });
         return;
       }
+
+      // Instant UI Update: remove deleted staff member directly from React state without refresh
+      setStaff((prev) => prev.filter((staff) => staff.id !== targetUserId));
       setToast({ kind: 'success', text: result.message || 'تم حذف الموظف بنجاح.' });
-      await loadStaff();
+      setDeleteTarget(null);
     } catch (err) {
       console.error('Staff delete action error:', err);
       setToast({
@@ -216,7 +228,7 @@ export default function StaffManager() {
 
         <button
           onClick={openAdd}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#087F78] hover:bg-[#066560] text-white text-2xs sm:text-xs font-bold shadow-xs transition-colors shrink-0"
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#087F78] hover:bg-[#066560] text-white text-2xs sm:text-xs font-bold shadow-xs transition-colors shrink-0 cursor-pointer"
         >
           <UserPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           <span>إضافة موظف جديد</span>
@@ -237,7 +249,7 @@ export default function StaffManager() {
           </span>
           <button
             onClick={loadStaff}
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-2xs font-bold transition-colors"
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-2xs font-bold transition-colors cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             <span>إعادة المحاولة</span>
@@ -285,27 +297,19 @@ export default function StaffManager() {
                       <button
                         onClick={() => openEdit(member)}
                         disabled={deletingId === member.id}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#087F78]/40 text-[#087F78] hover:bg-emerald-50 text-2xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#087F78]/40 text-[#087F78] hover:bg-emerald-50 text-2xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                       >
                         <Pencil className="w-3 h-3" />
                         <span>تعديل</span>
                       </button>
                       <button
-                        onClick={() => handleDelete(member)}
+                        onClick={() => openDeleteModal(member)}
                         disabled={deletingId === member.id}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 text-2xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-red-300 text-red-600 hover:bg-red-50 text-2xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                        title="حذف الموظف"
                       >
-                        {deletingId === member.id ? (
-                          <>
-                            <RefreshCw className="w-3 h-3 animate-spin" />
-                            <span>جاري الحذف...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Trash2 className="w-3 h-3" />
-                            <span>حذف</span>
-                          </>
-                        )}
+                        <Trash2 className="w-3 h-3" />
+                        <span>حذف</span>
                       </button>
                     </div>
                   </td>
@@ -336,7 +340,8 @@ export default function StaffManager() {
               </h3>
               <button
                 onClick={() => setModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="text-slate-400 hover:text-slate-600 cursor-pointer p-1 rounded-lg hover:bg-slate-100 transition-colors"
+                aria-label="إغلاق"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -484,6 +489,83 @@ export default function StaffManager() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-md w-full p-4 sm:p-6 text-right shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="text-sm sm:text-base font-bold text-red-700 flex items-center gap-2">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-4 h-4" />
+                </div>
+                <span>تأكيد حذف الموظف</span>
+              </h3>
+              <button
+                onClick={closeDeleteModal}
+                disabled={Boolean(deletingId)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer disabled:opacity-50 p-1 rounded-lg hover:bg-slate-100 transition-colors"
+                aria-label="إغلاق"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">
+                هل أنت متأكد من حذف الموظف <strong className="text-red-700 font-extrabold">{deleteTarget.full_name}</strong>؟ لا يمكن التراجع عن هذا الإجراء.
+              </p>
+
+              {/* Staff Details Summary Card */}
+              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 text-xs space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">اسم الدخول:</span>
+                  <span className="font-mono text-[#087F78] font-bold" dir="ltr">{deleteTarget.username}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">الدور الوظيفي:</span>
+                  <span className="font-semibold text-[#163C3A]">{STAFF_ROLE_LABELS[deleteTarget.role] || deleteTarget.role}</span>
+                </div>
+                {deleteTarget.clinic_id && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 font-medium">العيادة:</span>
+                    <span className="font-semibold text-[#163C3A]">{clinicName(deleteTarget.clinic_id)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={closeDeleteModal}
+                disabled={Boolean(deletingId)}
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={Boolean(deletingId)}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-xs cursor-pointer flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              >
+                {deletingId ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>جاري الحذف...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>تأكيد الحذف</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
