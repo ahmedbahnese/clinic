@@ -202,3 +202,12 @@ create policy avatar_owner_insert on storage.objects for insert to authenticated
 drop policy if exists avatar_owner_update on storage.objects;
 create policy avatar_owner_update on storage.objects for update to authenticated using (bucket_id='avatars' and (storage.foldername(name))[1] = auth.uid()::text) with check (bucket_id='avatars' and (storage.foldername(name))[1] = auth.uid()::text);
 
+
+-- Correct the dedicated 5-years-and-older hearing service range.
+update public.clinic_services
+set min_age_months = 60,
+    max_age_months = null,
+    allow_age_exception = true,
+    reject_cold_symptoms = true,
+    eligibility_text = 'العمر من 5 سنوات فأكثر. حالات التأخر العقلي أو تأخر الكلام تستثنى من شرط العمر عند تقييم الموظف. لا يقبل الحجز مع الكحة أو الرشح أو ارتفاع الحرارة.'
+where slug = 'hearing-test-age-5-plus';
