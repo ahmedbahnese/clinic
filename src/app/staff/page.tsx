@@ -558,7 +558,7 @@ export default function StaffPage() {
         <Link href="/staff/clinics"><MapPin size={16} /> العيادات</Link>
         <Link href="/staff/users"><Users size={16} /> المستخدمون</Link>
         <Link href="/staff/reports"><FileBarChart2 size={16} /> التقارير</Link>
-        <Link href="/staff/audit"><ClipboardList size={16} /> سجل التدقيق</Link>
+        <Link href="/staff/audit"><ClipboardList size={16} /> سجل التدقيق</Link><Link href="/staff/account"><UserRound size={16} /> إعدادات الحساب</Link>
       </nav>
 
       {sessionError && <div className="sd-alert sd-error" role="alert">{sessionError}</div>}
@@ -637,7 +637,7 @@ export default function StaffPage() {
           <div className="sd-footnote"><ShieldCheck size={15} /> لا تُجرى كتابة مباشرة إلى queue_entries أو queue_counters؛ يخضع كل انتقال للتحقق الذري في RPC.</div>
         </section>
 
-        <section className="sd-bottom-links"><div><h2>التقارير والمراجعة</h2><p>افتح صفحات التقارير وسجل التدقيق للطباعة أو المراجعة التفصيلية وفق صلاحيات حسابك.</p></div><div className="sd-bottom-actions"><Link href="/staff/reports"><FileBarChart2 size={16} /> التقارير</Link><Link href="/staff/audit"><ClipboardList size={16} /> سجل التدقيق</Link><button onClick={() => window.print()}><Printer size={16} /> طباعة هذه الصفحة</button></div></section>
+        <section className="sd-bottom-links"><div><h2>التقارير والمراجعة</h2><p>افتح صفحات التقارير وسجل التدقيق للطباعة أو المراجعة التفصيلية وفق صلاحيات حسابك.</p></div><div className="sd-bottom-actions"><Link href="/staff/reports"><FileBarChart2 size={16} /> التقارير</Link><Link href="/staff/audit"><ClipboardList size={16} /> سجل التدقيق</Link><Link href="/staff/account"><UserRound size={16} /> إعدادات الحساب</Link><button onClick={() => window.print()}><Printer size={16} /> طباعة هذه الصفحة</button></div></section>
       </>}
       <footer className="sd-footer"><span>مستشفى بنها التخصصي للأطفال · مساحة الموظفين</span><span>لا تحفظ هذه الصفحة بيانات مرضى في التخزين المحلي.</span></footer>
     </div>

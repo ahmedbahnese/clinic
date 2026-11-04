@@ -6,6 +6,7 @@ const hospitalName = "مستشفى الأطفال التخصصي بالبحير�
 const systemName = "العيادات الخارجية";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://clinic-six-wheat.vercel.app"),
   title: {
     default: `${systemName} | BSCH Clinics`,
     template: `%s | ${systemName}`,
@@ -20,6 +21,10 @@ export const metadata: Metadata = {
     ],
     apple: [{ url: "/images/icon-192.png", sizes: "192x192", type: "image/png" }],
   },
+  alternates: { canonical: "/" },
+  openGraph: { type: "website", locale: "ar_EG", url: "https://clinic-six-wheat.vercel.app/", siteName: "BSCH Clinics", title: `${systemName} | BSCH Clinics`, description: `${systemName} — بوابة الحجز والمتابعة التابعة لـ${hospitalName}.`, images: [{ url: "/images/hospital-logo.png", width: 512, height: 512, alt: "شعار مستشفى الأطفال التخصصي بالبحيرة" }] },
+  twitter: { card: "summary_large_image", title: `${systemName} | BSCH Clinics`, description: `${systemName} — بوابة الحجز والمتابعة التابعة لـ${hospitalName}.`, images: ["/images/hospital-logo.png"] },
+  robots: { index: true, follow: true },
   appleWebApp: {
     capable: true,
     title: "BSCH Clinics",
