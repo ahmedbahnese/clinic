@@ -558,7 +558,7 @@ export default function StaffPage() {
         <Link href="/staff/clinics"><MapPin size={16} /> العيادات</Link>
         <Link href="/staff/users"><Users size={16} /> المستخدمون</Link>
         <Link href="/staff/reports"><FileBarChart2 size={16} /> التقارير</Link>
-        <Link href="/staff/audit"><ClipboardList size={16} /> سجل التدقيق</Link><Link href="/staff/account"><UserRound size={16} /> إعدادات الحساب</Link>
+        <Link href="/staff/audit"><ClipboardList size={16} /> سجل التدقيق</Link><Link href="/staff/account"><UserRound size={16} /> إعدادات الحساب</Link><Link href="/staff/cancellation-requests"><ClipboardList size={16} /> طلبات الاعتذار</Link><Link href="/staff/backups"><FileBarChart2 size={16} /> النسخ الاحتياطي</Link><Link href="/staff/cms"><MapPin size={16} /> محتوى الموقع</Link>
       </nav>
 
       {sessionError && <div className="sd-alert sd-error" role="alert">{sessionError}</div>}

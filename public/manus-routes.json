@@ -1,13 +1,56 @@
 {
   "routes": [
-    { "path": "/", "title": "العيادات الخارجية" },
-    { "path": "/booking", "title": "حجز موعد" },
-    { "path": "/track", "title": "متابعة الحجز" },
-    { "path": "/staff/login", "title": "دخول الموظفين" },
-    { "path": "/staff", "title": "مساحة عمل الموظفين" },
-    { "path": "/staff/clinics", "title": "إدارة العيادات" },
-    { "path": "/staff/users", "title": "إدارة الموظفين" },
-    { "path": "/staff/reports", "title": "التقارير" },
-    { "path": "/staff/audit", "title": "سجل التدقيق" }
+    {
+      "path": "/",
+      "title": "العيادات الخارجية"
+    },
+    {
+      "path": "/booking",
+      "title": "حجز موعد"
+    },
+    {
+      "path": "/track",
+      "title": "متابعة الحجز"
+    },
+    {
+      "path": "/staff/login",
+      "title": "دخول الموظفين"
+    },
+    {
+      "path": "/staff",
+      "title": "مساحة عمل الموظفين"
+    },
+    {
+      "path": "/staff/clinics",
+      "title": "إدارة العيادات"
+    },
+    {
+      "path": "/staff/users",
+      "title": "إدارة الموظفين"
+    },
+    {
+      "path": "/staff/reports",
+      "title": "التقارير"
+    },
+    {
+      "path": "/staff/audit",
+      "title": "سجل التدقيق"
+    },
+    {
+      "path": "/staff/account",
+      "title": "إعدادات الحساب"
+    },
+    {
+      "path": "/staff/cancellation-requests",
+      "title": "طلبات الاعتذار"
+    },
+    {
+      "path": "/staff/backups",
+      "title": "النسخ الاحتياطي"
+    },
+    {
+      "path": "/staff/cms",
+      "title": "إدارة محتوى الموقع"
+    }
   ]
 }

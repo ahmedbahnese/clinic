@@ -1,4 +1,7 @@
+"use client";
 import Image from "next/image";
+import { useEffect, useState } from "react";
+import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -10,7 +13,8 @@ import {
   Stethoscope,
 } from "lucide-react";
 
-const hospitalWebsite = "https://albahira.elyoser.cloud/";
+const defaultHospitalWebsite = "https://albahira.elyoser.cloud/";
+type CmsHome = { site_name: string; tagline: string; header_title: string; logo_url: string; hospital_website: string; notice_title: string; notice_body: string; notice_enabled: boolean };
 
 const services = [
   {
@@ -40,6 +44,10 @@ const services = [
 ];
 
 export default function Home() {
+  const [cms, setCms] = useState<CmsHome | null>(null);
+  useEffect(() => { const client = createSupabaseBrowserClient(); if (!client) return; void client.from("site_settings").select("site_name,tagline,header_title,logo_url,hospital_website,notice_title,notice_body,notice_enabled").eq("id", true).maybeSingle().then(({ data }) => { if (data) setCms(data as CmsHome); }); }, []);
+  const hospitalWebsite = cms?.hospital_website || defaultHospitalWebsite;
+  const siteName = cms?.site_name || "مستشفى الأطفال التخصصي بالبحيرة";
   return (
     <>
       <a className="skip-link" href="#main-content">
@@ -47,20 +55,21 @@ export default function Home() {
       </a>
 
       <header className="site-header">
+        {cms?.notice_enabled && cms.notice_body && <div className="cms-notice"><strong>{cms.notice_title || "تنبيه"}</strong> {cms.notice_body}</div>}
         <div className="header-inner">
           <Link className="brand" href="/" aria-label="BSCH Clinics — الرئيسية">
             <span className="brand-logo-wrap">
               <Image
                 src="/images/hospital-logo.png"
-                alt="شعار مستشفى الأطفال التخصصي بالبحيرة"
+                alt={`شعار ${siteName}`}
                 width={64}
                 height={64}
                 priority
               />
             </span>
             <span className="brand-copy">
-              <span className="brand-name">BSCH CLINICS</span>
-              <span className="brand-hospital">مستشفى الأطفال التخصصي بالبحيرة</span>
+              <span className="brand-name">{cms?.header_title || "BSCH CLINICS"}</span>
+              <span className="brand-hospital">{siteName}</span>
             </span>
           </Link>
 
@@ -89,7 +98,7 @@ export default function Home() {
             <div className="welcome-content">
               <div className="eyebrow">
                 <span className="eyebrow-dot" aria-hidden="true" />
-                مستشفى الأطفال التخصصي بالبحيرة
+                {siteName}
               </div>
               <p className="system-label">BSCH CLINICS <span>·</span> العيادات الخارجية</p>
               <h1 id="welcome-title">رعاية تبدأ بخطوة <span>واضحة.</span></h1>
@@ -196,7 +205,7 @@ export default function Home() {
             <Image src="/images/hospital-logo.png" alt="" width={54} height={54} />
           </div>
           <div className="hospital-panel-copy">
-            <strong>مستشفى الأطفال التخصصي بالبحيرة</strong>
+            <strong>{siteName}</strong>
             <span>للتعرّف على المستشفى وخدماته، تفضل بزيارة الموقع الرسمي.</span>
           </div>
           <a href={hospitalWebsite} target="_blank" rel="noopener noreferrer" className="hospital-panel-link">
@@ -208,7 +217,7 @@ export default function Home() {
       <footer className="site-footer">
         <div className="footer-inner">
           <span>BSCH CLINICS <i aria-hidden="true">·</i> العيادات الخارجية</span>
-          <span>مستشفى الأطفال التخصصي بالبحيرة</span>
+          <span>{siteName}</span>
           <a href={hospitalWebsite} target="_blank" rel="noopener noreferrer">الموقع الرسمي</a>
         </div>
       </footer>
