@@ -1503,7 +1503,7 @@ class AppointmentServiceStore {
                 clinicName: dbApt.clinic_name,
                 serviceId: dbApt.service_id || matchedService?.id,
                 serviceName: dbApt.service_name || matchedService?.name || 'كشف واستشارة طبية',
-                patientName: maskPatientName(dbApt.patient_name),
+                patientName: dbApt.patient_name,
                 phoneNumber: cleanPhone,
                 appointmentDate: dbApt.appointment_date,
                 appointmentTime: '',
@@ -1547,7 +1547,7 @@ class AppointmentServiceStore {
           clinicName: a.clinicName,
           serviceId: a.serviceId || matchedService?.id,
           serviceName: a.serviceName || matchedService?.name || 'كشف واستشارة طبية',
-          patientName: maskPatientName(a.patientName),
+          patientName: a.patientName,
           phoneNumber: cleanPhone,
           appointmentDate: a.appointmentDate,
           appointmentTime: '',
@@ -2164,16 +2164,28 @@ class AppointmentServiceStore {
   }
 
   public async requestCancellation(input: {
-    referenceNumber: string;
+    appointmentId?: string;
+    referenceNumber?: string;
     phoneNumber: string;
     reason?: string;
   }): Promise<{ success: boolean; requestId?: string; message?: string; error?: string }> {
-    const cleanRef = (input.referenceNumber || '').trim().toUpperCase();
+    let cleanRef = (input.referenceNumber || '').trim().toUpperCase();
     const phoneCheck = normalizeAndValidateEgyptianPhone(input.phoneNumber || '');
-    if (!cleanRef || !phoneCheck.isValid) {
-      return { success: false, error: 'الرقم المرجعي ورقم الهاتف كلاهما مطلوب لتقديم طلب الإلغاء.' };
+    if (!phoneCheck.isValid) {
+      return { success: false, error: 'رقم الهاتف غير صالح. يرجى إدخال رقم هاتف محمول مصري مكون من 11 رقماً.' };
     }
     const cleanPhone = phoneCheck.normalized;
+
+    if (!cleanRef && input.appointmentId) {
+      const apt = await this.getAppointmentById(input.appointmentId);
+      if (apt) {
+        cleanRef = apt.referenceNumber.toUpperCase();
+      }
+    }
+
+    if (!cleanRef) {
+      return { success: false, error: 'معرف الحجز ورقم الهاتف كلاهما مطلوب لتقديم طلب الإلغاء.' };
+    }
 
     if (isSupabaseConfigured()) {
       try {

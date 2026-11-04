@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -55,6 +55,9 @@ export default function StaffDashboardPage() {
   // Active Tab
   const [activeTab, setActiveTab] = useState<'QUEUE' | 'CLINICS' | 'AUDIT' | 'CMS' | 'CANCELLATIONS' | 'STAFF'>('QUEUE');
 
+  // Queue Sub-Tab: Pending Confirmation vs Confirmed vs All
+  const [queueSubTab, setQueueSubTab] = useState<'PENDING' | 'CONFIRMED' | 'ALL'>('PENDING');
+
   // Appointments & Clinics State
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [clinics, setClinics] = useState<Clinic[]>([]);
@@ -73,6 +76,24 @@ export default function StaffDashboardPage() {
     } catch {
       // Ignore malformed localStorage payload
     }
+
+    // Always fetch verified session from server to guarantee currentUser is never blank
+    const token = localStorage.getItem('bsch_staff_token');
+    fetch('/api/auth/session', {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.authenticated && data?.user) {
+          setCurrentUser(data.user);
+          try {
+            localStorage.setItem('bsch_staff_user', JSON.stringify(data.user));
+          } catch {
+            // ignore
+          }
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Cancellation Requests State
@@ -957,6 +978,29 @@ export default function StaffDashboardPage() {
   const checkedInCount = appointments.filter((a) => a.status === 'CHECKED_IN').length;
   const completedCount = appointments.filter((a) => a.status === 'COMPLETED').length;
 
+  // Queue Sub-Tabs Counts & Filtered List
+  const pendingQueueCount = appointments.filter(
+    (a) => a.status === 'PENDING_REVIEW' || (a.status as string) === 'CONFIRMATION_PENDING'
+  ).length;
+  const confirmedQueueCount = appointments.filter(
+    (a) => a.status === 'CONFIRMED' || a.status === 'CHECKED_IN' || (a.status as string) === 'IN_PROGRESS'
+  ).length;
+  const allQueueCount = appointments.length;
+
+  const displayedAppointments = useMemo(() => {
+    if (queueSubTab === 'PENDING') {
+      return appointments.filter(
+        (a) => a.status === 'PENDING_REVIEW' || (a.status as string) === 'CONFIRMATION_PENDING'
+      );
+    }
+    if (queueSubTab === 'CONFIRMED') {
+      return appointments.filter(
+        (a) => a.status === 'CONFIRMED' || a.status === 'CHECKED_IN' || (a.status as string) === 'IN_PROGRESS'
+      );
+    }
+    return appointments;
+  }, [appointments, queueSubTab]);
+
   const isAdmin = currentUser?.role === 'ADMIN';
   const isDoctor = currentUser?.role === 'DOCTOR';
   const isReceptionist = currentUser?.role === 'RECEPTIONIST' || currentUser?.username === 'reception';
@@ -1380,6 +1424,56 @@ export default function StaffDashboardPage() {
 
             {/* Appointments Table / Roster */}
             <div className="bg-white rounded-2xl border border-[#E2E8EE] shadow-2xs overflow-hidden">
+              {/* Queue Category Sub-Tabs (Pending Confirmation vs Confirmed vs All) */}
+              <div className="flex items-center gap-1 sm:gap-2 border-b border-[#E2E8EE] px-3 sm:px-5 pt-3 bg-slate-50/70 overflow-x-auto no-print">
+                <button
+                  type="button"
+                  onClick={() => setQueueSubTab('PENDING')}
+                  className={`flex items-center gap-1.5 sm:gap-2 pb-2.5 px-3 text-xs sm:text-sm font-bold border-b-2 transition-all cursor-pointer shrink-0 ${
+                    queueSubTab === 'PENDING'
+                      ? 'border-amber-500 text-amber-800'
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Clock className="w-4 h-4 text-amber-500" />
+                  <span>بانتظار التأكيد (قيد المراجعة)</span>
+                  <span className="px-2 py-0.5 rounded-full text-3xs font-extrabold bg-amber-100 text-amber-800">
+                    {pendingQueueCount}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setQueueSubTab('CONFIRMED')}
+                  className={`flex items-center gap-1.5 sm:gap-2 pb-2.5 px-3 text-xs sm:text-sm font-bold border-b-2 transition-all cursor-pointer shrink-0 ${
+                    queueSubTab === 'CONFIRMED'
+                      ? 'border-[#087F78] text-[#087F78]'
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>الحجوزات المؤكدة (طابور الحضور)</span>
+                  <span className="px-2 py-0.5 rounded-full text-3xs font-extrabold bg-emerald-100 text-emerald-800">
+                    {confirmedQueueCount}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setQueueSubTab('ALL')}
+                  className={`flex items-center gap-1.5 sm:gap-2 pb-2.5 px-3 text-xs sm:text-sm font-bold border-b-2 transition-all cursor-pointer shrink-0 ${
+                    queueSubTab === 'ALL'
+                      ? 'border-[#124E4A] text-[#124E4A]'
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Users className="w-4 h-4 text-slate-500" />
+                  <span>الكل</span>
+                  <span className="px-2 py-0.5 rounded-full text-3xs font-extrabold bg-slate-200 text-slate-700">
+                    {allQueueCount}
+                  </span>
+                </button>
+              </div>
               {loading ? (
                 <div className="p-12 text-center text-xs text-[#8493A6]">جاري تحميل جدول الحجوزات...</div>
               ) : appointments.length === 0 ? (
@@ -1410,11 +1504,32 @@ export default function StaffDashboardPage() {
                     )}
                   </div>
                 </div>
+              ) : displayedAppointments.length === 0 ? (
+                <div className="p-10 text-center text-xs text-[#8493A6] space-y-2.5">
+                  <AlertCircle className="w-8 h-8 text-slate-300 mx-auto" />
+                  <p className="font-bold text-slate-700 text-sm">
+                    {queueSubTab === 'PENDING'
+                      ? 'لا توجد حجوزات بانتظار التأكيد حالياً في هذا التاريخ'
+                      : queueSubTab === 'CONFIRMED'
+                      ? 'لا توجد حجوزات مؤكدة في طابور الحضور حالياً في هذا التاريخ'
+                      : 'لا توجد نتائج مطابقة'}
+                  </p>
+                  <p className="text-2xs text-slate-400">
+                    يمكنك التبديل إلى تبويب "الكل" أو اختيار تاريخ آخر لعرض باقي المواعيد.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setQueueSubTab('ALL')}
+                    className="mt-1 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-[#087F78] text-xs font-bold border border-teal-200 transition-colors cursor-pointer"
+                  >
+                    عرض جميع الحالات ({allQueueCount})
+                  </button>
+                </div>
               ) : (
                 <>
                   {/* Dedicated Mobile Card View (Optimized for Phones < 768px) */}
                   <div className="block md:hidden divide-y divide-slate-100">
-                    {appointments.map((apt) => {
+                    {displayedAppointments.map((apt) => {
                       const status = getStatusDisplay(apt.status);
                       const hasPendingCancel =
                         apt.hasPendingCancellation ||
@@ -1643,7 +1758,7 @@ export default function StaffDashboardPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#E2E8EE]">
-                        {appointments.map((apt) => {
+                        {displayedAppointments.map((apt) => {
                           const status = getStatusDisplay(apt.status);
                           return (
                             <tr key={apt.id} className="hover:bg-slate-50/70 transition-colors">
@@ -2676,7 +2791,7 @@ export default function StaffDashboardPage() {
             {/* Printable Receipt Card */}
             <div
               id="printable-walkin-receipt"
-              className="bg-white rounded-2xl border-2 border-teal-600/30 p-5 space-y-4 text-xs"
+              className="bg-white rounded-2xl border-2 border-teal-600/30 p-5 space-y-4 text-xs printable-receipt-card print:p-6 print:border-[#087F78] print:rounded-2xl"
             >
               <div className="flex items-center justify-between pb-3 border-b border-slate-200">
                 <div className="flex items-center gap-2.5">
@@ -2693,8 +2808,8 @@ export default function StaffDashboardPage() {
                   </div>
                 </div>
                 <div className="text-left font-mono">
-                  <span className="text-[10px] text-slate-400 block font-semibold">رقم التذكرة</span>
-                  <span className="text-sm font-black text-[#087F78]">{walkInSuccessReceipt.referenceNumber}</span>
+                  <span className="text-[10px] text-slate-400 block font-semibold">تاريخ الطباعة</span>
+                  <span className="text-xs font-bold text-[#163C3A]">{new Date().toLocaleDateString('ar-EG')}</span>
                 </div>
               </div>
 

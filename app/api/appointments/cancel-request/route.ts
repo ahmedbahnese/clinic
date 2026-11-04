@@ -19,16 +19,25 @@ export async function POST(req: NextRequest) {
 
     // 2. Parse Body
     const body = await req.json().catch(() => ({}));
-    const { referenceNumber, phoneNumber, reason, turnstileToken } = body;
+    const { appointmentId, referenceNumber, phoneNumber, reason, turnstileToken } = body;
 
-    if (!referenceNumber || !phoneNumber) {
+    let cleanRef = referenceNumber ? String(referenceNumber).trim().toUpperCase() : '';
+    const cleanAptId = appointmentId ? String(appointmentId).trim() : '';
+
+    if (!cleanRef && !cleanAptId) {
       return NextResponse.json(
-        { error: 'الرقم المرجعي ورقم الهاتف كلاهما مطلوب لتقديم طلب الإلغاء.' },
+        { error: 'معرف الحجز ورقم الهاتف كلاهما مطلوب لتقديم طلب الإلغاء.' },
         { status: 400 }
       );
     }
 
-    const cleanRef = String(referenceNumber).trim().toUpperCase();
+    if (!phoneNumber) {
+      return NextResponse.json(
+        { error: 'رقم الهاتف مطلوب لتقديم طلب الإلغاء.' },
+        { status: 400 }
+      );
+    }
+
     const phoneCheck = normalizeAndValidateEgyptianPhone(String(phoneNumber));
     if (!phoneCheck.isValid) {
       return NextResponse.json(
@@ -37,6 +46,14 @@ export async function POST(req: NextRequest) {
       );
     }
     const cleanPhone = phoneCheck.normalized;
+
+    // If referenceNumber is missing, resolve it from the hidden appointmentId
+    if (!cleanRef && cleanAptId) {
+      const apt = await appointmentStore.getAppointmentById(cleanAptId);
+      if (apt) {
+        cleanRef = apt.referenceNumber.toUpperCase();
+      }
+    }
 
     // 3. Phone-based Rate Limiting (Max 5 requests per 10 minutes)
     const phoneRateCheck = await checkRateLimit(`cancel_req_${cleanPhone}`, 5, 600);
@@ -60,6 +77,7 @@ export async function POST(req: NextRequest) {
 
     // 5. Submit Cancellation Request
     const result = await appointmentStore.requestCancellation({
+      appointmentId: cleanAptId || undefined,
       referenceNumber: cleanRef,
       phoneNumber: cleanPhone,
       reason: typeof reason === 'string' ? reason.trim().slice(0, 300) : undefined,

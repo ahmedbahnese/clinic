@@ -113,6 +113,7 @@ export async function POST(req: NextRequest) {
         serviceId: a.serviceId,
         serviceName: a.serviceName || 'كشف واستشارة طبية',
         patientName: isThisVerified ? a.patientName : '[بيانات الطفل محجوبة لحماية الخصوصية]',
+        phoneNumber: a.phoneNumber || normalizedPhone,
         appointmentDate: a.appointmentDate,
         attendanceGuidance: 'الحضور صباحاً بأسبقية التسجيل في شباك الاستقبال بالمستشفى',
         status: a.status,

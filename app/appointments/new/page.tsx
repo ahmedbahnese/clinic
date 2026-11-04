@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { SiteHeader } from '@/components/SiteHeader';
 import { SiteFooter } from '@/components/SiteFooter';
+import ReceiptCard from '@/components/ReceiptCard';
 import { submitBooking } from './actions';
 import {
   normalizeAndValidateEgyptianPhone,
@@ -430,9 +431,9 @@ function NewAppointmentForm() {
     >
       <SiteHeader />
 
-      <main className="flex-1 w-full max-w-[880px] mx-auto px-4 sm:px-6 py-8 sm:py-12">
+      <main className="flex-1 w-full max-w-[880px] mx-auto px-4 sm:px-6 py-8 sm:py-12 print:p-0 print:m-0 print:max-w-none">
         {/* Breadcrumb Navigation */}
-        <div className="mb-6 flex items-center justify-between text-xs text-slate-500">
+        <div className="mb-6 flex items-center justify-between text-xs text-slate-500 no-print">
           <Link
             href="/"
             className="inline-flex items-center gap-1.5 hover:text-[#087F78] transition-colors font-medium"
@@ -450,8 +451,8 @@ function NewAppointmentForm() {
           /* ================================================================ */
           /* SUCCESS STATE: CONFIRMATION TICKET / RECEIPT                     */
           /* ================================================================ */
-          <div className="bg-white rounded-3xl sm:rounded-[32px] border border-slate-200/80 p-6 sm:p-10 shadow-sm animate-in fade-in zoom-in-95 duration-200 text-right">
-            <div className="text-center max-w-lg mx-auto space-y-3 pb-6 border-b border-slate-100">
+          <div className="bg-white rounded-3xl sm:rounded-[32px] border border-slate-200/80 p-6 sm:p-10 shadow-sm animate-in fade-in zoom-in-95 duration-200 text-right print:border-none print:p-0 print:shadow-none print:m-0">
+            <div className="text-center max-w-lg mx-auto space-y-3 pb-6 border-b border-slate-100 no-print">
               <div className="w-16 h-16 rounded-full bg-emerald-50 border-2 border-emerald-200 text-emerald-600 flex items-center justify-center mx-auto shadow-xs">
                 <CheckCircle2 className="w-9 h-9 stroke-[2.2]" />
               </div>
@@ -464,191 +465,33 @@ function NewAppointmentForm() {
               </p>
             </div>
 
-            {/* Printable & Exportable Receipt Ticket */}
-            <div
-              ref={ticketRef}
-              className="mt-8 max-w-xl mx-auto bg-gradient-to-b from-[#F6F9FB] to-white border-2 border-dashed border-[#79C7C1] rounded-[24px] p-6 relative overflow-hidden shadow-2xs"
-            >
-              {/* Hospital Official Branding Header with Logo */}
-              <div className="flex items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-200">
-                <div className="flex items-center gap-3">
-                  <Image
-                    src="/logo-main.png"
-                    alt="شعار مستشفى الأطفال التخصصي بالبحيرة"
-                    width={56}
-                    height={56}
-                    className="w-12 h-12 sm:w-14 sm:h-14 object-contain"
-                  />
-                  <div>
-                    <h3 className="text-xs sm:text-sm font-extrabold text-[#124E4A] leading-tight">
-                      مستشفى الأطفال التخصصي بالبحيرة
-                    </h3>
-                    <p className="text-[10px] sm:text-xs text-slate-500 font-semibold">
-                      إيصال حجز رسمي — العيادات الخارجية
-                    </p>
-                  </div>
-                </div>
-                <div className="text-left text-3xs sm:text-2xs text-slate-400 font-mono">
-                  {new Date().toLocaleDateString('ar-EG')}
-                </div>
-              </div>
+            {/* Unified Printable Receipt Card */}
+            <div className="mt-8 max-w-xl mx-auto">
+              <ReceiptCard
+                appointment={confirmedAppointment}
+                extraActions={
+                  <>
+                    <Link
+                      href={`/appointments/track?phone=${confirmedAppointment.phoneNumber}`}
+                      className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-[#087F78] hover:bg-[#066560] text-white text-xs sm:text-sm font-bold shadow-xs hover:shadow-md transition-all"
+                    >
+                      <Search className="w-4 h-4" />
+                      <span>متابعة حالة الحجز</span>
+                    </Link>
 
-              {/* Reference Header */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-5 border-b border-slate-200">
-                <div>
-                  <span className="text-[11px] font-semibold text-slate-400 block mb-0.5">
-                    الرقم المرجعي المعتمد للحجز
-                  </span>
-                  <span className="text-2xl sm:text-3xl font-black text-[#087F78] tracking-widest font-mono">
-                    {confirmedAppointment.referenceNumber}
-                  </span>
-                </div>
-                <div className="text-right sm:text-left">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>قيد المراجعة</span>
-                  </span>
-                  <span className="block text-[11px] text-slate-500 mt-1">
-                    حالة الإيصال: <strong className="text-amber-800 font-bold">في انتظار التأكيد</strong>
-                  </span>
-                </div>
-              </div>
-
-              {/* Patient and Clinic Details Grid (Strictly Excludes Guardian National ID) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-5 border-b border-slate-200 text-xs sm:text-sm">
-                <div>
-                  <span className="text-[11px] text-slate-400 block font-semibold">اسم الطفل (المريض)</span>
-                  <span className="font-bold text-[#163C3A] text-sm sm:text-base">
-                    {confirmedAppointment.patientName}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[11px] text-slate-400 block font-semibold">العمر</span>
-                  <span className="font-bold text-[#163C3A] text-sm sm:text-base">
-                    {confirmedAppointment.patientAge || 'غير محدد'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[11px] text-slate-400 block font-semibold">رقم هاتف ولي الأمر</span>
-                  <span className="font-bold text-[#163C3A] font-mono text-sm sm:text-base">
-                    {confirmedAppointment.phoneNumber}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[11px] text-slate-400 block font-semibold">العنوان المسجل</span>
-                  <span className="font-bold text-[#163C3A]">
-                    {confirmedAppointment.patientAddress || 'غير محدد'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[11px] text-slate-400 block font-semibold">العيادة التخصصية</span>
-                  <span className="font-bold text-[#087F78] text-sm sm:text-base">
-                    {confirmedAppointment.clinicName}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[11px] text-slate-400 block font-semibold">الخدمة أو الفحص المطلوب</span>
-                  <span className="font-bold text-[#163C3A] text-sm sm:text-base">
-                    {confirmedAppointment.serviceName || activeService?.name || 'كشف واستشارة طبية'}
-                  </span>
-                </div>
-                <div className="sm:col-span-2">
-                  <span className="text-[11px] text-slate-400 block font-semibold">تاريخ وموعد الحضور</span>
-                  <span className="font-bold text-[#163C3A] text-sm sm:text-base">
-                    {formatArabicDate(confirmedAppointment.appointmentDate)} — الحضور صباحاً بأسبقية التسجيل في شباك الاستقبال
-                  </span>
-                </div>
-              </div>
-
-              {/* Verified Phone Notice */}
-              <div className="my-4 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 flex items-center justify-between">
-                <span>رقم الهاتف المعتمد للمتابعة:</span>
-                <span className="font-bold font-mono text-[#087F78]">{confirmedAppointment.phoneNumber}</span>
-              </div>
-
-              {/* Required Documents Section */}
-              <div className="pt-4 text-xs text-slate-600 space-y-2 leading-relaxed">
-                <p className="font-bold text-[#124E4A] flex items-center gap-1.5">
-                  <FileText className="w-4 h-4 text-[#087F78]" />
-                  <span>الأوراق والمستندات المطلوبة عند الحضور:</span>
-                </p>
-                <ul className="list-disc list-inside space-y-1 text-slate-700 pr-1">
-                  {(confirmedAppointment.requiredDocuments && confirmedAppointment.requiredDocuments.length > 0
-                    ? confirmedAppointment.requiredDocuments
-                    : activeService?.requiredDocuments || [
-                        'أصل شهادة ميلاد الطفل أو بطاقة التأمين الصحي',
-                        'أي فحوصات أو تقارير طبية سابقة تخص الحالة',
-                      ]
-                  ).map((doc, idx) => (
-                    <li key={idx} className="font-medium">
-                      {doc}
-                    </li>
-                  ))}
-                </ul>
-
-                {/* Service Instructions */}
-                {(confirmedAppointment.serviceInstructions || activeService?.instructions || activeClinic?.instructions) && (
-                  <div className="mt-3 pt-3 border-t border-slate-200/80 text-teal-900 bg-teal-50/70 p-3 rounded-xl border border-teal-100">
-                    <p className="font-bold text-[#124E4A] mb-1 flex items-center gap-1">
-                      <Info className="w-3.5 h-3.5 text-[#087F78]" />
-                      <span>تعليمات الخدمة والتحضير الطبي:</span>
-                    </p>
-                    <p className="whitespace-pre-line leading-relaxed text-teal-950 font-medium text-[11px] sm:text-xs">
-                      {confirmedAppointment.serviceInstructions || activeService?.instructions || activeClinic?.instructions}
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Actions Toolbar */}
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full border border-slate-200 text-xs sm:text-sm font-bold text-[#163C3A] hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
-              >
-                <Printer className="w-4 h-4 text-[#087F78]" />
-                <span>طباعة / حفظ PDF</span>
-              </button>
-
-              <button
-                type="button"
-                disabled={generatingImage}
-                onClick={handleSaveAsImage}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full border border-teal-200 text-xs sm:text-sm font-bold text-[#087F78] bg-teal-50/60 hover:bg-teal-100 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
-              >
-                <Download className="w-4 h-4 text-[#087F78]" />
-                <span>{generatingImage ? 'جاري إنشاء الصورة...' : 'حفظ كصورة (PNG)'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleShare}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full border border-slate-200 text-xs sm:text-sm font-bold text-[#163C3A] hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
-              >
-                <Share2 className="w-4 h-4 text-[#087F78]" />
-                <span>مشاركة التذكرة</span>
-              </button>
-
-              <Link
-                href={`/appointments/track?phone=${confirmedAppointment.phoneNumber}`}
-                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-[#087F78] hover:bg-[#066560] text-white text-xs sm:text-sm font-bold shadow-xs hover:shadow-md transition-all"
-              >
-                <Search className="w-4 h-4" />
-                <span>متابعة حالة الحجز</span>
-              </Link>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setConfirmedAppointment(null);
-                  reset();
-                }}
-                className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-semibold text-slate-500 hover:text-[#087F78] transition-colors cursor-pointer"
-              >
-                <span>حجز موعد لطفل آخر</span>
-              </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConfirmedAppointment(null);
+                        reset();
+                      }}
+                      className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-full text-xs font-semibold text-slate-500 hover:text-[#087F78] transition-colors cursor-pointer"
+                    >
+                      <span>حجز موعد لطفل آخر</span>
+                    </button>
+                  </>
+                }
+              />
             </div>
           </div>
         ) : (

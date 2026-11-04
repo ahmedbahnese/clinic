@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { SiteHeader } from '@/components/SiteHeader';
 import { SiteFooter } from '@/components/SiteFooter';
+import ReceiptCard from '@/components/ReceiptCard';
 import type { Appointment, AppointmentStatus } from '@/types';
 import { formatArabicDate } from '@/lib/rules';
 
@@ -59,7 +60,6 @@ function TrackContent() {
 
   // Cancellation modal state
   const [cancellingAptId, setCancellingAptId] = useState<string | null>(null);
-  const [cancelRefInput, setCancelRefInput] = useState('');
   const [cancelPhoneInput, setCancelPhoneInput] = useState('');
   const [cancelReason, setCancelReason] = useState('');
   const [isCancelling, setIsCancelling] = useState(false);
@@ -157,8 +157,8 @@ function TrackContent() {
 
   // Handle appointment cancellation request submission
   async function handleConfirmCancel() {
-    if (!cancelRefInput.trim() || !cancelPhoneInput.trim()) {
-      alert('يرجى التأكد من إدخال الرقم المرجعي ورقم الهاتف المسجل بالحجز');
+    if (!cancellingAptId || !cancelPhoneInput.trim()) {
+      alert('يرجى التأكد من إدخال رقم الهاتف المسجل بالحجز');
       return;
     }
     setIsCancelling(true);
@@ -168,7 +168,8 @@ function TrackContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          referenceNumber: cancelRefInput.trim(),
+          appointmentId: cancellingAptId,
+          referenceNumber: selectedAppointment?.referenceNumber,
           phoneNumber: cancelPhoneInput.trim(),
           reason: cancelReason.trim() || 'طلب إلغاء من ولي الأمر عبر بوابة المتابعة',
           turnstileToken: turnstileToken || undefined,
@@ -178,15 +179,12 @@ function TrackContent() {
       if (data.success) {
         setAppointments((prev) =>
           prev.map((a) =>
-            a.referenceNumber.toUpperCase() === cancelRefInput.trim().toUpperCase()
+            a.id === cancellingAptId || (selectedAppointment && a.referenceNumber === selectedAppointment.referenceNumber)
               ? { ...a, hasPendingCancellation: true }
               : a
           )
         );
-        if (
-          selectedAppointment &&
-          selectedAppointment.referenceNumber.toUpperCase() === cancelRefInput.trim().toUpperCase()
-        ) {
+        if (selectedAppointment) {
           setSelectedAppointment({ ...selectedAppointment, hasPendingCancellation: true });
         }
         setCancellingAptId(null);
@@ -469,185 +467,29 @@ function TrackContent() {
 
               {/* RECEIPT VIEW */}
               {selectedAppointment && (
-                <div className="mt-8 max-w-2xl mx-auto pt-6 border-t border-slate-200 animate-in fade-in slide-in-from-bottom-3 duration-200">
-                  <div className="flex items-center justify-between mb-4 no-print">
-                    <div>
-                      <h3 className="text-lg font-bold text-[#124E4A]">
-                        تذكرة الحجز الإلكتروني
-                      </h3>
-                      <p className="text-xs text-slate-500">
-                        الرقم المرجعي: <span className="font-mono font-bold text-[#087F78]">{selectedAppointment.referenceNumber}</span>
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={handlePrint}
-                        className="px-3.5 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
-                      >
-                        <Printer className="w-3.5 h-3.5" />
-                        <span>طباعة التذكرة</span>
-                      </button>
-
-                      <button
-                        onClick={handleSaveAsImage}
-                        disabled={generatingImage}
-                        className="px-3.5 py-1.5 rounded-xl bg-[#087F78] hover:bg-[#066560] text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-50"
-                      >
-                        {generatingImage ? (
-                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <Download className="w-3.5 h-3.5" />
-                        )}
-                        <span>حفظ كصورة</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Printable Ticket Element */}
-                  <div
-                    id="printable-ticket"
-                    ref={receiptRef}
-                    className="bg-white rounded-3xl border-2 border-slate-200 p-6 sm:p-8 space-y-6 shadow-sm"
-                  >
-                    <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                      <div className="flex items-center gap-3">
-                        <Image
-                          src="/logo-main.png"
-                          alt="شعار مستشفى الأطفال التخصصي بالبحيرة"
-                          width={48}
-                          height={48}
-                          className="w-10 h-10 sm:w-12 sm:h-12 object-contain"
-                        />
-                        <div>
-                          <h4 className="text-base sm:text-lg font-black text-[#124E4A]">
-                            مستشفى الأطفال التخصصي بالبحيرة
-                          </h4>
-                          <p className="text-2xs text-slate-400">
-                            بوابة العيادات الخارجية التخصصية — تذكرة مراجعة الحجز
-                          </p>
+                <div className="mt-8 max-w-2xl mx-auto pt-6 border-t border-slate-200 animate-in fade-in slide-in-from-bottom-3 duration-200 print:mt-0 print:pt-0 print:border-none print:max-w-none print:w-full">
+                  <ReceiptCard
+                    appointment={selectedAppointment}
+                    phoneQuery={phoneQuery}
+                    canCancel={
+                      selectedAppointment.isVerified !== false &&
+                      selectedAppointment.status !== 'CANCELLED' &&
+                      selectedAppointment.status !== 'COMPLETED' &&
+                      !selectedAppointment.hasPendingCancellation
+                    }
+                    onCancelRequest={() => {
+                      setCancellingAptId(selectedAppointment.id);
+                      setCancelPhoneInput(selectedAppointment.phoneNumber || phoneQuery.trim());
+                    }}
+                    extraActions={
+                      selectedAppointment.hasPendingCancellation ? (
+                        <div className="flex items-center gap-2 text-xs p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">
+                          <Clock className="w-4 h-4 text-amber-600 shrink-0 animate-pulse" />
+                          <span className="font-bold">يوجد طلب إلغاء قيد المراجعة لدى موظفي الاستقبال</span>
                         </div>
-                      </div>
-                      <div className="text-left font-mono">
-                        <span className="text-[10px] text-slate-400 block font-semibold">كود التذكرة</span>
-                        <span className="text-sm font-black text-[#087F78]">{selectedAppointment.referenceNumber}</span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                      <div>
-                        <span className="text-slate-400 block text-2xs mb-0.5">اسم الطفل / المريض</span>
-                        <strong className="text-sm text-[#163C3A]">{selectedAppointment.patientName}</strong>
-                      </div>
-
-                      <div>
-                        <span className="text-slate-400 block text-2xs mb-0.5">حالة الموعد</span>
-                        <strong className="text-xs text-[#087F78]">
-                          {selectedAppointment.status === 'CONFIRMED' || selectedAppointment.status === 'CHECKED_IN'
-                            ? 'حجز مؤكد ومعتمد'
-                            : 'قيد المراجعة والاعتماد'}
-                        </strong>
-                      </div>
-
-                      <div>
-                        <span className="text-slate-400 block text-2xs mb-0.5">العيادة التخصصية</span>
-                        <strong className="text-xs text-[#163C3A]">{selectedAppointment.clinicName}</strong>
-                      </div>
-
-                      <div>
-                        <span className="text-slate-400 block text-2xs mb-0.5">الخدمة المطلوبة</span>
-                        <strong className="text-xs text-[#163C3A]">{selectedAppointment.serviceName || 'كشف واستشارة طبية'}</strong>
-                      </div>
-
-                      <div className="sm:col-span-2 p-3.5 rounded-2xl bg-teal-50/70 border border-teal-100">
-                        <span className="text-2xs font-bold text-[#087F78] block mb-0.5">تاريخ وموعد الحضور</span>
-                        <p className="text-xs sm:text-sm font-bold text-[#124E4A]">
-                          {formatArabicDate(selectedAppointment.appointmentDate)} — الحضور صباحاً بأسبقية التسجيل في شباك الاستقبال
-                        </p>
-                      </div>
-
-                      <div>
-                        <span className="text-slate-400 block text-2xs mb-0.5">حالة الإيصال</span>
-                        {selectedAppointment.status === 'CONFIRMED' || selectedAppointment.status === 'CHECKED_IN' ? (
-                          <strong className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
-                            مؤكد
-                          </strong>
-                        ) : selectedAppointment.status === 'CANCELLED' ? (
-                          <strong className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-red-100 text-red-800 border border-red-300">
-                            ملغي
-                          </strong>
-                        ) : selectedAppointment.status === 'COMPLETED' ? (
-                          <strong className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-blue-100 text-blue-800 border border-blue-300">
-                            مكتمل (تم الكشف)
-                          </strong>
-                        ) : (
-                          <strong className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-100 text-amber-800 border border-amber-300">
-                            في انتظار التأكيد
-                          </strong>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Instructions & Required Documents */}
-                    {selectedAppointment.requiredDocuments && selectedAppointment.requiredDocuments.length > 0 && (
-                      <div className="pt-3 border-t border-slate-100 text-xs">
-                        <span className="font-bold text-[#124E4A] block mb-1">الأوراق والمستندات المطلوبة:</span>
-                        <ul className="list-disc list-inside space-y-0.5 pr-1 text-slate-600 text-2xs">
-                          {selectedAppointment.requiredDocuments.map((doc, idx) => (
-                            <li key={idx}>{doc}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {selectedAppointment.serviceInstructions && (
-                      <div className="pt-2 text-xs">
-                        <span className="font-bold text-[#124E4A] block mb-0.5">تعليمات الحضور:</span>
-                        <p className="text-slate-600 leading-relaxed text-2xs">
-                          {selectedAppointment.serviceInstructions}
-                        </p>
-                      </div>
-                    )}
-
-                    <div className="pt-4 border-t border-slate-100 text-center text-3xs text-slate-400 leading-relaxed">
-                      أبو حمص – دمسنا – محافظة البحيرة • مستشفى الأطفال التخصصي
-                    </div>
-                  </div>
-
-                  {/* Cancel Appointment Request Section */}
-                  {selectedAppointment.isVerified !== false &&
-                    selectedAppointment.status !== 'CANCELLED' &&
-                    selectedAppointment.status !== 'COMPLETED' && (
-                      <div className="mt-4 pt-3 border-t border-slate-100 no-print">
-                        {selectedAppointment.hasPendingCancellation ? (
-                          <div className="flex items-center justify-between text-xs p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900">
-                            <div className="flex items-center gap-2">
-                              <Clock className="w-4 h-4 text-amber-600 shrink-0 animate-pulse" />
-                              <span className="font-bold">يوجد طلب إلغاء قيد المراجعة لدى موظفي الاستقبال</span>
-                            </div>
-                            <span className="text-3xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-md">
-                              الحجز لا يزال فعالاً
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="text-slate-400">هل ترغب في الاعتذار عن الحضور؟</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCancellingAptId(selectedAppointment.referenceNumber || selectedAppointment.id);
-                                setCancelRefInput(selectedAppointment.referenceNumber || '');
-                                setCancelPhoneInput(phoneQuery.trim());
-                              }}
-                              className="text-amber-700 hover:text-amber-800 font-bold hover:underline cursor-pointer flex items-center gap-1"
-                            >
-                              <AlertCircle className="w-4 h-4" />
-                              <span>طلب إلغاء الحجز</span>
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                      ) : null
+                    }
+                  />
                 </div>
               )}
             </>
@@ -681,21 +523,24 @@ function TrackContent() {
               </p>
             </div>
 
-            <div className="space-y-3">
-              <div>
-                <label className="block text-2xs font-bold text-[#163C3A] mb-1">
-                  الرقم المرجعي للحجز
-                </label>
-                <input
-                  type="text"
-                  value={cancelRefInput}
-                  onChange={(e) => setCancelRefInput(e.target.value)}
-                  placeholder="مثال: BSCH-1001"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs text-slate-800 focus:border-[#087F78] font-mono"
-                  dir="ltr"
-                />
+            {selectedAppointment && (
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 text-2xs font-medium">العيادة التخصصية:</span>
+                  <strong className="text-[#163C3A] font-bold">{selectedAppointment.clinicName}</strong>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 text-2xs font-medium">اسم المريض:</span>
+                  <strong className="text-[#163C3A] font-bold">{selectedAppointment.patientName}</strong>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500 text-2xs font-medium">تاريخ الحجز:</span>
+                  <strong className="text-[#087F78] font-bold">{formatArabicDate(selectedAppointment.appointmentDate)}</strong>
+                </div>
               </div>
+            )}
 
+            <div className="space-y-3">
               <div>
                 <label className="block text-2xs font-bold text-[#163C3A] mb-1">
                   رقم الهاتف المسجل بالحجز
