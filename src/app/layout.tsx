@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
+import AppExperience from "@/components/AppExperience";
 
 const hospitalName = "مستشفى الأطفال التخصصي بالبحيرة";
 const systemName = "العيادات الخارجية";
@@ -41,7 +42,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="ar" dir="rtl">
-      <body>{children}</body>
+      <body><AppExperience>{children}</AppExperience></body>
     </html>
   );
 }

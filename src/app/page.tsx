@@ -17,6 +17,7 @@ const defaultHospitalWebsite = "https://albahira.elyoser.cloud/";
 type CmsHome = { site_name: string; tagline: string; header_title: string; logo_url: string; hospital_website: string; notice_title: string; notice_body: string; notice_enabled: boolean };
 type CmsSection = { section_key: string; title: string; subtitle: string; body: string; is_visible: boolean };
 type CmsNav = { label: string; href: string; open_mode: string };
+type CmsPromotion = { id: string; title: string; subtitle: string; body: string; image_url: string; action_label: string; action_url: string };
 
 const services = [
   {
@@ -49,8 +50,12 @@ export default function Home() {
   const [cms, setCms] = useState<CmsHome | null>(null);
   const [sections, setSections] = useState<CmsSection[]>([]);
   const [navLinks, setNavLinks] = useState<CmsNav[]>([]);
-  useEffect(() => { const client = createSupabaseBrowserClient(); if (!client) return; void Promise.all([client.from("site_settings").select("site_name,tagline,header_title,logo_url,hospital_website,notice_title,notice_body,notice_enabled").eq("id", true).maybeSingle(), client.from("site_sections").select("section_key,title,subtitle,body,is_visible").eq("is_visible", true).order("sort_order"), client.from("site_nav_links").select("label,href,open_mode").eq("is_visible", true).order("sort_order")]).then(([settingsResult, sectionsResult, navResult]) => { if (settingsResult.data) setCms(settingsResult.data as CmsHome); setSections((sectionsResult.data ?? []) as CmsSection[]); setNavLinks((navResult.data ?? []) as CmsNav[]); }); }, []);
+  const [promotions, setPromotions] = useState<CmsPromotion[]>([]);
+  const [promotionIndex, setPromotionIndex] = useState(0);
+  useEffect(() => { const client = createSupabaseBrowserClient(); if (!client) return; void Promise.all([client.from("site_settings").select("site_name,tagline,header_title,logo_url,hospital_website,notice_title,notice_body,notice_enabled").eq("id", true).maybeSingle(), client.from("site_sections").select("section_key,title,subtitle,body,is_visible").eq("is_visible", true).order("sort_order"), client.from("site_nav_links").select("label,href,open_mode").eq("is_visible", true).order("sort_order"), client.from("site_promotions").select("id,title,subtitle,body,image_url,action_label,action_url").eq("is_visible", true).order("sort_order")]).then(([settingsResult, sectionsResult, navResult, promotionsResult]) => { if (settingsResult.data) setCms(settingsResult.data as CmsHome); setSections((sectionsResult.data ?? []) as CmsSection[]); setNavLinks((navResult.data ?? []) as CmsNav[]); setPromotions((promotionsResult.data ?? []) as CmsPromotion[]); }); }, []);
   const cmsSection = (key: string) => sections.find((item) => item.section_key === key);
+  useEffect(() => { if (promotions.length < 2) return; const timer = window.setInterval(() => setPromotionIndex((current) => (current + 1) % promotions.length), 5000); return () => window.clearInterval(timer); }, [promotions.length]);
+  const activePromotion = promotions[promotionIndex];
   const hospitalWebsite = cms?.hospital_website || defaultHospitalWebsite;
   const siteName = cms?.site_name || "مستشفى الأطفال التخصصي بالبحيرة";
   return (
@@ -147,6 +152,7 @@ export default function Home() {
           </div>
         </section>
 
+        {activePromotion && <section className="promotion-strip" aria-label="إعلانات وخدمات الموقع"><div className="promotion-copy"><span className="section-kicker">{activePromotion.subtitle || "إعلان وخدمات"}</span><h2>{activePromotion.title}</h2><p>{activePromotion.body}</p>{activePromotion.action_url && <Link className="button button-primary" href={activePromotion.action_url}>{activePromotion.action_label || "اعرف المزيد"}<ArrowLeft size={16} /></Link>}<div className="promotion-dots">{promotions.map((item, index) => <button key={item.id} className={index === promotionIndex ? "active" : ""} onClick={() => setPromotionIndex(index)} aria-label={`الإعلان ${index + 1}`} />)}</div></div><div className="promotion-image">{activePromotion.image_url && <Image src={activePromotion.image_url} alt={activePromotion.title} fill sizes="(max-width: 680px) 100vw, 42vw" />}</div></section>}
         <section className="services-section" aria-labelledby="services-title">
           <div className="section-heading">
             <div>
