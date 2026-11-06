@@ -36,9 +36,13 @@ import {
   CalendarDays,
   XCircle,
   Phone,
+  Edit3,
+  Radio,
+  PlayCircle,
 } from 'lucide-react';
 import CmsDashboard from '@/components/cms/CmsDashboard';
 import StaffManager from './components/StaffManager';
+import LiveQueueManager from '@/components/LiveQueueManager';
 import { Appointment, Clinic, ClinicService, ClinicScheduleException, AppointmentStatus, AuditLogItem, CancellationRequest } from '@/types';
 import { getStatusDisplay, formatArabicDate, formatLocalDate } from '@/lib/rules';
 
@@ -53,7 +57,7 @@ export default function StaffDashboardPage() {
   } | null>(null);
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState<'QUEUE' | 'CLINICS' | 'AUDIT' | 'CMS' | 'CANCELLATIONS' | 'STAFF'>('QUEUE');
+  const [activeTab, setActiveTab] = useState<'QUEUE' | 'LIVE_QUEUE' | 'CLINICS' | 'AUDIT' | 'CMS' | 'CANCELLATIONS' | 'STAFF'>('QUEUE');
 
   // Queue Sub-Tab: Pending Confirmation vs Confirmed vs All
   const [queueSubTab, setQueueSubTab] = useState<'PENDING' | 'CONFIRMED' | 'ALL'>('PENDING');
@@ -156,6 +160,8 @@ export default function StaffDashboardPage() {
   const [newServiceInstructions, setNewServiceInstructions] = useState('');
   const [addingServiceLoading, setAddingServiceLoading] = useState(false);
   const [deletingServiceId, setDeletingServiceId] = useState<string | null>(null);
+  const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
+  const [updatingServiceLoading, setUpdatingServiceLoading] = useState(false);
 
   // Admin Clinics Management State
   const [adminClinics, setAdminClinics] = useState<Clinic[]>([]);
@@ -712,6 +718,67 @@ export default function StaffDashboardPage() {
     }
   }
 
+  // Start Edit Service Handler
+  function handleStartEditService(service: ClinicService) {
+    setEditingServiceId(service.id);
+    setNewServiceName(service.name);
+    setNewServiceCapacity(service.maxDailyCapacity ?? 20);
+    setNewServiceDocs((service.requiredDocuments || []).join('\n'));
+    setNewServiceInstructions(service.instructions || '');
+  }
+
+  // Cancel Edit Service Handler
+  function handleCancelEditService() {
+    setEditingServiceId(null);
+    setNewServiceName('');
+    setNewServiceCapacity(20);
+    setNewServiceDocs('');
+    setNewServiceInstructions('');
+  }
+
+  // Save / Update Service Handler
+  async function handleUpdateServiceInClinic() {
+    if (!editingClinic || !editingServiceId || !newServiceName.trim()) {
+      alert('يرجى كتابة اسم الخدمة أولاً');
+      return;
+    }
+    const token = localStorage.getItem('bsch_staff_token');
+    if (!token) return;
+
+    setUpdatingServiceLoading(true);
+    try {
+      const res = await fetch(`/api/staff/cms/clinics/${editingClinic.id}/services`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          serviceId: editingServiceId,
+          name: newServiceName.trim(),
+          maxDailyCapacity: Number(newServiceCapacity) || 20,
+          requiredDocuments: newServiceDocs.split('\n').map((s) => s.trim()).filter(Boolean),
+          instructions: newServiceInstructions.trim(),
+          isActive: true,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.service) {
+        setEditingClinicServices((prev) =>
+          prev.map((s) => (s.id === editingServiceId ? data.service : s))
+        );
+        handleCancelEditService();
+        alert('تم تعديل بيانات الخدمة بنجاح');
+      } else {
+        alert(data.error || 'تعذر تعديل الخدمة');
+      }
+    } catch {
+      alert('حدث خطأ أثناء الاتصال بالخادم');
+    } finally {
+      setUpdatingServiceLoading(false);
+    }
+  }
+
   // Admin Clinic Update Handler
   async function handleSaveClinic(clinic: Clinic) {
     const token = localStorage.getItem('bsch_staff_token');
@@ -1001,9 +1068,12 @@ export default function StaffDashboardPage() {
     return appointments;
   }, [appointments, queueSubTab]);
 
-  const isAdmin = currentUser?.role === 'ADMIN';
-  const isDoctor = currentUser?.role === 'DOCTOR';
-  const isReceptionist = currentUser?.role === 'RECEPTIONIST' || currentUser?.username === 'reception';
+  const isAdmin = currentUser?.role?.toUpperCase() === 'ADMIN';
+  const isDoctor = currentUser?.role?.toUpperCase() === 'DOCTOR';
+  const isReceptionist =
+    currentUser?.role?.toUpperCase() === 'RECEPTIONIST' ||
+    currentUser?.username?.toLowerCase() === 'reception' ||
+    (!isAdmin && !isDoctor);
 
   return (
     <div className="min-h-screen bg-[#F6F9FB] flex flex-col text-right">
@@ -1180,6 +1250,18 @@ export default function StaffDashboardPage() {
             >
               <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span>طابور العيادة والحجوزات</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('LIVE_QUEUE')}
+              className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all shrink-0 ${
+                activeTab === 'LIVE_QUEUE'
+                  ? 'bg-[#087F78] text-white shadow-xs'
+                  : 'text-[#163C3A] hover:bg-slate-100 bg-white border border-[#E2E8EE]'
+              }`}
+            >
+              <Radio className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400 animate-pulse" />
+              <span>طابور الكشف المباشر (Live Queue)</span>
             </button>
 
             {(isReceptionist || isAdmin) && (
@@ -1403,6 +1485,14 @@ export default function StaffDashboardPage() {
                       <span>حجز حضوري سريع</span>
                     </button>
                   )}
+                  <button
+                    onClick={() => setActiveTab('LIVE_QUEUE')}
+                    className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-teal-50 hover:bg-teal-100 text-[#087F78] border border-teal-200 text-xs font-bold transition-colors cursor-pointer"
+                    title="فتح شاشة النداء المباشر والتحكم في الطابور"
+                  >
+                    <PlayCircle className="w-4 h-4 text-[#087F78]" />
+                    <span>شاشة النداء المباشر</span>
+                  </button>
                   <button
                     onClick={() => setRefreshKey((k) => k + 1)}
                     className="p-2 rounded-xl border border-[#E2E8EE] hover:bg-slate-50 text-[#8493A6] hover:text-[#087F78] transition-colors"
@@ -1971,6 +2061,18 @@ export default function StaffDashboardPage() {
           </>
         )}
 
+        {/* TAB: LIVE QUEUE MANAGER */}
+        {activeTab === 'LIVE_QUEUE' && (
+          <LiveQueueManager
+            appointments={appointments}
+            clinics={clinics}
+            currentUser={currentUser}
+            onStatusChange={handleStatusChange}
+            onRecall={handleRecall}
+            onRefresh={() => setRefreshKey((k) => k + 1)}
+          />
+        )}
+
         {/* TAB 2: ADMIN CLINICS MANAGEMENT */}
         {activeTab === 'CLINICS' && isAdmin && (
           <div className="bg-white rounded-2xl border border-[#E2E8EE] p-6 shadow-2xs space-y-6">
@@ -2039,9 +2141,15 @@ export default function StaffDashboardPage() {
                         </div>
                       </div>
 
-                      {clinic.description && (
-                        <p className="text-xs text-[#8493A6]">{clinic.description}</p>
-                      )}
+                      {/* Dynamic Services Summary */}
+                      <div className="p-2.5 rounded-xl bg-teal-50/60 border border-teal-100/80 text-xs">
+                        <span className="text-3xs font-bold text-[#087F78] block mb-0.5">الخدمات الطبية المتاحة:</span>
+                        <p className="text-xs font-semibold text-[#163C3A] leading-relaxed">
+                          {clinic.services && clinic.services.length > 0
+                            ? clinic.services.filter((s) => s.isActive !== false).map((s) => s.name).join('، ')
+                            : clinic.description || 'فحص وعلاج واستشارة طبية متخصصة'}
+                        </p>
+                      </div>
 
                       <div className="grid grid-cols-2 gap-2 text-2xs text-[#163C3A] pt-2 border-t border-slate-200">
                         <div>الموقع: <span className="font-semibold">{clinic.location}</span></div>
@@ -3043,6 +3151,24 @@ export default function StaffDashboardPage() {
                   <span className="text-3xs text-slate-400">إضافة وحذف وتعديل خدمات العيادة</span>
                 </div>
 
+                {/* Dynamic Summary of Active Services */}
+                <div className="p-3 bg-teal-50/80 border border-teal-200 rounded-xl space-y-1">
+                  <div className="flex items-center justify-between text-2xs font-bold text-[#124E4A]">
+                    <span>ملخص الخدمات الطبية النشطة (توليد تلقائي):</span>
+                    <span className="text-3xs px-2 py-0.5 rounded-full bg-teal-100/80 text-[#087F78] font-mono">
+                      {editingClinicServices.filter((s) => s.isActive !== false).length} خدمات نشطة
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#087F78] font-bold leading-relaxed">
+                    {editingClinicServices.filter((s) => s.isActive !== false).length > 0
+                      ? editingClinicServices
+                          .filter((s) => s.isActive !== false)
+                          .map((s) => s.name)
+                          .join('، ')
+                      : 'لا توجد خدمات مضافة حتى الآن'}
+                  </p>
+                </div>
+
                 {loadingClinicServices ? (
                   <div className="p-4 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
                     <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -3057,7 +3183,11 @@ export default function StaffDashboardPage() {
                     {editingClinicServices.map((service) => (
                       <div
                         key={service.id}
-                        className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 flex items-start justify-between gap-3 text-xs"
+                        className={`p-3 rounded-xl border transition-colors flex items-start justify-between gap-3 text-xs ${
+                          editingServiceId === service.id
+                            ? 'border-teal-500 bg-teal-50/70 ring-1 ring-teal-400'
+                            : 'border-slate-200 bg-slate-50/70'
+                        }`}
                       >
                         <div className="space-y-0.5 flex-1">
                           <div className="flex items-center gap-2">
@@ -3078,28 +3208,57 @@ export default function StaffDashboardPage() {
                           )}
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteServiceFromClinic(service.id)}
-                          disabled={deletingServiceId === service.id}
-                          className="px-2.5 py-1 text-2xs font-bold text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50 shrink-0"
-                          title="حذف الخدمة"
-                        >
-                          {deletingServiceId === service.id ? (
-                            <RefreshCw className="w-3 h-3 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-3 h-3" />
-                          )}
-                          <span>حذف</span>
-                        </button>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleStartEditService(service)}
+                            className="px-2.5 py-1 text-2xs font-bold text-teal-700 hover:bg-teal-50 rounded-lg border border-teal-200 transition-all flex items-center gap-1 cursor-pointer"
+                            title="تعديل بيانات الخدمة"
+                          >
+                            <Edit3 className="w-3 h-3" />
+                            <span>تعديل</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteServiceFromClinic(service.id)}
+                            disabled={deletingServiceId === service.id}
+                            className="px-2.5 py-1 text-2xs font-bold text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                            title="حذف الخدمة"
+                          >
+                            {deletingServiceId === service.id ? (
+                              <RefreshCw className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-3 h-3" />
+                            )}
+                            <span>حذف</span>
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
                 )}
 
-                {/* ADD NEW SERVICE INLINE FORM */}
-                <div className="p-3.5 bg-teal-50/50 border border-teal-200/70 rounded-xl space-y-2 text-xs">
-                  <span className="font-bold text-[#124E4A] block">إضافة خدمة جديدة لهذه العيادة:</span>
+                {/* ADD / EDIT SERVICE INLINE FORM */}
+                <div className={`p-3.5 rounded-xl space-y-2 text-xs border ${
+                  editingServiceId
+                    ? 'bg-amber-50/50 border-amber-300'
+                    : 'bg-teal-50/50 border-teal-200/70'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-[#124E4A] block">
+                      {editingServiceId ? 'تعديل بيانات الخدمة الطبية المحددة:' : 'إضافة خدمة جديدة لهذه العيادة:'}
+                    </span>
+                    {editingServiceId && (
+                      <button
+                        type="button"
+                        onClick={handleCancelEditService}
+                        className="text-3xs font-bold text-slate-500 hover:text-slate-800 underline cursor-pointer"
+                      >
+                        إلغاء التعديل
+                      </button>
+                    )}
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div>
                       <label className="block text-3xs text-slate-600 mb-0.5">اسم الخدمة *</label>
@@ -3142,24 +3301,54 @@ export default function StaffDashboardPage() {
                       className="w-full px-2.5 py-2 rounded-lg border border-teal-200 text-sm bg-white"
                     />
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleAddServiceToClinic}
-                    disabled={addingServiceLoading || !newServiceName.trim()}
-                    className="w-full py-2.5 rounded-xl bg-[#087F78] hover:bg-[#066560] text-white text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
-                  >
-                    {addingServiceLoading ? (
-                      <>
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        <span>جاري الإضافة...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>إضافة الخدمة للعيادة</span>
-                      </>
-                    )}
-                  </button>
+                  {editingServiceId ? (
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleUpdateServiceInClinic}
+                        disabled={updatingServiceLoading || !newServiceName.trim()}
+                        className="flex-1 py-2.5 rounded-xl bg-[#087F78] hover:bg-[#066560] text-white text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                      >
+                        {updatingServiceLoading ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            <span>جاري حفظ التعديلات...</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>حفظ تعديلات الخدمة</span>
+                          </>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelEditService}
+                        className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-100 text-xs font-bold"
+                      >
+                        إلغاء
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleAddServiceToClinic}
+                      disabled={addingServiceLoading || !newServiceName.trim()}
+                      className="w-full py-2.5 rounded-xl bg-[#087F78] hover:bg-[#066560] text-white text-xs font-bold transition-all shadow-2xs flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                    >
+                      {addingServiceLoading ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>جاري الإضافة...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>إضافة الخدمة للعيادة</span>
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
