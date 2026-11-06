@@ -46,6 +46,40 @@ import LiveQueueManager from '@/components/LiveQueueManager';
 import { Appointment, Clinic, ClinicService, ClinicScheduleException, AppointmentStatus, AuditLogItem, CancellationRequest } from '@/types';
 import { getStatusDisplay, formatArabicDate, formatLocalDate } from '@/lib/rules';
 
+function formatSafeDateTime(dateStr?: string | null): string {
+  if (!dateStr || typeof dateStr !== 'string') return '—';
+  try {
+    const normalized = dateStr.includes(' ') && !dateStr.includes('T') ? dateStr.replace(' ', 'T') : dateStr;
+    const d = new Date(normalized);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleString('ar-EG', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return String(dateStr);
+  }
+}
+
+function formatSafeTime(dateStr?: string | null): string {
+  if (!dateStr || typeof dateStr !== 'string') return '—';
+  try {
+    const normalized = dateStr.includes(' ') && !dateStr.includes('T') ? dateStr.replace(' ', 'T') : dateStr;
+    const d = new Date(normalized);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleTimeString('ar-EG', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  } catch {
+    return String(dateStr);
+  }
+}
+
 export default function StaffDashboardPage() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<{
@@ -410,10 +444,13 @@ export default function StaffDashboardPage() {
       });
       if (res.ok) {
         const data = await res.json();
-        setCancellationRequests(data.requests || []);
+        setCancellationRequests(Array.isArray(data?.requests) ? data.requests : []);
+      } else {
+        setCancellationRequests([]);
       }
     } catch (err) {
       console.error('Error loading cancellation requests:', err);
+      setCancellationRequests([]);
     } finally {
       setLoadingCancellationRequests(false);
     }
@@ -1275,9 +1312,9 @@ export default function StaffDashboardPage() {
               >
                 <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 <span>طلبات الإلغاء</span>
-                {cancellationRequests.filter((r) => r.status === 'PENDING').length > 0 && (
+                {(Array.isArray(cancellationRequests) ? cancellationRequests : []).filter((r) => r?.status === 'PENDING').length > 0 && (
                   <span className="bg-red-500 text-white text-3xs font-extrabold px-1.5 py-0.5 rounded-full animate-pulse">
-                    {cancellationRequests.filter((r) => r.status === 'PENDING').length}
+                    {(Array.isArray(cancellationRequests) ? cancellationRequests : []).filter((r) => r?.status === 'PENDING').length}
                   </span>
                 )}
               </button>
@@ -1622,11 +1659,12 @@ export default function StaffDashboardPage() {
                     {displayedAppointments.map((apt) => {
                       const status = getStatusDisplay(apt.status);
                       const hasPendingCancel =
-                        apt.hasPendingCancellation ||
-                        cancellationRequests.some(
+                        apt?.hasPendingCancellation ||
+                        (Array.isArray(cancellationRequests) ? cancellationRequests : []).some(
                           (r) =>
-                            (r.appointmentId === apt.id ||
-                              r.referenceNumber === apt.referenceNumber) &&
+                            r &&
+                            (r.appointmentId === apt?.id ||
+                              (r.referenceNumber && apt?.referenceNumber && r.referenceNumber === apt.referenceNumber)) &&
                             r.status === 'PENDING'
                         );
 
@@ -1900,11 +1938,12 @@ export default function StaffDashboardPage() {
                                   <span>{status.label}</span>
                                 </span>
 
-                                {(apt.hasPendingCancellation ||
-                                  cancellationRequests.some(
+                                {(apt?.hasPendingCancellation ||
+                                  (Array.isArray(cancellationRequests) ? cancellationRequests : []).some(
                                     (r) =>
-                                      (r.appointmentId === apt.id ||
-                                        r.referenceNumber === apt.referenceNumber) &&
+                                      r &&
+                                      (r.appointmentId === apt?.id ||
+                                        (r.referenceNumber && apt?.referenceNumber && r.referenceNumber === apt.referenceNumber)) &&
                                       r.status === 'PENDING'
                                   )) && (
                                   <button
@@ -2242,11 +2281,7 @@ export default function StaffDashboardPage() {
                     {auditLogs.map((log) => (
                       <tr key={log.id} className="hover:bg-slate-50">
                         <td className="py-2.5 px-3 font-mono text-2xs text-slate-500">
-                          {new Date(log.timestamp).toLocaleTimeString('ar-EG', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            second: '2-digit',
-                          })}
+                          {formatSafeTime(log?.timestamp)}
                         </td>
                         <td className="py-2.5 px-3">
                           <span className="font-bold text-[#163C3A] block">{log.staffName}</span>
@@ -2275,7 +2310,7 @@ export default function StaffDashboardPage() {
         {activeTab === 'STAFF' && isAdmin && <StaffManager />}
 
         {/* TAB 5: CANCELLATION REQUESTS MANAGEMENT */}
-        {activeTab === 'CANCELLATIONS' && (isReceptionist || isAdmin) && (
+        {activeTab === 'CANCELLATIONS' && (
           <div className="bg-white rounded-2xl border border-[#E2E8EE] p-3 sm:p-6 shadow-2xs space-y-4 sm:space-y-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 sm:pb-4 border-b border-slate-100">
               <div>
@@ -2303,7 +2338,7 @@ export default function StaffDashboardPage() {
                 </select>
                 <button
                   onClick={loadCancellationRequests}
-                  className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600"
+                  className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 cursor-pointer"
                   title="تحديث القائمة"
                 >
                   <RefreshCw className={`w-4 h-4 ${loadingCancellationRequests ? 'animate-spin' : ''}`} />
@@ -2311,9 +2346,13 @@ export default function StaffDashboardPage() {
               </div>
             </div>
 
-            {loadingCancellationRequests ? (
+            {!isReceptionist && !isAdmin ? (
+              <div className="p-8 text-center text-xs text-amber-800 bg-amber-50 rounded-xl border border-amber-200">
+                غير مصرح لهذا الحساب بالاطلاع على طلبات الإلغاء.
+              </div>
+            ) : loadingCancellationRequests ? (
               <div className="p-12 text-center text-xs text-slate-400">جاري تحميل طلبات الإلغاء...</div>
-            ) : cancellationRequests.length === 0 ? (
+            ) : (Array.isArray(cancellationRequests) ? cancellationRequests : []).length === 0 ? (
               <div className="p-12 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs">
                 لا توجد طلبات إلغاء تطابق خيارات التصفية الحالية.
               </div>
@@ -2321,107 +2360,115 @@ export default function StaffDashboardPage() {
               <>
                 {/* Dedicated Mobile Cards View (Phones < 768px) */}
                 <div className="block md:hidden space-y-3">
-                  {cancellationRequests.map((req) => (
-                    <div key={req.id} className="p-3.5 space-y-3 rounded-xl border border-slate-200 bg-white">
-                      
-                      {/* Top: Ref & Status */}
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono font-black text-sm text-[#124E4A]">
-                          {req.referenceNumber}
-                        </span>
-                        {req.status === 'PENDING' && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-3xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                            <Clock className="w-3 h-3 text-amber-500 animate-pulse" />
-                            <span>قيد الانتظار</span>
+                  {(Array.isArray(cancellationRequests) ? cancellationRequests : []).map((req, idx) => {
+                    if (!req) return null;
+                    const reqKey = req.id || `cancel-req-${idx}`;
+                    return (
+                      <div key={reqKey} className="p-3.5 space-y-3 rounded-xl border border-slate-200 bg-white">
+                        
+                        {/* Top: Ref & Status */}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono font-black text-sm text-[#124E4A]">
+                            {req.referenceNumber || '—'}
                           </span>
-                        )}
-                        {req.status === 'APPROVED' && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-3xs font-bold bg-red-50 text-red-700 border border-red-200">
-                            <CheckCircle2 className="w-3 h-3 text-red-500" />
-                            <span>تم قبول الإلغاء</span>
-                          </span>
-                        )}
-                        {req.status === 'REJECTED' && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-3xs font-bold bg-slate-100 text-slate-700 border border-slate-300">
-                            <X className="w-3 h-3 text-slate-500" />
-                            <span>مرفوض (الحجز سارٍ)</span>
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Patient & Phone */}
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-bold text-sm text-[#163C3A]">{req.patientName || '—'}</span>
-                        <a
-                          href={`tel:${req.phoneNumber}`}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 text-[#087F78] text-xs font-mono font-bold border border-teal-200"
-                        >
-                          <Phone className="w-3 h-3" />
-                          <span dir="ltr">{req.phoneNumber}</span>
-                        </a>
-                      </div>
-
-                      {/* Clinic & Date */}
-                      <div className="grid grid-cols-2 gap-2 text-2xs p-2 rounded-lg bg-slate-50 border border-slate-100">
-                        <div>
-                          <span className="text-[#8493A6] block text-3xs">العيادة</span>
-                          <span className="font-bold text-[#087F78] block truncate">{req.clinicName || '—'}</span>
+                          {req.status === 'PENDING' && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-3xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                              <Clock className="w-3 h-3 text-amber-500 animate-pulse" />
+                              <span>قيد الانتظار</span>
+                            </span>
+                          )}
+                          {req.status === 'APPROVED' && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-3xs font-bold bg-red-50 text-red-700 border border-red-200">
+                              <CheckCircle2 className="w-3 h-3 text-red-500" />
+                              <span>تم قبول الإلغاء</span>
+                            </span>
+                          )}
+                          {req.status === 'REJECTED' && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-3xs font-bold bg-slate-100 text-slate-700 border border-slate-300">
+                              <X className="w-3 h-3 text-slate-500" />
+                              <span>مرفوض (الحجز سارٍ)</span>
+                            </span>
+                          )}
                         </div>
-                        <div>
-                          <span className="text-[#8493A6] block text-3xs">تاريخ الحجز</span>
-                          <span className="font-semibold text-[#163C3A] block truncate">
-                            {req.appointmentDate ? formatArabicDate(req.appointmentDate) : '—'}
-                          </span>
+
+                        {/* Patient & Phone */}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-sm text-[#163C3A]">{req.patientName || '—'}</span>
+                          {req.phoneNumber ? (
+                            <a
+                              href={`tel:${req.phoneNumber}`}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-50 text-[#087F78] text-xs font-mono font-bold border border-teal-200"
+                            >
+                              <Phone className="w-3 h-3" />
+                              <span dir="ltr">{req.phoneNumber}</span>
+                            </a>
+                          ) : (
+                            <span className="text-xs text-slate-400 font-mono">—</span>
+                          )}
                         </div>
-                      </div>
 
-                      {/* Reason */}
-                      <div className="p-2.5 rounded-lg bg-amber-50/50 border border-amber-200 text-2xs space-y-1">
-                        <span className="text-amber-800 font-bold block text-3xs">
-                          سبب الإلغاء ({new Date(req.requestedAt).toLocaleDateString('ar-EG', { dateStyle: 'short', timeStyle: 'short' })}):
-                        </span>
-                        <p className="text-slate-700 italic">"{req.reason || 'طلب إلغاء من ولي الأمر'}"</p>
-                      </div>
-
-                      {/* Decision Actions */}
-                      <div className="pt-2 border-t border-slate-100">
-                        {req.status === 'PENDING' ? (
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => {
-                                setReviewingReqId(req.id);
-                                setReviewDecision('APPROVED');
-                                setReviewReason('');
-                              }}
-                              className="flex-1 py-2.5 px-3 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-2xs transition-colors flex items-center justify-center gap-1"
-                            >
-                              <CheckCircle2 className="w-4 h-4" />
-                              <span>قبول وإلغاء الحجز</span>
-                            </button>
-                            <button
-                              onClick={() => {
-                                setReviewingReqId(req.id);
-                                setReviewDecision('REJECTED');
-                                setReviewReason('الحجز سارٍ ومطلوب الحضور');
-                              }}
-                              className="py-2.5 px-3 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition-colors flex items-center justify-center gap-1 shrink-0"
-                            >
-                              <X className="w-4 h-4" />
-                              <span>رفض الطلب</span>
-                            </button>
+                        {/* Clinic & Date */}
+                        <div className="grid grid-cols-2 gap-2 text-2xs p-2 rounded-lg bg-slate-50 border border-slate-100">
+                          <div>
+                            <span className="text-[#8493A6] block text-3xs">العيادة</span>
+                            <span className="font-bold text-[#087F78] block truncate">{req.clinicName || '—'}</span>
                           </div>
-                        ) : (
-                          <div className="text-3xs text-slate-500 text-center py-1">
-                            <span>تمت المراجعة بواسطة {req.reviewedByName || 'الموظف'}</span>
-                            {req.rejectionReason && (
-                              <span className="block text-slate-400 mt-0.5">السبب: {req.rejectionReason}</span>
-                            )}
+                          <div>
+                            <span className="text-[#8493A6] block text-3xs">تاريخ الحجز</span>
+                            <span className="font-semibold text-[#163C3A] block truncate">
+                              {req.appointmentDate ? formatArabicDate(req.appointmentDate) : '—'}
+                            </span>
                           </div>
-                        )}
-                      </div>
+                        </div>
 
-                    </div>
-                  ))}
+                        {/* Reason */}
+                        <div className="p-2.5 rounded-lg bg-amber-50/50 border border-amber-200 text-2xs space-y-1">
+                          <span className="text-amber-800 font-bold block text-3xs">
+                            سبب الإلغاء ({formatSafeDateTime(req.requestedAt)}):
+                          </span>
+                          <p className="text-slate-700 italic">"{req.reason || 'طلب إلغاء من ولي الأمر'}"</p>
+                        </div>
+
+                        {/* Decision Actions */}
+                        <div className="pt-2 border-t border-slate-100">
+                          {req.status === 'PENDING' ? (
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => {
+                                  setReviewingReqId(req.id);
+                                  setReviewDecision('APPROVED');
+                                  setReviewReason('');
+                                }}
+                                className="flex-1 py-2.5 px-3 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-2xs transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                              >
+                                <CheckCircle2 className="w-4 h-4" />
+                                <span>قبول وإلغاء الحجز</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setReviewingReqId(req.id);
+                                  setReviewDecision('REJECTED');
+                                  setReviewReason('الحجز سارٍ ومطلوب الحضور');
+                                }}
+                                className="py-2.5 px-3 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition-colors flex items-center justify-center gap-1 shrink-0 cursor-pointer"
+                              >
+                                <X className="w-4 h-4" />
+                                <span>رفض الطلب</span>
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="text-3xs text-slate-500 text-center py-1">
+                              <span>تمت المراجعة بواسطة {req.reviewedByName || 'الموظف'}</span>
+                              {req.rejectionReason && (
+                                <span className="block text-slate-400 mt-0.5">السبب: {req.rejectionReason}</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {/* Desktop Table View (>= 768px md) */}
@@ -2438,84 +2485,88 @@ export default function StaffDashboardPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#E2E8EE]">
-                      {cancellationRequests.map((req) => (
-                        <tr key={req.id} className="hover:bg-slate-50/70">
-                          <td className="py-3 px-4 font-mono font-bold text-[#124E4A]">
-                            {req.referenceNumber}
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className="font-bold text-[#163C3A] block">{req.patientName || '—'}</span>
-                            <span className="font-mono text-2xs text-[#8493A6]" dir="ltr">{req.phoneNumber}</span>
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className="font-semibold text-[#087F78] block">{req.clinicName || '—'}</span>
-                            <span className="text-2xs text-[#8493A6]">
-                              {req.appointmentDate ? formatArabicDate(req.appointmentDate) : '—'}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 max-w-xs">
-                            <span className="text-2xs text-slate-400 block">
-                              {new Date(req.requestedAt).toLocaleDateString('ar-EG', { dateStyle: 'short', timeStyle: 'short' })}
-                            </span>
-                            <span className="text-xs text-slate-700 block italic">
-                              "{req.reason || 'طلب إلغاء من ولي الأمر'}"
-                            </span>
-                          </td>
-                          <td className="py-3 px-4">
-                            {req.status === 'PENDING' && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-2xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                                <Clock className="w-3 h-3 text-amber-500 animate-pulse" />
-                                <span>قيد الانتظار</span>
+                      {(Array.isArray(cancellationRequests) ? cancellationRequests : []).map((req, idx) => {
+                        if (!req) return null;
+                        const reqKey = req.id || `cancel-req-dt-${idx}`;
+                        return (
+                          <tr key={reqKey} className="hover:bg-slate-50/70">
+                            <td className="py-3 px-4 font-mono font-bold text-[#124E4A]">
+                              {req.referenceNumber || '—'}
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className="font-bold text-[#163C3A] block">{req.patientName || '—'}</span>
+                              <span className="font-mono text-2xs text-[#8493A6]" dir="ltr">{req.phoneNumber || '—'}</span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <span className="font-semibold text-[#087F78] block">{req.clinicName || '—'}</span>
+                              <span className="text-2xs text-[#8493A6]">
+                                {req.appointmentDate ? formatArabicDate(req.appointmentDate) : '—'}
                               </span>
-                            )}
-                            {req.status === 'APPROVED' && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-2xs font-bold bg-red-50 text-red-700 border border-red-200">
-                                <CheckCircle2 className="w-3 h-3 text-red-500" />
-                                <span>تم قبول الإلغاء</span>
+                            </td>
+                            <td className="py-3 px-4 max-w-xs">
+                              <span className="text-2xs text-slate-400 block">
+                                {formatSafeDateTime(req.requestedAt)}
                               </span>
-                            )}
-                            {req.status === 'REJECTED' && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-2xs font-bold bg-slate-100 text-slate-700 border border-slate-300">
-                                <X className="w-3 h-3 text-slate-500" />
-                                <span>طلب مرفوض (سارٍ)</span>
+                              <span className="text-xs text-slate-700 block italic">
+                                "{req.reason || 'طلب إلغاء من ولي الأمر'}"
                               </span>
-                            )}
-                          </td>
-                          <td className="py-3 px-4 text-center">
-                            {req.status === 'PENDING' ? (
-                              <div className="flex items-center justify-center gap-2">
-                                <button
-                                  onClick={() => {
-                                    setReviewingReqId(req.id);
-                                    setReviewDecision('APPROVED');
-                                    setReviewReason('');
-                                  }}
-                                  className="px-3 py-1.5 rounded-lg text-2xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-2xs transition-colors cursor-pointer"
-                                >
-                                  موافقة وإلغاء الحجز
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setReviewingReqId(req.id);
-                                    setReviewDecision('REJECTED');
-                                    setReviewReason('الحجز سارٍ ومطلوب الحضور');
-                                  }}
-                                  className="px-3 py-1.5 rounded-lg text-2xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition-colors cursor-pointer"
-                                >
-                                  رفض الطلب
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="text-3xs text-slate-500 text-center">
-                                <span>بواسطة {req.reviewedByName || 'الموظف'}</span>
-                                {req.rejectionReason && (
-                                  <span className="block text-slate-400">السبب: {req.rejectionReason}</span>
-                                )}
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+                            <td className="py-3 px-4">
+                              {req.status === 'PENDING' && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-2xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                  <Clock className="w-3 h-3 text-amber-500 animate-pulse" />
+                                  <span>قيد الانتظار</span>
+                                </span>
+                              )}
+                              {req.status === 'APPROVED' && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-2xs font-bold bg-red-50 text-red-700 border border-red-200">
+                                  <CheckCircle2 className="w-3 h-3 text-red-500" />
+                                  <span>تم قبول الإلغاء</span>
+                                </span>
+                              )}
+                              {req.status === 'REJECTED' && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-2xs font-bold bg-slate-100 text-slate-700 border border-slate-300">
+                                  <X className="w-3 h-3 text-slate-500" />
+                                  <span>طلب مرفوض (سارٍ)</span>
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              {req.status === 'PENDING' ? (
+                                <div className="flex items-center justify-center gap-2">
+                                  <button
+                                    onClick={() => {
+                                      setReviewingReqId(req.id);
+                                      setReviewDecision('APPROVED');
+                                      setReviewReason('');
+                                    }}
+                                    className="px-3 py-1.5 rounded-lg text-2xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-2xs transition-colors cursor-pointer"
+                                  >
+                                    موافقة وإلغاء الحجز
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setReviewingReqId(req.id);
+                                      setReviewDecision('REJECTED');
+                                      setReviewReason('الحجز سارٍ ومطلوب الحضور');
+                                    }}
+                                    className="px-3 py-1.5 rounded-lg text-2xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition-colors cursor-pointer"
+                                  >
+                                    رفض الطلب
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="text-3xs text-slate-500 text-center">
+                                  <span>بواسطة {req.reviewedByName || 'الموظف'}</span>
+                                  {req.rejectionReason && (
+                                    <span className="block text-slate-400">السبب: {req.rejectionReason}</span>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

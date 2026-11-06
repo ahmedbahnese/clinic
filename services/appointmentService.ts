@@ -2348,24 +2348,27 @@ class AppointmentServiceStore {
 
         const { data, error } = await query;
         if (!error && Array.isArray(data)) {
-          return data.map((r: any) => ({
-            id: r.id,
-            appointmentId: r.appointment_id,
-            referenceNumber: r.reference_number,
-            phoneNumber: r.phone_number,
-            reason: r.reason,
-            status: r.status,
-            requestedAt: r.requested_at,
-            reviewedAt: r.reviewed_at,
-            reviewedById: r.reviewed_by_id,
-            reviewedByName: r.reviewed_by_name,
-            rejectionReason: r.rejection_reason,
-            patientName: r.appointments?.patient_name,
-            clinicId: r.appointments?.clinic_id,
-            clinicName: r.appointments?.clinic_name,
-            appointmentDate: r.appointments?.appointment_date,
-            currentAppointmentStatus: r.appointments?.status,
-          }));
+          return data.map((r: any) => {
+            const aptData = Array.isArray(r.appointments) ? r.appointments[0] : r.appointments;
+            return {
+              id: r.id,
+              appointmentId: r.appointment_id,
+              referenceNumber: r.reference_number,
+              phoneNumber: r.phone_number,
+              reason: r.reason,
+              status: r.status,
+              requestedAt: r.requested_at,
+              reviewedAt: r.reviewed_at,
+              reviewedById: r.reviewed_by_id,
+              reviewedByName: r.reviewed_by_name,
+              rejectionReason: r.rejection_reason,
+              patientName: aptData?.patient_name || '',
+              clinicId: aptData?.clinic_id || '',
+              clinicName: aptData?.clinic_name || '',
+              appointmentDate: aptData?.appointment_date || '',
+              currentAppointmentStatus: aptData?.status || '',
+            };
+          });
         }
       } catch (err) {
         console.warn('Supabase getCancellationRequests error:', err);
