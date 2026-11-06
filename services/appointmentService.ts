@@ -1602,6 +1602,13 @@ class AppointmentServiceStore {
             appointmentTime: data.appointment_time,
             status: data.status,
             queueNumber: data.queue_number,
+            lastCalledAt: data.last_called_at || undefined,
+            calledCount: data.called_count || 0,
+            notes: data.notes || undefined,
+            feePaid:
+              data.fee_paid === null || data.fee_paid === undefined
+                ? undefined
+                : Number(data.fee_paid),
             createdAt: data.created_at,
             updatedAt: data.updated_at,
             statusHistory: [],
@@ -1840,6 +1847,117 @@ class AppointmentServiceStore {
       staffUser.role,
       'إعادة نداء المريض',
       `إعادة نداء مريض (${apt.clinicName}) للمرة #${apt.calledCount}`,
+      apt.referenceNumber
+    );
+
+    return { success: true, appointment: apt };
+  }
+
+  /**
+   * Post-completion editing (تعديل الكشف): update diagnosis notes and the fee
+   * paid on a visit record. Restricted to ADMIN and the assigned DOCTOR of the
+   * appointment's clinic; receptionists are denied.
+   */
+  public async updateVisitDetails(
+    id: string,
+    updates: { notes?: string; feePaid?: number },
+    staffUser: StaffUser,
+    userToken?: string
+  ): Promise<{ success: boolean; appointment?: Appointment; error?: string }> {
+    const apt = await this.getAppointmentByIdAsync(id, userToken);
+    if (!apt) {
+      return { success: false, error: 'الموعد غير موجود' };
+    }
+
+    if (staffUser.role !== 'ADMIN' && staffUser.role !== 'DOCTOR') {
+      return {
+        success: false,
+        error: 'تعديل بيانات الكشف متاح لمدير النظام أو الطبيب المعالج فقط.',
+      };
+    }
+    if (staffUser.role === 'DOCTOR') {
+      if (!staffUser.clinicId) {
+        return {
+          success: false,
+          error: 'غير مصرح للطبيب غير المعين على عيادة بتعديل بيانات الكشف.',
+        };
+      }
+      if (apt.clinicId !== staffUser.clinicId) {
+        return {
+          success: false,
+          error: 'غير مصرح للطبيب بتعديل بيانات كشف خاصة بعيادة أخرى.',
+        };
+      }
+    }
+
+    const hasNotes = typeof updates.notes === 'string';
+    const hasFee =
+      typeof updates.feePaid === 'number' &&
+      Number.isFinite(updates.feePaid) &&
+      updates.feePaid >= 0;
+    if (!hasNotes && !hasFee) {
+      return { success: false, error: 'لا توجد بيانات جديدة لتحديثها.' };
+    }
+    const cleanNotes = hasNotes ? updates.notes!.trim().slice(0, 2000) : undefined;
+    const cleanFee = hasFee ? Math.round(updates.feePaid! * 100) / 100 : undefined;
+
+    const now = new Date().toISOString();
+
+    if (isSupabaseConfigured()) {
+      try {
+        const isRealJwt = userToken && userToken.startsWith('eyJ') && userToken.split('.').length === 3;
+        let client: any = null;
+        if (isRealJwt) {
+          client = createUserClient(userToken);
+        } else {
+          const sys = await getSystemSupabaseClient();
+          client = sys.client;
+        }
+
+        const patch: Record<string, unknown> = { updated_at: now };
+        if (cleanNotes !== undefined) patch.notes = cleanNotes;
+        if (cleanFee !== undefined) patch.fee_paid = cleanFee;
+
+        const { error: updateErr } = await (client as any)
+          .from('appointments')
+          .update(patch)
+          .eq('id', apt.id);
+        if (updateErr) {
+          return {
+            success: false,
+            error: `تعذر تحديث بيانات الكشف: ${updateErr.message || 'خطأ غير معروف'}`,
+          };
+        }
+      } catch (err: any) {
+        console.error('Supabase updateVisitDetails exception:', err?.message || 'Network error');
+        return {
+          success: false,
+          error: 'تعذر الاتصال بقاعدة البيانات لتحديث بيانات الكشف.',
+        };
+      }
+    } else if (!isMockStoreAllowed()) {
+      return {
+        success: false,
+        error: 'خدمة تعديل بيانات الكشف غير متصلة بقاعدة البيانات في بيئة الإنتاج.',
+      };
+    }
+
+    if (cleanNotes !== undefined) apt.notes = cleanNotes;
+    if (cleanFee !== undefined) apt.feePaid = cleanFee;
+    apt.updatedAt = now;
+
+    apt.statusHistory.push({
+      status: apt.status,
+      timestamp: now,
+      note: 'تعديل بيانات الكشف (الملاحظات/الرسوم)',
+      updatedBy: staffUser.name,
+    });
+
+    this.addAuditLog(
+      staffUser.name,
+      staffUser.role,
+      'تعديل بيانات الكشف',
+      `تعديل ملاحظات أو رسوم كشف المريض ${apt.patientName}`,
       apt.referenceNumber
     );
 
@@ -2602,7 +2720,7 @@ class AppointmentServiceStore {
 
         let query = supabase
           .from('appointments')
-          .select('id, reference_number, clinic_id, clinic_name, patient_name, phone_number, patient_age, patient_address, appointment_date, appointment_time, status, queue_number, last_called_at, called_count, notes, created_at, updated_at')
+          .select('id, reference_number, clinic_id, clinic_name, patient_name, phone_number, patient_age, patient_address, appointment_date, appointment_time, status, queue_number, last_called_at, called_count, notes, fee_paid, created_at, updated_at')
           .order('appointment_date', { ascending: true })
           .order('queue_number', { ascending: true });
 
@@ -2626,7 +2744,7 @@ class AppointmentServiceStore {
           const { client: systemClient, authenticated: systemAuthenticated } = await getSystemSupabaseClient();
           let fallbackQuery = systemClient
             .from('appointments')
-            .select('id, reference_number, clinic_id, clinic_name, patient_name, phone_number, patient_age, patient_address, appointment_date, appointment_time, status, queue_number, last_called_at, called_count, notes, created_at, updated_at')
+            .select('id, reference_number, clinic_id, clinic_name, patient_name, phone_number, patient_age, patient_address, appointment_date, appointment_time, status, queue_number, last_called_at, called_count, notes, fee_paid, created_at, updated_at')
             .order('appointment_date', { ascending: true })
             .order('queue_number', { ascending: true });
           if (effectiveClinicId && effectiveClinicId !== 'ALL') fallbackQuery = fallbackQuery.eq('clinic_id', effectiveClinicId);
@@ -2669,6 +2787,10 @@ class AppointmentServiceStore {
             lastCalledAt: dbApt.last_called_at || undefined,
             calledCount: dbApt.called_count || 0,
             notes: dbApt.notes || undefined,
+            feePaid:
+              dbApt.fee_paid === null || dbApt.fee_paid === undefined
+                ? undefined
+                : Number(dbApt.fee_paid),
             createdAt: dbApt.created_at,
             updatedAt: dbApt.updated_at,
             statusHistory: [],

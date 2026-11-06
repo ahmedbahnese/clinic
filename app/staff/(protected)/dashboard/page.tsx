@@ -39,12 +39,14 @@ import {
   Edit3,
   Radio,
   PlayCircle,
+  SkipForward,
+  Receipt,
 } from 'lucide-react';
 import CmsDashboard from '@/components/cms/CmsDashboard';
 import StaffManager from './components/StaffManager';
 import LiveQueueManager from '@/components/LiveQueueManager';
 import { Appointment, Clinic, ClinicService, ClinicScheduleException, AppointmentStatus, AuditLogItem, CancellationRequest } from '@/types';
-import { getStatusDisplay, formatArabicDate, formatLocalDate } from '@/lib/rules';
+import { getStatusDisplay, formatArabicDate, formatLocalDate, isTodayLocalDate } from '@/lib/rules';
 
 function formatSafeDateTime(dateStr?: string | null): string {
   if (!dateStr || typeof dateStr !== 'string') return '—';
@@ -102,6 +104,9 @@ export default function StaffDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [appointmentsError, setAppointmentsError] = useState<string | null>(null);
 
+  // Toast Notification State
+  const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
   // Restore the verified staff profile saved at login so the role-based UI
   // renders immediately even if the appointments fetch fails later.
   useEffect(() => {
@@ -133,6 +138,13 @@ export default function StaffDashboardPage() {
       })
       .catch(() => {});
   }, []);
+
+  // Auto-dismiss toast notifications
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => setToastMessage(null), 5000);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
 
   // Cancellation Requests State
   const [cancellationRequests, setCancellationRequests] = useState<CancellationRequest[]>([]);
@@ -175,6 +187,16 @@ export default function StaffDashboardPage() {
   const [walkInError, setWalkInError] = useState<string | null>(null);
   const [walkInServicesList, setWalkInServicesList] = useState<ClinicService[]>([]);
   const [walkInSuccessReceipt, setWalkInSuccessReceipt] = useState<Appointment | null>(null);
+
+  // Queue Receipt Modal State (عرض الإيصال)
+  const [receiptApt, setReceiptApt] = useState<Appointment | null>(null);
+
+  // Post-Completion Visit Edit Modal State (تعديل الكشف)
+  const [editingCompletedApt, setEditingCompletedApt] = useState<Appointment | null>(null);
+  const [visitNotes, setVisitNotes] = useState('');
+  const [visitFee, setVisitFee] = useState('');
+  const [visitReopen, setVisitReopen] = useState<string>('');
+  const [savingVisitEdit, setSavingVisitEdit] = useState(false);
 
   // Change Password Modal State
   const [showChangePassword, setShowChangePassword] = useState(false);
@@ -531,6 +553,15 @@ export default function StaffDashboardPage() {
     const token = localStorage.getItem('bsch_staff_token');
     if (!token) return;
 
+    // Queue lifecycle guard: calling / completing / skipping is only allowed for today's appointments
+    if (newStatus === 'CHECKED_IN' || newStatus === 'COMPLETED' || newStatus === 'SKIPPED') {
+      const targetApt = appointments.find((a) => a.id === appointmentId);
+      if (targetApt && !isTodayLocalDate(targetApt.appointmentDate)) {
+        setToastMessage({ type: 'error', text: 'لا يمكن نداء أو إنهاء كشف موعد في تاريخ غير تاريخ اليوم.' });
+        return;
+      }
+    }
+
     try {
       const res = await fetch(`/api/appointments/${appointmentId}/status`, {
         method: 'POST',
@@ -582,6 +613,57 @@ export default function StaffDashboardPage() {
     } catch (err) {
       console.error(err);
       alert('حدث خطأ في إعادة النداء');
+    }
+  }
+
+  // Open Post-Completion Edit Modal (تعديل الكشف)
+  function openVisitEdit(apt: Appointment) {
+    setEditingCompletedApt(apt);
+    setVisitNotes(apt.notes || '');
+    setVisitFee(apt.feePaid !== undefined && apt.feePaid !== null ? String(apt.feePaid) : '');
+    setVisitReopen('');
+  }
+
+  // Save Visit Edits (notes / fee / reopen) via PATCH /api/appointments/[id]/visit
+  async function handleSaveVisitEdit() {
+    if (!editingCompletedApt) return;
+    const token = localStorage.getItem('bsch_staff_token');
+    if (!token) return;
+
+    const parsedFee = visitFee.trim() === '' ? undefined : Number(visitFee);
+    if (visitFee.trim() !== '' && (isNaN(parsedFee as number) || (parsedFee as number) < 0)) {
+      setToastMessage({ type: 'error', text: 'يرجى إدخال قيمة رسوم صحيحة (رقم موجب).' });
+      return;
+    }
+
+    setSavingVisitEdit(true);
+    try {
+      const res = await fetch(`/api/appointments/${editingCompletedApt.id}/visit`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          notes: visitNotes.trim() ? visitNotes.trim() : undefined,
+          feePaid: parsedFee,
+          reopenStatus: visitReopen ? visitReopen : undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setToastMessage({ type: 'success', text: data.message || 'تم حفظ تعديلات الكشف بنجاح.' });
+        setEditingCompletedApt(null);
+        setRefreshKey((k) => k + 1);
+      } else {
+        setToastMessage({ type: 'error', text: data.error || 'تعذر حفظ تعديلات الكشف.' });
+      }
+    } catch (err) {
+      console.error('Error saving visit edit:', err);
+      setToastMessage({ type: 'error', text: 'حدث خطأ أثناء حفظ تعديلات الكشف.' });
+    } finally {
+      setSavingVisitEdit(false);
     }
   }
 
@@ -1081,13 +1163,15 @@ export default function StaffDashboardPage() {
   const confirmedCount = appointments.filter((a) => a.status === 'CONFIRMED').length;
   const checkedInCount = appointments.filter((a) => a.status === 'CHECKED_IN').length;
   const completedCount = appointments.filter((a) => a.status === 'COMPLETED').length;
+  const skippedCount = appointments.filter((a) => a.status === 'SKIPPED').length;
+  const waitingCount = confirmedCount + checkedInCount;
 
   // Queue Sub-Tabs Counts & Filtered List
   const pendingQueueCount = appointments.filter(
     (a) => a.status === 'PENDING_REVIEW' || (a.status as string) === 'CONFIRMATION_PENDING'
   ).length;
   const confirmedQueueCount = appointments.filter(
-    (a) => a.status === 'CONFIRMED' || a.status === 'CHECKED_IN' || (a.status as string) === 'IN_PROGRESS'
+    (a) => a.status === 'CONFIRMED' || a.status === 'CHECKED_IN' || a.status === 'SKIPPED' || (a.status as string) === 'IN_PROGRESS'
   ).length;
   const allQueueCount = appointments.length;
 
@@ -1099,7 +1183,7 @@ export default function StaffDashboardPage() {
     }
     if (queueSubTab === 'CONFIRMED') {
       return appointments.filter(
-        (a) => a.status === 'CONFIRMED' || a.status === 'CHECKED_IN' || (a.status as string) === 'IN_PROGRESS'
+        (a) => a.status === 'CONFIRMED' || a.status === 'CHECKED_IN' || a.status === 'SKIPPED' || (a.status as string) === 'IN_PROGRESS'
       );
     }
     return appointments;
@@ -1124,10 +1208,12 @@ export default function StaffDashboardPage() {
           body * {
             visibility: hidden;
           }
-          #printable-walkin-receipt, #printable-walkin-receipt * {
+          #printable-walkin-receipt, #printable-walkin-receipt *,
+          #printable-queue-receipt, #printable-queue-receipt * {
             visibility: visible;
           }
-          #printable-walkin-receipt {
+          #printable-walkin-receipt,
+          #printable-queue-receipt {
             position: absolute !important;
             top: 0 !important;
             left: 0 !important;
@@ -1381,30 +1467,29 @@ export default function StaffDashboardPage() {
         {/* TAB 1: QUEUE & APPOINTMENTS */}
         {activeTab === 'QUEUE' && (
           <>
-            {/* Metric Cards Row */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 sm:gap-3.5">
+            {/* Metric Cards Row: إجمالي المسجلين / في الانتظار / تم التخطي / تم الكشف */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3.5">
               <div className="bg-white rounded-xl sm:rounded-2xl border border-[#E2E8EE] p-3 sm:p-4 text-right shadow-2xs">
-                <span className="text-3xs sm:text-2xs font-semibold text-[#8493A6] block">إجمالي الحجوزات</span>
+                <span className="text-3xs sm:text-2xs font-semibold text-[#8493A6] block">إجمالي المسجلين</span>
                 <span className="text-xl sm:text-2xl font-black text-[#124E4A] font-mono mt-0.5 sm:mt-1 block">{totalCount}</span>
-              </div>
-
-              <div className="bg-white rounded-xl sm:rounded-2xl border border-[#FDE68A] bg-amber-50/40 p-3 sm:p-4 text-right shadow-2xs">
-                <span className="text-3xs sm:text-2xs font-semibold text-[#D97706] block">بانتظار التأكيد</span>
-                <span className="text-xl sm:text-2xl font-black text-[#D97706] font-mono mt-0.5 sm:mt-1 block">{pendingCount}</span>
+                {pendingCount > 0 && (
+                  <span className="text-3xs text-amber-600 font-bold block mt-0.5">منهم {pendingCount} بانتظار التأكيد</span>
+                )}
               </div>
 
               <div className="bg-white rounded-xl sm:rounded-2xl border border-[#B2DFDB] bg-[#E6F4F2]/40 p-3 sm:p-4 text-right shadow-2xs">
-                <span className="text-3xs sm:text-2xs font-semibold text-[#087F78] block">المؤكدة (في الانتظار)</span>
-                <span className="text-xl sm:text-2xl font-black text-[#087F78] font-mono mt-0.5 sm:mt-1 block">{confirmedCount}</span>
+                <span className="text-3xs sm:text-2xs font-semibold text-[#087F78] block">في الانتظار</span>
+                <span className="text-xl sm:text-2xl font-black text-[#087F78] font-mono mt-0.5 sm:mt-1 block">{waitingCount}</span>
+                <span className="text-3xs text-[#8493A6] font-bold block mt-0.5">منهم {checkedInCount} في الدور</span>
               </div>
 
-              <div className="bg-white rounded-xl sm:rounded-2xl border border-blue-200 bg-blue-50/40 p-3 sm:p-4 text-right shadow-2xs">
-                <span className="text-3xs sm:text-2xs font-semibold text-blue-600 block">في الدور / تم النداء</span>
-                <span className="text-xl sm:text-2xl font-black text-blue-700 font-mono mt-0.5 sm:mt-1 block">{checkedInCount}</span>
+              <div className="bg-white rounded-xl sm:rounded-2xl border border-orange-200 bg-orange-50/40 p-3 sm:p-4 text-right shadow-2xs">
+                <span className="text-3xs sm:text-2xs font-semibold text-[#C2410C] block">تم التخطي</span>
+                <span className="text-xl sm:text-2xl font-black text-[#C2410C] font-mono mt-0.5 sm:mt-1 block">{skippedCount}</span>
               </div>
 
-              <div className="bg-white rounded-xl sm:rounded-2xl border border-emerald-200 bg-emerald-50/40 p-3 sm:p-4 text-right shadow-2xs col-span-2 sm:col-span-1">
-                <span className="text-3xs sm:text-2xs font-semibold text-emerald-700 block">تم الكشف (مكتمل)</span>
+              <div className="bg-white rounded-xl sm:rounded-2xl border border-emerald-200 bg-emerald-50/40 p-3 sm:p-4 text-right shadow-2xs">
+                <span className="text-3xs sm:text-2xs font-semibold text-emerald-700 block">تم الكشف</span>
                 <span className="text-xl sm:text-2xl font-black text-emerald-700 font-mono mt-0.5 sm:mt-1 block">{completedCount}</span>
               </div>
             </div>
@@ -1506,6 +1591,7 @@ export default function StaffDashboardPage() {
                     <option value="PENDING_REVIEW">قيد المراجعة</option>
                     <option value="CONFIRMED">مؤكد (في الانتظار)</option>
                     <option value="CHECKED_IN">حضر المريض (في الدور)</option>
+                    <option value="SKIPPED">تم التخطي (بانتظار العودة)</option>
                     <option value="COMPLETED">مكتمل (تم الكشف)</option>
                     <option value="CANCELLED">ملغي</option>
                   </select>
@@ -1748,6 +1834,15 @@ export default function StaffDashboardPage() {
 
                           {/* Action Buttons for Mobile View */}
                           <div className="pt-2 border-t border-slate-100 space-y-2">
+                            <button
+                              onClick={() => setReceiptApt(apt)}
+                              className="w-full py-2 px-3 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+                              title="عرض إيصال الموعد وطباعته"
+                            >
+                              <Receipt className="w-3.5 h-3.5 text-[#087F78]" />
+                              <span>عرض الإيصال</span>
+                            </button>
+
                             {apt.status === 'PENDING_REVIEW' && (
                               <div className="flex items-center gap-2">
                                 <button
@@ -1781,6 +1876,14 @@ export default function StaffDashboardPage() {
                                   <UserCheck className="w-4 h-4" />
                                   <span>حضور ونداء المريض</span>
                                 </button>
+                                <button
+                                  onClick={() => handleStatusChange(apt.id, 'SKIPPED', 'تم تخطي المريض مؤقتاً (غير متواجد حالياً في قاعة الانتظار)')}
+                                  className="py-2.5 px-3.5 rounded-xl text-xs font-semibold text-orange-700 hover:bg-orange-50 border border-orange-200 flex items-center justify-center gap-1 shrink-0"
+                                  title="تخطي المريض مؤقتاً والانتقال لمن يليه في الدور"
+                                >
+                                  <SkipForward className="w-4 h-4 text-orange-600" />
+                                  <span>تخطي</span>
+                                </button>
                                 {(isReceptionist || isAdmin) && (
                                   <button
                                     onClick={() => {
@@ -1809,6 +1912,17 @@ export default function StaffDashboardPage() {
                                     <span>إعادة النداء 🔊</span>
                                   </button>
 
+                                  <button
+                                    onClick={() => handleStatusChange(apt.id, 'SKIPPED', 'تم تخطي المريض مؤقتاً (غير متواجد حالياً في قاعة الانتظار)')}
+                                    className="py-2.5 px-3.5 rounded-xl text-xs font-semibold text-orange-700 hover:bg-orange-50 border border-orange-200 flex items-center justify-center gap-1 shrink-0"
+                                    title="تخطي المريض الحالي والانتقال لمن يليه"
+                                  >
+                                    <SkipForward className="w-4 h-4 text-orange-600" />
+                                    <span>تخطي</span>
+                                  </button>
+                                </div>
+
+                                <div className="flex items-center gap-2">
                                   {(isDoctor || isAdmin) && (
                                     <button
                                       onClick={() => handleStatusChange(apt.id, 'COMPLETED', 'تم الكشف وصرف العلاج بنجاح')}
@@ -1837,6 +1951,33 @@ export default function StaffDashboardPage() {
                               </div>
                             )}
 
+                            {apt.status === 'SKIPPED' && (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleStatusChange(apt.id, 'CHECKED_IN', 'إدخال المريض الآن بعد عودته إلى قاعة الانتظار')}
+                                  className="flex-1 py-2.5 px-3 rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-bold shadow-xs flex items-center justify-center gap-1.5"
+                                  title="إعادة إدخال المريض المتخطى إلى العيادة فوراً"
+                                >
+                                  <UserCheck className="w-4 h-4" />
+                                  <span>إدخال الآن</span>
+                                </button>
+                                {(isReceptionist || isAdmin) && (
+                                  <button
+                                    onClick={() => {
+                                      const reason = window.prompt('يرجى إدخال سبب إلغاء الحجز (اختياري):', 'انصراف المريض نهائياً');
+                                      if (reason !== null) {
+                                        handleStatusChange(apt.id, 'CANCELLED', reason || 'إلغاء بواسطة موظف الاستقبال');
+                                      }
+                                    }}
+                                    className="py-2.5 px-3.5 rounded-xl text-xs font-semibold text-red-600 hover:bg-red-50 border border-red-200 flex items-center justify-center gap-1 shrink-0"
+                                  >
+                                    <XCircle className="w-4 h-4 text-red-500" />
+                                    <span>إلغاء</span>
+                                  </button>
+                                )}
+                              </div>
+                            )}
+
                             {/* Transfer Clinic Button */}
                             {apt.status !== 'CANCELLED' && apt.status !== 'COMPLETED' && (
                               <button
@@ -1853,9 +1994,21 @@ export default function StaffDashboardPage() {
                             )}
 
                             {apt.status === 'COMPLETED' && (
-                              <div className="text-xs text-emerald-600 font-semibold flex items-center justify-center gap-1 py-1">
-                                <CheckCircle2 className="w-4 h-4" />
-                                <span>تم الكشف واكتمال الإجراءات</span>
+                              <div className="space-y-2">
+                                <div className="text-xs text-emerald-600 font-semibold flex items-center justify-center gap-1 py-1">
+                                  <CheckCircle2 className="w-4 h-4" />
+                                  <span>تم الكشف واكتمال الإجراءات</span>
+                                </div>
+                                {(isDoctor || isAdmin) && (
+                                  <button
+                                    onClick={() => openVisitEdit(apt)}
+                                    className="w-full py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+                                    title="تعديل ملاحظات الكشف والرسوم أو إعادة فتح الزيارة"
+                                  >
+                                    <Edit3 className="w-4 h-4" />
+                                    <span>تعديل الكشف</span>
+                                  </button>
+                                )}
                               </div>
                             )}
 
@@ -1962,6 +2115,16 @@ export default function StaffDashboardPage() {
                               <td className="py-3 px-4">
                                 <div className="flex items-center justify-center gap-1.5 flex-wrap">
                                   
+                                  {/* Action: View Printable Receipt (all statuses) */}
+                                  <button
+                                    onClick={() => setReceiptApt(apt)}
+                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-2xs font-bold"
+                                    title="عرض إيصال الموعد وطباعته"
+                                  >
+                                    <Receipt className="w-3 h-3 text-[#087F78]" />
+                                    <span>عرض الإيصال</span>
+                                  </button>
+
                                   {/* Action: Confirm Booking */}
                                   {apt.status === 'PENDING_REVIEW' && (
                                     <>
@@ -1998,6 +2161,14 @@ export default function StaffDashboardPage() {
                                         <UserCheck className="w-3 h-3" />
                                         <span>حضور ونداء المريض</span>
                                       </button>
+                                      <button
+                                        onClick={() => handleStatusChange(apt.id, 'SKIPPED', 'تم تخطي المريض مؤقتاً (غير متواجد حالياً في قاعة الانتظار)')}
+                                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-2xs text-orange-700 hover:bg-orange-50 border border-orange-200"
+                                        title="تخطي المريض مؤقتاً والانتقال لمن يليه في الدور"
+                                      >
+                                        <SkipForward className="w-3 h-3 text-orange-600" />
+                                        <span>تخطي</span>
+                                      </button>
                                       {(isReceptionist || isAdmin) && (
                                         <button
                                           onClick={() => {
@@ -2028,6 +2199,15 @@ export default function StaffDashboardPage() {
                                         <span>إعادة النداء 🔊</span>
                                       </button>
 
+                                      <button
+                                        onClick={() => handleStatusChange(apt.id, 'SKIPPED', 'تم تخطي المريض مؤقتاً (غير متواجد حالياً في قاعة الانتظار)')}
+                                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-2xs text-orange-700 hover:bg-orange-50 border border-orange-200"
+                                        title="تخطي المريض الحالي والانتقال لمن يليه"
+                                      >
+                                        <SkipForward className="w-3 h-3 text-orange-600" />
+                                        <span>تخطي</span>
+                                      </button>
+
                                       {(isDoctor || isAdmin) && (
                                         <button
                                           onClick={() => handleStatusChange(apt.id, 'COMPLETED', 'تم الكشف وصرف العلاج بنجاح')}
@@ -2056,6 +2236,35 @@ export default function StaffDashboardPage() {
                                     </>
                                   )}
 
+                                  {/* Action: Skipped Patient — Re-enter Now */}
+                                  {apt.status === 'SKIPPED' && (
+                                    <>
+                                      <button
+                                        onClick={() => handleStatusChange(apt.id, 'CHECKED_IN', 'إدخال المريض الآن بعد عودته إلى قاعة الانتظار')}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#2563EB] hover:bg-blue-700 text-white text-2xs font-bold shadow-2xs"
+                                        title="إعادة إدخال المريض المتخطى إلى العيادة فوراً"
+                                      >
+                                        <UserCheck className="w-3 h-3" />
+                                        <span>إدخال الآن</span>
+                                      </button>
+                                      {(isReceptionist || isAdmin) && (
+                                        <button
+                                          onClick={() => {
+                                            const reason = window.prompt('يرجى إدخال سبب إلغاء الحجز (اختياري):', 'انصراف المريض نهائياً');
+                                            if (reason !== null) {
+                                              handleStatusChange(apt.id, 'CANCELLED', reason || 'إلغاء بواسطة موظف الاستقبال');
+                                            }
+                                          }}
+                                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-2xs text-red-600 hover:bg-red-50 border border-red-200"
+                                          title="إلغاء حجز المريض المتخطي"
+                                        >
+                                          <XCircle className="w-3 h-3 text-red-500" />
+                                          <span>إلغاء</span>
+                                        </button>
+                                      )}
+                                    </>
+                                  )}
+
                                   {/* Action: Transfer Clinic Modal */}
                                   {apt.status !== 'CANCELLED' && apt.status !== 'COMPLETED' && (
                                     <button
@@ -2073,10 +2282,22 @@ export default function StaffDashboardPage() {
                                   )}
 
                                   {apt.status === 'COMPLETED' && (
-                                    <span className="text-2xs text-emerald-600 font-semibold flex items-center gap-1">
-                                      <CheckCircle2 className="w-3.5 h-3.5" />
-                                      <span>تم الكشف</span>
-                                    </span>
+                                    <>
+                                      <span className="text-2xs text-emerald-600 font-semibold flex items-center gap-1">
+                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                        <span>تم الكشف</span>
+                                      </span>
+                                      {(isDoctor || isAdmin) && (
+                                        <button
+                                          onClick={() => openVisitEdit(apt)}
+                                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-900 text-white text-2xs font-bold"
+                                          title="تعديل ملاحظات الكشف والرسوم أو إعادة فتح الزيارة"
+                                        >
+                                          <Edit3 className="w-3 h-3" />
+                                          <span>تعديل الكشف</span>
+                                        </button>
+                                      )}
+                                    </>
                                   )}
 
                                   {apt.status === 'CANCELLED' && (
@@ -2109,6 +2330,11 @@ export default function StaffDashboardPage() {
             onStatusChange={handleStatusChange}
             onRecall={handleRecall}
             onRefresh={() => setRefreshKey((k) => k + 1)}
+            onDateChange={(d) => {
+              setCustomDate(d);
+              setDateFilterType('CUSTOM');
+            }}
+            onViewReceipt={(apt) => setReceiptApt(apt)}
           />
         )}
 
@@ -3053,6 +3279,201 @@ export default function StaffDashboardPage() {
         </div>
       )}
 
+      {/* MODAL 2.7: QUEUE RECEIPT (عرض الإيصال) — PRINTABLE */}
+      {receiptApt && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full p-4 sm:p-6 text-right shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 no-print">
+              <h3 className="text-base font-bold text-[#124E4A] flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-[#087F78]" />
+                <span>إيصال موعد العيادة</span>
+              </h3>
+              <button
+                onClick={() => setReceiptApt(null)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Printable Queue Receipt Card */}
+            <div
+              id="printable-queue-receipt"
+              className="bg-white rounded-2xl border-2 border-teal-600/30 p-5 space-y-4 text-xs print:p-6 print:border-[#087F78] print:rounded-2xl"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                <div className="flex items-center gap-2.5">
+                  <Image
+                    src="/logo-main.png"
+                    alt="شعار مستشفى الأطفال التخصصي بالبحيرة"
+                    width={44}
+                    height={44}
+                    className="w-10 h-10 object-contain"
+                  />
+                  <div>
+                    <h4 className="text-base font-black text-[#124E4A]">مستشفى الأطفال التخصصي بالبحيرة</h4>
+                    <p className="text-[11px] text-slate-500">إيصال كشف العيادات الخارجية</p>
+                  </div>
+                </div>
+                <div className="text-left font-mono">
+                  <span className="text-[10px] text-slate-400 block font-semibold">تاريخ الطباعة</span>
+                  <span className="text-xs font-bold text-[#163C3A]">{new Date().toLocaleDateString('ar-EG')}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <span className="text-slate-400 block text-[10.5px]">اسم المريض</span>
+                  <strong className="text-sm text-[#163C3A]">{receiptApt.patientName}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10.5px]">العيادة</span>
+                  <strong className="text-xs text-[#163C3A]">{receiptApt.clinicName}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10.5px]">تاريخ الموعد</span>
+                  <strong className="text-xs text-[#163C3A]">
+                    {formatArabicDate(receiptApt.appointmentDate)} — الساعة {receiptApt.appointmentTime}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10.5px]">رقم التذكرة / الدور</span>
+                  <strong className="text-sm font-mono text-[#124E4A]">
+                    {receiptApt.referenceNumber}
+                    {receiptApt.queueNumber ? ` — دور #${receiptApt.queueNumber}` : ''}
+                  </strong>
+                </div>
+                <div className="p-2.5 rounded-xl bg-teal-50 border border-teal-100 col-span-2">
+                  <span className="text-[10.5px] font-bold text-[#087F78] block">الرسوم المدفوعة</span>
+                  <strong className="text-xs sm:text-sm font-bold text-[#124E4A] font-mono">
+                    {receiptApt.feePaid !== undefined && receiptApt.feePaid !== null
+                      ? `${Number(receiptApt.feePaid).toLocaleString('ar-EG')} جنيه`
+                      : 'غير مسجل'}
+                  </strong>
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 text-center text-[10px] text-slate-400">
+                أبو حمص – دمسنا – محافظة البحيرة • مستشفى الأطفال التخصصي
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 no-print">
+              <button
+                type="button"
+                onClick={() => setReceiptApt(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+              >
+                إغلاق
+              </button>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="px-5 py-2 rounded-xl text-xs font-bold bg-[#087F78] hover:bg-[#066560] text-white shadow-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <Printer className="w-4 h-4" />
+                <span>طباعة الإيصال</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2.8: POST-COMPLETION VISIT EDIT (تعديل الكشف) */}
+      {editingCompletedApt && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full p-4 sm:p-6 text-right shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="text-base font-bold text-[#124E4A] flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-[#087F78]" />
+                <span>تعديل الكشف — {editingCompletedApt.patientName}</span>
+              </h3>
+              <button
+                onClick={() => setEditingCompletedApt(null)}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-2xs text-emerald-800 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>
+                الموعد مكتمل — {editingCompletedApt.referenceNumber} — {formatArabicDate(editingCompletedApt.appointmentDate)}
+                {editingCompletedApt.queueNumber ? ` — دور #${editingCompletedApt.queueNumber}` : ''}
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-[#163C3A] mb-1">ملاحظات التشخيص وتفاصيل الزيارة</label>
+              <textarea
+                value={visitNotes}
+                onChange={(e) => setVisitNotes(e.target.value)}
+                rows={4}
+                placeholder="اكتب ملاحظات الكشف والتشخيص ووصف الحالة..."
+                className="w-full px-3 py-2.5 rounded-xl border border-[#E2E8EE] text-sm text-[#163C3A] focus:border-[#087F78] resize-y"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-[#163C3A] mb-1">الرسوم المدفوعة (جنيه)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={visitFee}
+                onChange={(e) => setVisitFee(e.target.value)}
+                placeholder="مثال: 150"
+                className="w-full px-3 py-2.5 rounded-xl border border-[#E2E8EE] text-sm font-mono text-[#163C3A] focus:border-[#087F78]"
+              />
+            </div>
+
+            {isAdmin && (
+              <div>
+                <label className="block text-xs font-bold text-[#163C3A] mb-1">إعادة فتح الزيارة (تصحيح إتمام خاطئ)</label>
+                <select
+                  value={visitReopen}
+                  onChange={(e) => setVisitReopen(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-[#E2E8EE] text-xs font-semibold text-[#163C3A] bg-white focus:border-[#087F78]"
+                >
+                  <option value="">لا — إبقاء الموعد مكتملاً</option>
+                  <option value="CHECKED_IN">نعم — إعادة المريض داخل العيادة (جاري الكشف)</option>
+                  <option value="CONFIRMED">نعم — إعادة المريض إلى طابور الانتظار</option>
+                </select>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setEditingCompletedApt(null)}
+                className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
+              >
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveVisitEdit}
+                disabled={savingVisitEdit}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#087F78] hover:bg-[#066560] text-white shadow-xs cursor-pointer flex items-center gap-1.5 disabled:opacity-60"
+              >
+                {savingVisitEdit ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>جاري الحفظ...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>حفظ التعديلات</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL 3: EDIT CLINIC (ADMIN) */}
       {editingClinic && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
@@ -3780,6 +4201,26 @@ export default function StaffDashboardPage() {
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-5 left-5 z-[60] max-w-sm no-print">
+          <div
+            className={`flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg border text-xs font-bold animate-in slide-in-from-bottom-2 duration-200 ${
+              toastMessage.type === 'error'
+                ? 'bg-red-50 text-red-700 border-red-200'
+                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+            }`}
+          >
+            {toastMessage.type === 'error' ? (
+              <AlertCircle className="w-4 h-4 shrink-0" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+            )}
+            <span>{toastMessage.text}</span>
           </div>
         </div>
       )}

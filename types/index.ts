@@ -1,7 +1,18 @@
+/**
+ * Appointment lifecycle statuses.
+ *
+ * Queue lifecycle mapping (شاشة النداء وطابور العيادة):
+ *   waiting     => CONFIRMED   (في الانتظار — default active queue state)
+ *   in_progress => CHECKED_IN  (جاري الكشف / داخل العيادة)
+ *   skipped     => SKIPPED     (تم التخطي — absent/stepped out, kept for manual call)
+ *   completed   => COMPLETED   (تم الكشف — retained for daily counters and audit)
+ *   cancelled   => CANCELLED   (ملغي)
+ */
 export type AppointmentStatus =
   | 'PENDING_REVIEW'   // قيد المراجعة
-  | 'CONFIRMED'        // مؤكد
-  | 'CHECKED_IN'       // حضر المريض (في قائمة النداء)
+  | 'CONFIRMED'        // مؤكد (في الانتظار)
+  | 'CHECKED_IN'       // حضر المريض (جاري الكشف / في قائمة النداء)
+  | 'SKIPPED'          // تم التخطي (مؤقتاً خارج الطابور وقابل للنداء اليدوي)
   | 'COMPLETED'        // مكتمل (تم الكشف)
   | 'CANCELLED';       // ملغي
 
@@ -84,6 +95,7 @@ export interface Appointment {
   createdAt: string;
   updatedAt: string;
   notes?: string;
+  feePaid?: number;
   queueNumber?: number;
   lastCalledAt?: string;
   calledCount?: number;

@@ -12,6 +12,7 @@ export type AppointmentStatus =
   | 'PENDING_REVIEW'
   | 'CONFIRMED'
   | 'CHECKED_IN'
+  | 'SKIPPED'
   | 'COMPLETED'
   | 'CANCELLED';
 
@@ -160,6 +161,7 @@ export interface Database {
           last_called_at: string | null;
           called_count: number;
           notes: string | null;
+          fee_paid: number | null;
           created_at: string;
           updated_at: string;
         };
@@ -179,6 +181,7 @@ export interface Database {
           last_called_at?: string | null;
           called_count?: number;
           notes?: string | null;
+          fee_paid?: number | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -198,6 +201,7 @@ export interface Database {
           last_called_at?: string | null;
           called_count?: number;
           notes?: string | null;
+          fee_paid?: number | null;
           updated_at?: string;
         };
         Relationships: [];

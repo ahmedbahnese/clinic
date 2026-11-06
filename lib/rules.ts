@@ -99,6 +99,16 @@ export function validatePatientName(name: string): {
 
 /**
  * Validates allowed status transitions.
+ *
+ * Queue lifecycle:
+ *   PENDING_REVIEW -> CONFIRMED | CANCELLED
+ *   CONFIRMED      -> CHECKED_IN | SKIPPED | CANCELLED | PENDING_REVIEW
+ *   CHECKED_IN     -> COMPLETED | SKIPPED | CANCELLED | CONFIRMED | CHECKED_IN
+ *   SKIPPED        -> CHECKED_IN | CANCELLED   (إدخال الآن / إلغاء)
+ *   COMPLETED      -> CHECKED_IN | CONFIRMED   (Admin-only reopen — the role
+ *                      gate is enforced in AppointmentService.updateStatus and
+ *                      in the update_appointment_status_atomic RPC)
+ *   CANCELLED      -> (terminal)
  */
 export function canTransitionStatus(
   currentStatus: AppointmentStatus,
@@ -110,12 +120,20 @@ export function canTransitionStatus(
     case 'PENDING_REVIEW':
       return targetStatus === 'CONFIRMED' || targetStatus === 'CANCELLED';
     case 'CONFIRMED':
-      return targetStatus === 'CHECKED_IN' || targetStatus === 'CANCELLED';
+      return targetStatus === 'CHECKED_IN' || targetStatus === 'SKIPPED' || targetStatus === 'CANCELLED';
     case 'CHECKED_IN':
-      return targetStatus === 'COMPLETED' || targetStatus === 'CANCELLED';
+      return (
+        targetStatus === 'COMPLETED' ||
+        targetStatus === 'SKIPPED' ||
+        targetStatus === 'CANCELLED' ||
+        targetStatus === 'CONFIRMED'
+      );
+    case 'SKIPPED':
+      return targetStatus === 'CHECKED_IN' || targetStatus === 'CANCELLED';
     case 'COMPLETED':
-      // Completed appointments cannot be reverted
-      return false;
+      // Reopen is permitted by the state machine but gated to ADMIN at the
+      // service and RPC layers (terminal state protection).
+      return targetStatus === 'CHECKED_IN' || targetStatus === 'CONFIRMED';
     case 'CANCELLED':
       // Cancelled appointments cannot be reopened
       return false;
@@ -180,6 +198,13 @@ export function getStatusDisplay(status: AppointmentStatus): {
         bg: '#DBEAFE',
         border: '#BFDBFE',
       };
+    case 'SKIPPED':
+      return {
+        label: 'تم التخطي',
+        color: '#C2410C',
+        bg: '#FFEDD5',
+        border: '#FDBA74',
+      };
     case 'COMPLETED':
       return {
         label: 'مكتمل (تم الكشف)',
@@ -212,6 +237,16 @@ export function formatLocalDate(date: Date = new Date()): string {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+/**
+ * Whether an appointment date (YYYY-MM-DD) matches the current system date.
+ * Used by the queue date guard: calling (نداء) or completing (تم الكشف) an
+ * appointment on any other date is strictly blocked.
+ */
+export function isTodayLocalDate(dateStr: string | null | undefined, now: Date = new Date()): boolean {
+  if (!dateStr || typeof dateStr !== 'string') return false;
+  return dateStr === formatLocalDate(now);
 }
 
 /**

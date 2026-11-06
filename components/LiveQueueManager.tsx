@@ -20,9 +20,11 @@ import {
   Sparkles,
   Phone,
   Check,
+  Receipt,
+  CalendarDays,
 } from 'lucide-react';
 import type { Appointment, Clinic, AppointmentStatus } from '@/types';
-import { formatArabicDate } from '@/lib/rules';
+import { formatArabicDate, formatLocalDate, isTodayLocalDate } from '@/lib/rules';
 
 export interface LiveQueueManagerProps {
   appointments: Appointment[];
@@ -36,6 +38,10 @@ export interface LiveQueueManagerProps {
   onStatusChange: (appointmentId: string, newStatus: AppointmentStatus, note?: string) => Promise<void>;
   onRecall?: (appointmentId: string) => Promise<void>;
   onRefresh?: () => void;
+  /** Fired when the queue DatePicker changes so the parent refetches that date. */
+  onDateChange?: (date: string) => void;
+  /** Opens the printable receipt modal for the given appointment. */
+  onViewReceipt?: (appointment: Appointment) => void;
 }
 
 interface QueueHistoryEntry {
@@ -45,6 +51,14 @@ interface QueueHistoryEntry {
   timestamp: number;
 }
 
+interface QueueToast {
+  kind: 'success' | 'error' | 'info';
+  text: string;
+}
+
+const QUEUE_ACTION_TODAY_GUARD =
+  'لا يمكن نداء أو إنهاء كشف موعد في تاريخ غير تاريخ اليوم.';
+
 export default function LiveQueueManager({
   appointments,
   clinics,
@@ -52,6 +66,8 @@ export default function LiveQueueManager({
   onStatusChange,
   onRecall,
   onRefresh,
+  onDateChange,
+  onViewReceipt,
 }: LiveQueueManagerProps) {
   const [selectedClinicId, setSelectedClinicId] = useState<string>(
     currentUser?.role === 'DOCTOR' && currentUser.clinicId
@@ -59,13 +75,32 @@ export default function LiveQueueManager({
       : 'ALL'
   );
 
+  // Reactive DatePicker: defaults to the current system date (client today)
+  const [selectedDate, setSelectedDate] = useState<string>(() => formatLocalDate(new Date()));
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [callingInProgress, setCallingInProgress] = useState(false);
   const [historyStack, setHistoryStack] = useState<QueueHistoryEntry[]>([]);
   const [activeCalloutMessage, setActiveCalloutMessage] = useState<string | null>(null);
+  const [toast, setToast] = useState<QueueToast | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Time in session timer
   const [sessionSeconds, setSessionSeconds] = useState(0);
+
+  const todayStr = useMemo(() => formatLocalDate(new Date()), []);
+  const isTodaySelected = selectedDate === todayStr;
+
+  const showToast = (kind: QueueToast['kind'], text: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ kind, text });
+    toastTimerRef.current = setTimeout(() => setToast(null), 5000);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
 
   // Play pleasant 2-tone hospital ding-dong chime using Web Audio API
   const playChime = () => {
@@ -114,9 +149,16 @@ export default function LiveQueueManager({
     return list;
   }, [appointments, selectedClinicId, currentUser]);
 
+  // Strict date scoping: only appointments of the selected queue date
+  const dateScopedAppointments = useMemo(() => {
+    return filteredAppointments.filter((a) => a.appointmentDate === selectedDate);
+  }, [filteredAppointments, selectedDate]);
+
   // Sort strictly by First In, First Out (FIFO): queueNumber -> appointmentTime -> createdAt
+  // Waiting queue targets ONLY waiting patients (CONFIRMED) plus the one in
+  // session (CHECKED_IN). SKIPPED patients are never auto-called.
   const activeQueue = useMemo(() => {
-    return filteredAppointments
+    return dateScopedAppointments
       .filter((a) => a.status === 'CHECKED_IN' || a.status === 'CONFIRMED')
       .sort((a, b) => {
         // Patients currently in consultation (CHECKED_IN) always stay at the top
@@ -137,7 +179,27 @@ export default function LiveQueueManager({
         // Fallback to createdAt timestamp
         return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
       });
-  }, [filteredAppointments]);
+  }, [dateScopedAppointments]);
+
+  // Waiting patients strictly (status === waiting => CONFIRMED)
+  const waitingQueue = useMemo(
+    () => activeQueue.filter((a) => a.status === 'CONFIRMED'),
+    [activeQueue]
+  );
+
+  // Skipped patients (retained in the list; eligible for manual "إدخال الآن")
+  const skippedQueue = useMemo(() => {
+    return dateScopedAppointments
+      .filter((a) => a.status === 'SKIPPED')
+      .sort((a, b) => (a.queueNumber || 0) - (b.queueNumber || 0));
+  }, [dateScopedAppointments]);
+
+  // Completed patients (retained for the daily tally and audit)
+  const completedQueue = useMemo(() => {
+    return dateScopedAppointments
+      .filter((a) => a.status === 'COMPLETED')
+      .sort((a, b) => (a.queueNumber || 0) - (b.queueNumber || 0));
+  }, [dateScopedAppointments]);
 
   // Current Patient: Either the patient currently in-session (CHECKED_IN) or the top waiting patient
   const currentPatient = useMemo(() => {
@@ -153,14 +215,11 @@ export default function LiveQueueManager({
     return remaining.length > 0 ? remaining[0] : null;
   }, [activeQueue, currentPatient]);
 
-  // Total waiting count (patients confirmed or checked-in)
-  const totalWaitingCount = useMemo(() => {
-    return activeQueue.length;
-  }, [activeQueue]);
-
-  const completedTodayCount = useMemo(() => {
-    return filteredAppointments.filter((a) => a.status === 'COMPLETED').length;
-  }, [filteredAppointments]);
+  // Daily counters (retained records are NOT filtered out)
+  const totalTodayCount = useMemo(() => dateScopedAppointments.length, [dateScopedAppointments]);
+  const totalWaitingCount = useMemo(() => activeQueue.length, [activeQueue]);
+  const skippedTodayCount = useMemo(() => skippedQueue.length, [skippedQueue]);
+  const completedTodayCount = useMemo(() => completedQueue.length, [completedQueue]);
 
   // Timer for how long current patient has been in session
   useEffect(() => {
@@ -182,6 +241,16 @@ export default function LiveQueueManager({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Date guard: blocks call / complete / skip actions on any date other than today
+  const guardTodayAction = (apt: Appointment | null | undefined): boolean => {
+    if (!apt) return false;
+    if (!isTodayLocalDate(apt.appointmentDate)) {
+      showToast('error', QUEUE_ACTION_TODAY_GUARD);
+      return false;
+    }
+    return true;
+  };
+
   // Primary Action: "Call Next" (التالي)
   const handleCallNext = async () => {
     if (callingInProgress) return;
@@ -201,7 +270,17 @@ export default function LiveQueueManager({
       }
 
       if (!targetNext) {
-        alert('لا توجد حالات تالية في طابور الانتظار حالياً.');
+        showToast('info', 'لا توجد حالات تالية في طابور الانتظار حالياً.');
+        setCallingInProgress(false);
+        return;
+      }
+
+      // Strict date guard on both the completion and the call targets
+      if (patientToComplete && !guardTodayAction(patientToComplete)) {
+        setCallingInProgress(false);
+        return;
+      }
+      if (!guardTodayAction(targetNext)) {
         setCallingInProgress(false);
         return;
       }
@@ -235,7 +314,77 @@ export default function LiveQueueManager({
       if (onRefresh) onRefresh();
     } catch (err) {
       console.error('Call next error:', err);
-      alert('حدث خطأ أثناء نداء المريض التالي');
+      showToast('error', 'حدث خطأ أثناء نداء المريض التالي');
+    } finally {
+      setCallingInProgress(false);
+    }
+  };
+
+  // Skip Action: "تخطي" — skip the current patient then auto-call the next waiting one
+  const handleSkipCurrent = async () => {
+    if (callingInProgress) return;
+    if (!currentPatient) {
+      showToast('info', 'لا توجد حالة حالية لتخطيها في الطابور.');
+      return;
+    }
+    if (currentPatient.status !== 'CHECKED_IN' && currentPatient.status !== 'CONFIRMED') {
+      showToast('error', 'يمكن تخطي المرضى في حالة الانتظار أو داخل غرفة الكشف فقط.');
+      return;
+    }
+    if (!guardTodayAction(currentPatient)) return;
+
+    setCallingInProgress(true);
+    try {
+      // 1. Transition the current patient to SKIPPED (turn preserved)
+      await onStatusChange(
+        currentPatient.id,
+        'SKIPPED',
+        'تم تخطي المريض مؤقتاً (غير متواجد حالياً في قاعة الانتظار)'
+      );
+
+      // 2. Automatically cue and call the next sequential waiting patient
+      const nextWaiting = waitingQueue.find((a) => a.id !== currentPatient.id);
+      if (nextWaiting && guardTodayAction(nextWaiting)) {
+        await onStatusChange(
+          nextWaiting.id,
+          'CHECKED_IN',
+          'نداء تلقائي للمريض التالي بعد تخطي المريض السابق'
+        );
+        playChime();
+        const calloutText = `📢 تم تخطي ${currentPatient.patientName} — نداء المريض التالي: ${nextWaiting.patientName} — دور #${nextWaiting.queueNumber || 1}`;
+        setActiveCalloutMessage(calloutText);
+        setTimeout(() => setActiveCalloutMessage(null), 9000);
+      } else {
+        showToast('info', `تم تخطي المريض "${currentPatient.patientName}". لا توجد حالات منتظرة أخرى للنداء حالياً.`);
+      }
+
+      setSessionSeconds(0);
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      console.error('Skip patient error:', err);
+      showToast('error', 'حدث خطأ أثناء تخطي المريض');
+    } finally {
+      setCallingInProgress(false);
+    }
+  };
+
+  // Manual recall of a skipped patient: "إدخال الآن"
+  const handleCallNowSkipped = async (apt: Appointment) => {
+    if (callingInProgress) return;
+    if (!guardTodayAction(apt)) return;
+
+    setCallingInProgress(true);
+    try {
+      await onStatusChange(apt.id, 'CHECKED_IN', 'إدخال المريض الآن بعد عودته إلى قاعة الانتظار');
+      playChime();
+      const calloutText = `📢 إدخال فوري: المريض ${apt.patientName} — دور #${apt.queueNumber || 1} (${apt.clinicName})`;
+      setActiveCalloutMessage(calloutText);
+      setTimeout(() => setActiveCalloutMessage(null), 8000);
+      setSessionSeconds(0);
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      console.error('Call skipped patient error:', err);
+      showToast('error', 'حدث خطأ أثناء إدخال المريض للكشف');
     } finally {
       setCallingInProgress(false);
     }
@@ -264,7 +413,7 @@ export default function LiveQueueManager({
       if (onRefresh) onRefresh();
     } catch (err) {
       console.error('Undo error:', err);
-      alert('تعذر التراجع عن الإجراء السابق');
+      showToast('error', 'تعذر التراجع عن الإجراء السابق');
     } finally {
       setCallingInProgress(false);
     }
@@ -282,6 +431,14 @@ export default function LiveQueueManager({
     setTimeout(() => setActiveCalloutMessage(null), 7000);
   };
 
+  const handleDateChange = (value: string) => {
+    if (!value) return;
+    setSelectedDate(value);
+    if (onDateChange) onDateChange(value);
+  };
+
+  const queueActionsDisabled = callingInProgress || !isTodaySelected;
+
   return (
     <div className="space-y-6 text-right" dir="rtl">
       {/* Top Controls Header */}
@@ -298,12 +455,29 @@ export default function LiveQueueManager({
               </span>
             </h2>
             <p className="text-2xs sm:text-xs text-slate-500 font-medium">
-              التحكم السريع في تدفق المرضى بين الانتظار وغرفة الكشف
+              التحكم السريع في تدفق المرضى بين الانتظار وغرفة الكشف — أفعال الطابور متاحة لموعد اليوم فقط
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Reactive DatePicker (defaults to today) */}
+          <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 text-xs">
+            <CalendarDays className="w-4 h-4 text-[#087F78]" />
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => handleDateChange(e.target.value)}
+              className="bg-transparent font-bold text-[#163C3A] focus:outline-none cursor-pointer font-mono text-2xs sm:text-xs"
+              title="تاريخ الطابور المعروض (الافتراضي: اليوم)"
+            />
+            {!isTodaySelected && (
+              <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-3xs font-extrabold border border-amber-200">
+                عرض فقط — الإجراءات لليوم فقط
+              </span>
+            )}
+          </div>
+
           {/* Clinic Selector */}
           {currentUser?.role !== 'DOCTOR' && (
             <div className="flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 text-xs">
@@ -452,13 +626,28 @@ export default function LiveQueueManager({
               <button
                 type="button"
                 onClick={handleCallNext}
-                disabled={callingInProgress || activeQueue.length === 0}
+                disabled={queueActionsDisabled || activeQueue.length === 0}
                 className="w-full sm:flex-1 py-4 px-6 rounded-2xl bg-[#087F78] hover:bg-[#066560] text-white font-black text-sm sm:text-base shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50"
+                title={!isTodaySelected ? 'أفعال الطابور متاحة لموعد اليوم فقط' : undefined}
               >
                 <Play className="w-5 h-5 fill-current" />
                 <span>النداء للحالة التالية (Call Next)</span>
                 <ChevronLeft className="w-5 h-5" />
               </button>
+
+              {/* SKIP CURRENT PATIENT BUTTON */}
+              {currentPatient && (
+                <button
+                  type="button"
+                  onClick={handleSkipCurrent}
+                  disabled={queueActionsDisabled}
+                  className="w-full sm:w-auto py-4 px-5 rounded-2xl bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  title="تخطي المريض الحالي مؤقتاً والنداء على المريض التالي"
+                >
+                  <SkipForward className="w-4 h-4" />
+                  <span>تخطي المريض الحالي</span>
+                </button>
+              )}
 
               {/* RECALL BUTTON */}
               {currentPatient && (
@@ -485,6 +674,19 @@ export default function LiveQueueManager({
                 <RotateCcw className="w-4 h-4 text-amber-600" />
                 <span>رجوع (Undo)</span>
               </button>
+
+              {/* VIEW RECEIPT */}
+              {currentPatient && (
+                <button
+                  type="button"
+                  onClick={() => onViewReceipt?.(currentPatient)}
+                  className="w-full sm:w-auto py-4 px-4 rounded-2xl border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  title="عرض إيصال المريض الحالي"
+                >
+                  <Receipt className="w-4 h-4 text-[#087F78]" />
+                  <span className="hidden sm:inline">عرض الإيصال</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -514,10 +716,18 @@ export default function LiveQueueManager({
                   </div>
                 </div>
 
-                <div className="text-right sm:text-left text-xs">
+                <div className="text-right sm:text-left text-xs flex items-center gap-2">
                   <span className="px-2.5 py-1 rounded-full text-3xs font-extrabold bg-amber-100 text-amber-800 border border-amber-200">
                     بانتظار النداء القادم
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => onViewReceipt?.(nextPatient)}
+                    className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-[#087F78] hover:border-[#087F78]/40 transition-colors cursor-pointer"
+                    title="عرض الإيصال"
+                  >
+                    <Receipt className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             ) : (
@@ -534,14 +744,28 @@ export default function LiveQueueManager({
           {/* STATS COUNTER CARD */}
           <div className="bg-white rounded-3xl border border-[#E2E8EE] p-5 shadow-2xs space-y-4">
             <h4 className="text-xs font-black text-[#124E4A] pb-2 border-b border-slate-100">
-              إحصائيات الطابور اليومي
+              إحصائيات الطابور اليومي ({formatArabicDate(selectedDate)})
             </h4>
 
             <div className="grid grid-cols-2 gap-3">
+              <div className="bg-slate-50/60 border border-slate-200/80 rounded-2xl p-3 text-right">
+                <span className="text-3xs font-bold text-slate-600 block">إجمالي المسجلين</span>
+                <span className="text-2xl font-black text-[#124E4A] font-mono mt-1 block">
+                  {totalTodayCount}
+                </span>
+              </div>
+
               <div className="bg-amber-50/60 border border-amber-200/80 rounded-2xl p-3 text-right">
-                <span className="text-3xs font-bold text-amber-700 block">عدد الانتظار (Waiting)</span>
+                <span className="text-3xs font-bold text-amber-700 block">في الانتظار (Waiting)</span>
                 <span className="text-2xl font-black text-amber-800 font-mono mt-1 block">
                   {totalWaitingCount}
+                </span>
+              </div>
+
+              <div className="bg-orange-50/60 border border-orange-200/80 rounded-2xl p-3 text-right">
+                <span className="text-3xs font-bold text-orange-700 block">تم التخطي (Skipped)</span>
+                <span className="text-2xl font-black text-orange-800 font-mono mt-1 block">
+                  {skippedTodayCount}
                 </span>
               </div>
 
@@ -554,7 +778,7 @@ export default function LiveQueueManager({
             </div>
           </div>
 
-          {/* UPCOMING QUEUE ORDERED LIST */}
+          {/* UPCOMING QUEUE ORDERED LIST (waiting strictly) */}
           <div className="bg-white rounded-3xl border border-[#E2E8EE] p-5 shadow-2xs space-y-3">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <span className="text-xs font-black text-[#124E4A]">
@@ -596,7 +820,15 @@ export default function LiveQueueManager({
                         </div>
                       </div>
 
-                      <div className="shrink-0 text-left">
+                      <div className="shrink-0 text-left flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => onViewReceipt?.(apt)}
+                          className="p-1 rounded-md border border-slate-200 text-slate-400 hover:text-[#087F78] hover:border-[#087F78]/40 transition-colors cursor-pointer"
+                          title="عرض الإيصال"
+                        >
+                          <Receipt className="w-3 h-3" />
+                        </button>
                         {isCurrent ? (
                           <span className="text-3xs font-extrabold text-[#087F78] bg-teal-100/70 px-2 py-0.5 rounded-md">
                             بالداخل
@@ -614,9 +846,141 @@ export default function LiveQueueManager({
             )}
           </div>
 
+          {/* SKIPPED PATIENTS LIST (retained; manual "إدخال الآن") */}
+          <div className="bg-white rounded-3xl border border-[#E2E8EE] p-5 shadow-2xs space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <span className="text-xs font-black text-[#124E4A] flex items-center gap-1.5">
+                <SkipForward className="w-3.5 h-3.5 text-orange-600" />
+                <span>تم التخطي ({skippedQueue.length})</span>
+              </span>
+              <span className="text-3xs text-slate-400 font-semibold">قابل للنداء اليدوي</span>
+            </div>
+
+            {skippedQueue.length === 0 ? (
+              <p className="text-2xs text-slate-400 text-center py-4">
+                لا يوجد مرضى تم تخطيهم
+              </p>
+            ) : (
+              <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                {skippedQueue.map((apt) => (
+                  <div
+                    key={apt.id}
+                    className="p-2.5 rounded-xl border border-orange-200 bg-orange-50/60 text-xs flex items-center justify-between gap-2"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="w-7 h-7 rounded-lg bg-orange-100 text-orange-700 text-2xs font-black font-mono flex items-center justify-center shrink-0">
+                        #{apt.queueNumber || '—'}
+                      </span>
+                      <div className="min-w-0">
+                        <span className="font-bold text-[#163C3A] truncate block text-2xs">
+                          {apt.patientName}
+                        </span>
+                        <span className="text-3xs text-orange-600 block truncate font-semibold">
+                          تم التخطي — بالانتظار للعودة
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 text-left flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => onViewReceipt?.(apt)}
+                        className="p-1 rounded-md border border-orange-200 text-orange-500 hover:text-[#087F78] hover:border-[#087F78]/40 bg-white transition-colors cursor-pointer"
+                        title="عرض الإيصال"
+                      >
+                        <Receipt className="w-3 h-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleCallNowSkipped(apt)}
+                        disabled={queueActionsDisabled}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[#2563EB] hover:bg-blue-700 text-white text-2xs font-bold transition-colors disabled:opacity-50 cursor-pointer"
+                        title="إدخال المريض فوراً عند عودته"
+                      >
+                        <UserCheck className="w-3 h-3" />
+                        <span>إدخال الآن</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* COMPLETED PATIENTS LIST (retained for daily tally and audit) */}
+          <div className="bg-white rounded-3xl border border-[#E2E8EE] p-5 shadow-2xs space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <span className="text-xs font-black text-[#124E4A] flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>تم الكشف ({completedQueue.length})</span>
+              </span>
+              <span className="text-3xs text-slate-400 font-semibold">محفوظ للعدادات والمراجعة</span>
+            </div>
+
+            {completedQueue.length === 0 ? (
+              <p className="text-2xs text-slate-400 text-center py-4">
+                لا توجد حالات مكتملة لهذا التاريخ
+              </p>
+            ) : (
+              <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                {completedQueue.map((apt) => (
+                  <div
+                    key={apt.id}
+                    className="p-2.5 rounded-xl border border-emerald-200 bg-emerald-50/60 text-xs flex items-center justify-between gap-2"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 text-2xs font-black font-mono flex items-center justify-center shrink-0">
+                        #{apt.queueNumber || '—'}
+                      </span>
+                      <div className="min-w-0">
+                        <span className="font-bold text-[#163C3A] truncate block text-2xs">
+                          {apt.patientName}
+                        </span>
+                        <span className="text-3xs text-emerald-600 block truncate font-semibold">
+                          تم الكشف — اكتملت الإجراءات
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => onViewReceipt?.(apt)}
+                      className="p-1 rounded-md border border-emerald-200 text-emerald-500 hover:text-[#087F78] hover:border-[#087F78]/40 bg-white transition-colors cursor-pointer shrink-0"
+                      title="عرض الإيصال"
+                    >
+                      <Receipt className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
         </div>
 
       </div>
+
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed bottom-4 left-4 z-[60] max-w-xs w-full sm:w-auto">
+          <div
+            className={`flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg border text-xs font-bold text-white ${
+              toast.kind === 'success'
+                ? 'bg-[#087F78] border-[#066560]'
+                : toast.kind === 'error'
+                ? 'bg-red-600 border-red-700'
+                : 'bg-slate-700 border-slate-800'
+            }`}
+          >
+            {toast.kind === 'success' ? (
+              <Check className="w-4 h-4 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 shrink-0" />
+            )}
+            <span>{toast.text}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
