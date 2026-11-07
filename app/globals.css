@@ -55,12 +55,26 @@ body {
     print-color-adjust: exact !important;
   }
 
-  /* Hide everything on the page by default to eliminate multiple empty/stretched pages */
+  /* Hide everything on the page by default to eliminate unwanted UI elements */
   body * {
     visibility: hidden;
   }
 
-  /* Make ONLY the printable receipt card and its children visible */
+  /* Reset fixed modal containers in print mode so they don't clip or darken content */
+  .fixed.inset-0,
+  [role="dialog"] {
+    position: static !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    height: auto !important;
+    width: 100% !important;
+  }
+
+  /* Make the printable receipt card and its children visible */
   .printable-receipt-card,
   .printable-receipt-card * {
     visibility: visible !important;
@@ -83,6 +97,32 @@ body {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
     page-break-after: avoid !important;
+  }
+
+  /* Make the printable clinic examination sheet (كشف العيادة اليومي) visible */
+  .printable-roster-sheet,
+  .printable-roster-sheet * {
+    visibility: visible !important;
+  }
+
+  .printable-roster-sheet {
+    position: absolute !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: 0 !important;
+    margin: 0 auto !important;
+    width: 100% !important;
+    background: #ffffff !important;
+    display: block !important;
+  }
+
+  .printable-roster-sheet thead {
+    display: table-header-group !important;
+  }
+
+  .printable-roster-sheet tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 
   header, footer, nav, aside, dialog, .no-print, [data-no-print], button {

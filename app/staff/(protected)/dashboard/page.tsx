@@ -45,6 +45,7 @@ import {
 import CmsDashboard from '@/components/cms/CmsDashboard';
 import StaffManager from './components/StaffManager';
 import LiveQueueManager from '@/components/LiveQueueManager';
+import ReceiptCard from '@/components/ReceiptCard';
 import { Appointment, Clinic, ClinicService, ClinicScheduleException, AppointmentStatus, AuditLogItem, CancellationRequest } from '@/types';
 import { getStatusDisplay, formatArabicDate, formatLocalDate, isTodayLocalDate } from '@/lib/rules';
 
@@ -2318,6 +2319,106 @@ export default function StaffDashboardPage() {
                 </>
               )}
             </div>
+
+            {/* PRINTABLE CLINIC EXAMINATION ROSTER (كشف العيادة اليومي للطباعة الرسمية) */}
+            {!receiptApt && !walkInSuccessReceipt && (
+              <div className="hidden print:block printable-roster-sheet text-right font-sans text-black bg-white p-2">
+                {/* Official Hospital Print Header */}
+                <div className="border-b-2 border-slate-900 pb-3 mb-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Image
+                      src="/logo-main.png"
+                      alt="شعار مستشفى الأطفال التخصصي بالبحيرة"
+                      width={56}
+                      height={56}
+                      className="w-14 h-14 object-contain"
+                    />
+                    <div>
+                      <h1 className="text-base font-black text-slate-950">مستشفى الأطفال التخصصي بالبحيرة</h1>
+                      <p className="text-xs text-slate-700 font-semibold">مديرية الشؤون الصحية بمحافظة البحيرة • إدارة العيادات الخارجية</p>
+                      <p className="text-sm font-black text-teal-900 mt-1">
+                        كشف حضور ومواعيد المرضى اليومي — {selectedClinic === 'ALL' ? 'جميع العيادات الخارجية' : (clinics.find(c => c.id === selectedClinic)?.name || 'عيادة تخصصية')}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-left text-xs font-mono border border-slate-300 p-2 rounded-lg bg-slate-50">
+                    <div><span className="text-slate-500">تاريخ الكشف: </span><strong>{dateFilterType === 'TODAY' ? formatArabicDate(formatLocalDate()) : dateFilterType === 'TOMORROW' ? 'حجوزات الغد' : customDate ? formatArabicDate(customDate) : 'كافة التواريخ'}</strong></div>
+                    <div><span className="text-slate-500">توقيت الطباعة: </span><span>{new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</span></div>
+                    <div><span className="text-slate-500">تصنيف الكشف: </span><strong>{queueSubTab === 'CONFIRMED' ? 'الحجوزات المؤكدة (طابور الحضور)' : queueSubTab === 'PENDING' ? 'الحجوزات قيد المراجعة' : 'جميع الحالات المسجلة'}</strong></div>
+                    <div><span className="text-slate-500">إجمالي الحالات: </span><strong className="text-teal-900">{displayedAppointments.length} مريض</strong></div>
+                  </div>
+                </div>
+
+                {/* Roster Table */}
+                {displayedAppointments.length === 0 ? (
+                  <div className="text-center py-10 border border-dashed border-slate-300 rounded-xl text-slate-500 text-sm">
+                    لا توجد حالات مسجلة في هذا الكشف لتاريخ {dateFilterType === 'TODAY' ? 'اليوم' : dateFilterType === 'TOMORROW' ? 'غداً' : 'المحدد'}.
+                  </div>
+                ) : (
+                  <table className="w-full text-right text-xs border-collapse border border-slate-400">
+                    <thead>
+                      <tr className="bg-slate-100 text-slate-900 border-b-2 border-slate-400">
+                        <th className="border border-slate-400 py-2 px-2 text-center w-14 font-black">م / الدور</th>
+                        <th className="border border-slate-400 py-2 px-3 font-black">اسم الطفل / المريض</th>
+                        <th className="border border-slate-400 py-2 px-2 text-center w-16 font-black">السن</th>
+                        <th className="border border-slate-400 py-2 px-2 text-center w-28 font-black font-mono">رقم الهاتف</th>
+                        <th className="border border-slate-400 py-2 px-3 font-black">العيادة / الخدمة</th>
+                        <th className="border border-slate-400 py-2 px-2 text-center w-24 font-black">الحالة</th>
+                        <th className="border border-slate-400 py-2 px-3 text-center min-w-[140px] font-black">ملاحظات الكشف / توقيع الطبيب</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayedAppointments.map((apt, idx) => (
+                        <tr key={apt.id} className="border-b border-slate-300 hover:bg-slate-50">
+                          <td className="border border-slate-300 py-2 px-2 text-center font-bold font-mono">
+                            #{apt.queueNumber || idx + 1}
+                          </td>
+                          <td className="border border-slate-300 py-2 px-3 font-bold text-slate-950">
+                            {apt.patientName}
+                          </td>
+                          <td className="border border-slate-300 py-2 px-2 text-center text-slate-800">
+                            {apt.patientAge || '—'}
+                          </td>
+                          <td className="border border-slate-300 py-2 px-2 text-center font-mono text-slate-900" dir="ltr">
+                            {apt.phoneNumber || '—'}
+                          </td>
+                          <td className="border border-slate-300 py-2 px-3 text-slate-800">
+                            <span className="font-semibold block">{apt.clinicName}</span>
+                            {apt.serviceName && <span className="text-3xs text-slate-600 block">{apt.serviceName}</span>}
+                          </td>
+                          <td className="border border-slate-300 py-2 px-2 text-center font-bold text-slate-800 text-3xs">
+                            {getStatusDisplay(apt.status).label}
+                          </td>
+                          <td className="border border-slate-300 py-2 px-3 text-slate-400">
+                            {/* Empty cell for physical handwritten notes/signatures during examination */}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+
+                {/* Verification and Signatures Footer */}
+                <div className="mt-8 pt-4 border-t border-slate-300 grid grid-cols-3 gap-4 text-xs text-center">
+                  <div>
+                    <span className="block font-bold text-slate-800 mb-6">مسؤول تنظيم والاستقبال</span>
+                    <span className="block border-b border-dotted border-slate-400 w-32 mx-auto"></span>
+                  </div>
+                  <div>
+                    <span className="block font-bold text-slate-800 mb-6">طبيب العيادة المعالج</span>
+                    <span className="block border-b border-dotted border-slate-400 w-32 mx-auto"></span>
+                  </div>
+                  <div>
+                    <span className="block font-bold text-slate-800 mb-6">خاتم العيادات الخارجية</span>
+                    <div className="w-16 h-16 border-2 border-dashed border-slate-300 rounded-full mx-auto"></div>
+                  </div>
+                </div>
+
+                <div className="mt-6 text-center text-[10px] text-slate-500">
+                  أبو حمص – دمسنا – محافظة البحيرة • مستشفى الأطفال التخصصي
+                </div>
+              </div>
+            )}
           </>
         )}
 
@@ -3156,10 +3257,10 @@ export default function StaffDashboardPage() {
         </div>
       )}
 
-      {/* MODAL 2.5: WALK-IN SUCCESS PRINTABLE RECEIPT */}
+      {/* MODAL 2.5: WALK-IN SUCCESS PRINTABLE RECEIPT (إيصال وتذكرة الحجز الحضوري الموحدة) */}
       {walkInSuccessReceipt && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full p-4 sm:p-6 text-right shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full p-4 sm:p-6 text-right shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150 my-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 no-print">
               <h3 className="text-base font-bold text-[#124E4A] flex items-center gap-2">
                 <CheckCircle2 className="w-5 h-5 text-emerald-600" />
@@ -3173,120 +3274,30 @@ export default function StaffDashboardPage() {
               </button>
             </div>
 
-            {/* Printable Receipt Card */}
-            <div
-              id="printable-walkin-receipt"
-              className="bg-white rounded-2xl border-2 border-teal-600/30 p-5 space-y-4 text-xs printable-receipt-card print:p-6 print:border-[#087F78] print:rounded-2xl"
-            >
-              <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-                <div className="flex items-center gap-2.5">
-                  <Image
-                    src="/logo-main.png"
-                    alt="شعار مستشفى الأطفال التخصصي بالبحيرة"
-                    width={44}
-                    height={44}
-                    className="w-10 h-10 object-contain"
-                  />
-                  <div>
-                    <h4 className="text-base font-black text-[#124E4A]">مستشفى الأطفال التخصصي بالبحيرة</h4>
-                    <p className="text-[11px] text-slate-500">إيصال حجز كشف حضوري معتمد</p>
-                  </div>
-                </div>
-                <div className="text-left font-mono">
-                  <span className="text-[10px] text-slate-400 block font-semibold">تاريخ الطباعة</span>
-                  <span className="text-xs font-bold text-[#163C3A]">{new Date().toLocaleDateString('ar-EG')}</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <span className="text-slate-400 block text-[10.5px]">اسم المريض</span>
-                  <strong className="text-sm text-[#163C3A]">{walkInSuccessReceipt.patientName}</strong>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10.5px]">رقم الهاتف</span>
-                  <strong className="text-xs font-mono text-[#163C3A]">{walkInSuccessReceipt.phoneNumber}</strong>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10.5px]">العيادة</span>
-                  <strong className="text-xs text-[#163C3A]">{walkInSuccessReceipt.clinicName}</strong>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10.5px]">الخدمة</span>
-                  <strong className="text-xs text-[#087F78]">{walkInSuccessReceipt.serviceName || 'كشف واستشارة طبية'}</strong>
-                </div>
-                <div className="p-2.5 rounded-xl bg-teal-50 border border-teal-100 col-span-2">
-                  <span className="text-[10.5px] font-bold text-[#087F78] block">تاريخ الكشف المحدد</span>
-                  <strong className="text-xs sm:text-sm font-bold text-[#124E4A]">
-                    {formatArabicDate(walkInSuccessReceipt.appointmentDate)} — الحضور صباحاً بأسبقية الحضور
-                  </strong>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10.5px]">حالة الإيصال</span>
-                  <strong className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
-                    مؤكد
-                  </strong>
-                </div>
-                {walkInSuccessReceipt.patientAge && (
-                  <div>
-                    <span className="text-slate-400 block text-[10.5px]">السن</span>
-                    <strong className="text-xs text-[#163C3A]">{walkInSuccessReceipt.patientAge}</strong>
-                  </div>
-                )}
-              </div>
-
-              {walkInSuccessReceipt.requiredDocuments && walkInSuccessReceipt.requiredDocuments.length > 0 && (
-                <div className="pt-2.5 border-t border-slate-100 text-xs">
-                  <span className="font-bold text-[#124E4A] block mb-1">الأوراق والمستندات المطلوبة:</span>
-                  <ul className="list-disc list-inside space-y-0.5 text-slate-600 text-[11px]">
-                    {walkInSuccessReceipt.requiredDocuments.map((doc, idx) => (
-                      <li key={idx}>{doc}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {walkInSuccessReceipt.serviceInstructions && (
-                <div className="pt-2 border-t border-slate-100 text-xs">
-                  <span className="font-bold text-[#124E4A] block mb-0.5">تعليمات وإرشادات الحضور:</span>
-                  <p className="text-slate-600 text-[11px] leading-relaxed">{walkInSuccessReceipt.serviceInstructions}</p>
-                </div>
-              )}
-
-              <div className="pt-3 border-t border-slate-100 text-center text-[10px] text-slate-400">
-                أبو حمص – دمسنا – محافظة البحيرة • مستشفى الأطفال التخصصي
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 no-print">
-              <button
-                type="button"
-                onClick={() => setWalkInSuccessReceipt(null)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
-              >
-                إغلاق
-              </button>
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="px-5 py-2 rounded-xl text-xs font-bold bg-[#087F78] hover:bg-[#066560] text-white shadow-xs flex items-center gap-1.5 cursor-pointer"
-              >
-                <Printer className="w-4 h-4" />
-                <span>طباعة الإيصال فوراً</span>
-              </button>
-            </div>
+            <ReceiptCard
+              appointment={walkInSuccessReceipt}
+              extraActions={
+                <button
+                  type="button"
+                  onClick={() => setWalkInSuccessReceipt(null)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-full border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  إغلاق
+                </button>
+              }
+            />
           </div>
         </div>
       )}
 
-      {/* MODAL 2.7: QUEUE RECEIPT (عرض الإيصال) — PRINTABLE */}
+      {/* MODAL 2.7: QUEUE RECEIPT (عرض وتأكيد الإيصال الموحد) */}
       {receiptApt && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full p-4 sm:p-6 text-right shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full p-4 sm:p-6 text-right shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150 my-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 no-print">
               <h3 className="text-base font-bold text-[#124E4A] flex items-center gap-2">
                 <Receipt className="w-5 h-5 text-[#087F78]" />
-                <span>إيصال موعد العيادة</span>
+                <span>إيصال وتذكرة موعد العيادة</span>
               </h3>
               <button
                 onClick={() => setReceiptApt(null)}
@@ -3296,85 +3307,39 @@ export default function StaffDashboardPage() {
               </button>
             </div>
 
-            {/* Printable Queue Receipt Card */}
-            <div
-              id="printable-queue-receipt"
-              className="bg-white rounded-2xl border-2 border-teal-600/30 p-5 space-y-4 text-xs print:p-6 print:border-[#087F78] print:rounded-2xl"
-            >
-              <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-                <div className="flex items-center gap-2.5">
-                  <Image
-                    src="/logo-main.png"
-                    alt="شعار مستشفى الأطفال التخصصي بالبحيرة"
-                    width={44}
-                    height={44}
-                    className="w-10 h-10 object-contain"
-                  />
-                  <div>
-                    <h4 className="text-base font-black text-[#124E4A]">مستشفى الأطفال التخصصي بالبحيرة</h4>
-                    <p className="text-[11px] text-slate-500">إيصال كشف العيادات الخارجية</p>
-                  </div>
-                </div>
-                <div className="text-left font-mono">
-                  <span className="text-[10px] text-slate-400 block font-semibold">تاريخ الطباعة</span>
-                  <span className="text-xs font-bold text-[#163C3A]">{new Date().toLocaleDateString('ar-EG')}</span>
-                </div>
-              </div>
+            {(() => {
+              const clinicForReceipt = clinics.find((c) => c.id === receiptApt.clinicId);
+              const enrichedReceiptApt: Appointment = {
+                ...receiptApt,
+                requiredDocuments:
+                  receiptApt.requiredDocuments && receiptApt.requiredDocuments.length > 0
+                    ? receiptApt.requiredDocuments
+                    : clinicForReceipt?.requiredDocuments || [
+                        'أصل شهادة ميلاد الطفل أو بطاقة التأمين الصحي',
+                        'صورة بطاقة ولي الأمر (الأب / الأم)',
+                      ],
+                serviceInstructions:
+                  receiptApt.serviceInstructions ||
+                  clinicForReceipt?.instructions ||
+                  'يرجى الحضور في الموعد المحدد والتوجه لشباك التذاكر والاستقبال مباشرةً فور الدخول مع اصطحاب الطفل.',
+                serviceName: receiptApt.serviceName || 'كشف واستشارة طبية',
+              };
 
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <span className="text-slate-400 block text-[10.5px]">اسم المريض</span>
-                  <strong className="text-sm text-[#163C3A]">{receiptApt.patientName}</strong>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10.5px]">العيادة</span>
-                  <strong className="text-xs text-[#163C3A]">{receiptApt.clinicName}</strong>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10.5px]">تاريخ الموعد</span>
-                  <strong className="text-xs text-[#163C3A]">
-                    {formatArabicDate(receiptApt.appointmentDate)} — الساعة {receiptApt.appointmentTime}
-                  </strong>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10.5px]">رقم التذكرة / الدور</span>
-                  <strong className="text-sm font-mono text-[#124E4A]">
-                    {receiptApt.referenceNumber}
-                    {receiptApt.queueNumber ? ` — دور #${receiptApt.queueNumber}` : ''}
-                  </strong>
-                </div>
-                <div className="p-2.5 rounded-xl bg-teal-50 border border-teal-100 col-span-2">
-                  <span className="text-[10.5px] font-bold text-[#087F78] block">الرسوم المدفوعة</span>
-                  <strong className="text-xs sm:text-sm font-bold text-[#124E4A] font-mono">
-                    {receiptApt.feePaid !== undefined && receiptApt.feePaid !== null
-                      ? `${Number(receiptApt.feePaid).toLocaleString('ar-EG')} جنيه`
-                      : 'غير مسجل'}
-                  </strong>
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-slate-100 text-center text-[10px] text-slate-400">
-                أبو حمص – دمسنا – محافظة البحيرة • مستشفى الأطفال التخصصي
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 no-print">
-              <button
-                type="button"
-                onClick={() => setReceiptApt(null)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
-              >
-                إغلاق
-              </button>
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="px-5 py-2 rounded-xl text-xs font-bold bg-[#087F78] hover:bg-[#066560] text-white shadow-xs flex items-center gap-1.5 cursor-pointer"
-              >
-                <Printer className="w-4 h-4" />
-                <span>طباعة الإيصال</span>
-              </button>
-            </div>
+              return (
+                <ReceiptCard
+                  appointment={enrichedReceiptApt}
+                  extraActions={
+                    <button
+                      type="button"
+                      onClick={() => setReceiptApt(null)}
+                      className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-full border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                    >
+                      إغلاق
+                    </button>
+                  }
+                />
+              );
+            })()}
           </div>
         </div>
       )}

@@ -110,7 +110,7 @@ BEGIN
   -- 3. Lock appointment row FOR UPDATE to serialize concurrent status modifications
   SELECT * INTO v_apt
   FROM public.appointments
-  WHERE (id = p_appointment_id OR reference_number = p_appointment_id)
+  WHERE (id::text = p_appointment_id OR reference_number = p_appointment_id)
   FOR UPDATE;
 
   IF NOT FOUND THEN
