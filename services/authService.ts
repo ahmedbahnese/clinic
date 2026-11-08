@@ -130,6 +130,62 @@ export class AuthService {
             profile = userProf;
           }
 
+          // Resilient Owner/Admin Auto-Bootstrap:
+          // If the project owner created an account directly in Supabase Auth (auth.users),
+          // ensure they are never locked out even if staff_profiles row is not manually inserted yet.
+          if (!profile && isSupabaseAdminConfigured()) {
+            try {
+              const adminClient = createAdminClient();
+              const { count } = await (adminClient as any)
+                .from('staff_profiles')
+                .select('id', { count: 'exact', head: true });
+
+              const userEmail = data.user.email || cleanUser;
+              const username = userEmail.includes('@') ? userEmail.split('@')[0] : cleanUser;
+              const fullName = (data.user.user_metadata as any)?.full_name || 'مدير النظام (المالك)';
+
+              if (count === 0) {
+                // Table is empty: this is the initial project owner, bootstrap as ADMIN
+                await (adminClient as any).from('staff_profiles').insert({
+                  id: data.user.id,
+                  username,
+                  full_name: fullName,
+                  role: 'ADMIN',
+                  is_active: true,
+                });
+
+                profile = {
+                  id: data.user.id,
+                  username,
+                  full_name: fullName,
+                  role: 'ADMIN',
+                  clinic_id: null,
+                  is_active: true,
+                };
+              } else {
+                // Check if a profile was pre-seeded or exists with this username
+                const { data: matchedProf } = await (adminClient as any)
+                  .from('staff_profiles')
+                  .select('id, username, full_name, role, clinic_id, is_active')
+                  .eq('username', username)
+                  .maybeSingle();
+
+                if (matchedProf) {
+                  if (matchedProf.id !== data.user.id) {
+                    await (adminClient as any)
+                      .from('staff_profiles')
+                      .update({ id: data.user.id })
+                      .eq('username', username);
+                    matchedProf.id = data.user.id;
+                  }
+                  profile = matchedProf;
+                }
+              }
+            } catch (bootstrapErr) {
+              console.warn('Owner initial profile bootstrap fallback:', bootstrapErr);
+            }
+          }
+
           if (profile && profile.is_active === true) {
             const safeUser: StaffUser = {
               id: profile.id,

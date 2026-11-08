@@ -128,7 +128,7 @@ export default function StaffLoginPage() {
           >
             <div>
               <label htmlFor="usernameInput" className="block text-xs font-bold text-[#163C3A] mb-1.5">
-                اسم المستخدم
+                البريد الإلكتروني أو اسم المستخدم
               </label>
               <input
                 id="usernameInput"
@@ -136,8 +136,9 @@ export default function StaffLoginPage() {
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="اسم المستخدم"
+                placeholder="أدخل بريدك الإلكتروني أو اسم الحساب"
                 className="w-full px-4 py-3 rounded-xl border border-[#E2E8EE] focus:border-[#087F78] focus:ring-1 focus:ring-[#087F78]/20 bg-[#F6F9FB]/40 text-sm text-[#163C3A] text-right placeholder:text-[#8493A6] transition-all"
+                dir="auto"
               />
             </div>
 
