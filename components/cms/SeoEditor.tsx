@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Image from 'next/image';
 import {
   Search,
   Globe,
@@ -204,9 +205,12 @@ export default function SeoEditor({ initialSettings, token, onSaved }: SeoEditor
           </div>
           <div className="rounded-2xl border border-[#CBD5E1] overflow-hidden bg-white shadow-xs">
             <div className="h-32 bg-slate-100 flex items-center justify-center p-2 border-b border-[#E2E8EE]">
-              <img
+              <Image
                 src={ogImageUrl || '/logo-main.png'}
                 alt="OG Preview"
+                width={160}
+                height={120}
+                unoptimized
                 className="max-h-full max-w-full object-contain"
               />
             </div>

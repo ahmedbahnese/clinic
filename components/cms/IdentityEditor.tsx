@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Image from 'next/image';
 import {
   Building2,
   Phone,
@@ -163,9 +164,12 @@ export default function IdentityEditor({ initialSettings, token, onSaved }: Iden
                 </button>
               </div>
               <div className="h-20 bg-white border border-[#E2E8EE] rounded-xl flex items-center justify-center p-2 mb-3">
-                <img
-                  src={settings.header_logo_url}
+                <Image
+                  src={settings.header_logo_url || '/logo-main.png'}
                   alt="Header Logo"
+                  width={80}
+                  height={80}
+                  unoptimized
                   className="max-h-full max-w-full object-contain"
                 />
               </div>
@@ -194,9 +198,12 @@ export default function IdentityEditor({ initialSettings, token, onSaved }: Iden
                 </button>
               </div>
               <div className="h-20 bg-white border border-[#E2E8EE] rounded-xl flex items-center justify-center p-2 mb-3">
-                <img
-                  src={settings.footer_logo_url}
+                <Image
+                  src={settings.footer_logo_url || '/logo-main.png'}
                   alt="Footer Logo"
+                  width={80}
+                  height={80}
+                  unoptimized
                   className="max-h-full max-w-full object-contain"
                 />
               </div>
@@ -225,9 +232,12 @@ export default function IdentityEditor({ initialSettings, token, onSaved }: Iden
                 </button>
               </div>
               <div className="h-20 bg-white border border-[#E2E8EE] rounded-xl flex items-center justify-center p-2 mb-3">
-                <img
-                  src={settings.favicon_url}
+                <Image
+                  src={settings.favicon_url || '/icon.png'}
                   alt="Favicon"
+                  width={32}
+                  height={32}
+                  unoptimized
                   className="w-8 h-8 object-contain"
                 />
               </div>

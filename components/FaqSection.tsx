@@ -48,11 +48,11 @@ const DEFAULT_FAQ_ITEMS: FaqItem[] = [
 ];
 
 export function FaqSection({ section }: FaqSectionProps) {
+  const [openIndex, setOpenIndex] = useState<number | null>(0); // Open first by default
+
   if (section && section.is_visible === false) {
     return null;
   }
-
-  const [openIndex, setOpenIndex] = useState<number | null>(0); // Open first by default
 
   const content = (section?.content || {}) as Partial<FaqSectionContent>;
 

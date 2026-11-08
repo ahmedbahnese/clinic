@@ -19,7 +19,7 @@ export async function PATCH(
       );
     }
 
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const result = await appointmentStore.updateClinic(id, body, staffUser);
 
     if (!result.success || !result.clinic) {

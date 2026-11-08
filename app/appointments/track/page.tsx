@@ -617,10 +617,14 @@ export default function TrackPage() {
           body * {
             visibility: hidden;
           }
-          #printable-ticket, #printable-ticket * {
+          #printable-ticket, #printable-ticket *,
+          #printable-receipt, #printable-receipt *,
+          .printable-receipt-card, .printable-receipt-card * {
             visibility: visible;
           }
-          #printable-ticket {
+          #printable-ticket,
+          #printable-receipt,
+          .printable-receipt-card {
             position: absolute !important;
             top: 0 !important;
             left: 0 !important;

@@ -38,7 +38,7 @@ export async function POST(
       return NextResponse.json({ error: 'صلاحية مدير النظام مطلوبة' }, { status: 403 });
     }
 
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const result = await appointmentStore.upsertClinicScheduleException(id, body, staffUser);
 
     if (!result.success || !result.schedule) {

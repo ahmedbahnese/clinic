@@ -29,7 +29,7 @@ export async function PATCH(
       );
     }
 
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const notes = typeof body.notes === 'string' ? body.notes : undefined;
     const feePaid = typeof body.feePaid === 'number' ? body.feePaid : undefined;
     const reopenStatus = body.reopenStatus;

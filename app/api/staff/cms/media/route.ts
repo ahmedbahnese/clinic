@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
 
     // Case 1: Register existing asset via JSON
     if (contentType.includes('application/json')) {
-      const body = await req.json();
+      const body = await req.json().catch(() => ({}));
       if (!body.url || !body.name) {
         return NextResponse.json({ error: 'اسم الصورة ورابطها مطلوبان' }, { status: 400 });
       }

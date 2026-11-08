@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import {
   Upload,
@@ -43,7 +43,7 @@ export default function MediaManager({
   const [customName, setCustomName] = useState('');
   const [customAlt, setCustomAlt] = useState('');
 
-  const fetchAssets = async () => {
+  const fetchAssets = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -59,16 +59,16 @@ export default function MediaManager({
       } else {
         setError(data.error || 'تعذر تحميل مكتبة الوسائط');
       }
-    } catch (err: any) {
+    } catch {
       setError('فشل الاتصال بالخادم لجلب الوسائط');
     } finally {
       setLoading(false);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     fetchAssets();
-  }, [token]);
+  }, [fetchAssets]);
 
   const handleCopyUrl = (url: string, id: string) => {
     navigator.clipboard.writeText(url);
@@ -264,9 +264,12 @@ export default function MediaManager({
                   {asset.url.endsWith('.ico') ? (
                     <FileImage className="w-10 h-10 text-[#087F78]" />
                   ) : (
-                    <img
+                    <Image
                       src={asset.url}
                       alt={asset.alt_text || asset.name}
+                      width={120}
+                      height={120}
+                      unoptimized
                       className="max-h-full max-w-full object-contain"
                     />
                   )}

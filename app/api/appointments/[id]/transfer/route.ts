@@ -19,7 +19,7 @@ export async function POST(
       );
     }
 
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const { targetClinicId, reason } = body;
 
     if (!targetClinicId) {

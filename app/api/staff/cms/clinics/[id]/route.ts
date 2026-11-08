@@ -19,7 +19,7 @@ export async function PATCH(
       );
     }
 
-    const updates = await req.json();
+    const updates = await req.json().catch(() => ({}));
     const result = await cmsService.updateClinicPresentation(id, updates, staffUser, token);
 
     if (!result.success || !result.clinic) {

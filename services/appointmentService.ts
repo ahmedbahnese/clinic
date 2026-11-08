@@ -574,7 +574,7 @@ class AppointmentServiceStore {
           .order('display_order', { ascending: true });
         if (!error && data && data.length > 0) {
           const rows = data as unknown as Database['public']['Tables']['clinics']['Row'][];
-          return rows.map((c) => ({
+          const fetchedClinics: Clinic[] = rows.map((c) => ({
             id: c.id,
             name: c.name,
             description: c.description || undefined,
@@ -589,6 +589,18 @@ class AppointmentServiceStore {
             isActive: c.is_active,
             isHospitalConfirmed: c.is_hospital_confirmed,
           }));
+
+          // Hydrate local cache
+          fetchedClinics.forEach((fc) => {
+            const idx = this.clinics.findIndex((c) => c.id === fc.id);
+            if (idx >= 0) {
+              this.clinics[idx] = fc;
+            } else {
+              this.clinics.push(fc);
+            }
+          });
+
+          return fetchedClinics;
         }
       } catch (err) {
         console.warn('Supabase fetch clinics fallback to local store:', err);
@@ -609,6 +621,52 @@ class AppointmentServiceStore {
 
   public getClinicById(id: string): Clinic | undefined {
     return this.clinics.find((c) => c.id === id);
+  }
+
+  public async getClinicByIdAsync(id: string): Promise<Clinic | undefined> {
+    const cached = this.clinics.find((c) => c.id === id);
+    if (cached) return cached;
+
+    if (isSupabaseConfigured()) {
+      try {
+        const { client: supabase } = await getAuthenticatedServerClient();
+        const { data, error } = await supabase
+          .from('clinics')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
+
+        if (!error && data) {
+          const row = data as unknown as Database['public']['Tables']['clinics']['Row'];
+          const allServices = await this.getClinicServices(id);
+          const clinic: Clinic = {
+            id: row.id,
+            name: row.name,
+            description: row.description || undefined,
+            location: row.location,
+            workingHours: row.working_hours,
+            daysOfWeek: row.days_of_week,
+            maxDailySlots: row.max_daily_slots,
+            slotDurationMinutes: row.slot_duration_minutes,
+            instructions: row.instructions || undefined,
+            requiredDocuments: (row as any).required_documents || ['أصل شهادة ميلاد الطفل أو بطاقة التأمين الصحي'],
+            services: allServices,
+            isActive: row.is_active,
+            isHospitalConfirmed: row.is_hospital_confirmed,
+          };
+          const existingIdx = this.clinics.findIndex((c) => c.id === id);
+          if (existingIdx >= 0) {
+            this.clinics[existingIdx] = clinic;
+          } else {
+            this.clinics.push(clinic);
+          }
+          return clinic;
+        }
+      } catch (err) {
+        console.warn('Supabase fetch clinic by id fallback:', err);
+      }
+    }
+    return undefined;
   }
 
   public async createClinic(
@@ -696,7 +754,7 @@ class AppointmentServiceStore {
     if (staffUser.role !== 'ADMIN') {
       return { success: false, error: 'تعديل بيانات العيادات يتطلب صلاحية مدير النظام' };
     }
-    const clinic = this.getClinicById(clinicId);
+    const clinic = (await this.getClinicByIdAsync(clinicId)) || this.getClinicById(clinicId);
     if (!clinic) {
       return { success: false, error: 'العيادة غير موجودة' };
     }
@@ -771,7 +829,7 @@ class AppointmentServiceStore {
     if (staffUser.role !== 'ADMIN') {
       return { success: false, error: 'حذف العيادات يتطلب صلاحية مدير النظام' };
     }
-    const clinic = this.getClinicById(clinicId);
+    const clinic = (await this.getClinicByIdAsync(clinicId)) || this.getClinicById(clinicId);
     if (!clinic) {
       return { success: false, error: 'العيادة غير موجودة' };
     }
@@ -898,7 +956,7 @@ class AppointmentServiceStore {
     if (staffUser.role !== 'ADMIN') {
       return { success: false, error: 'إدارة استثناءات التقويم تتطلب صلاحية مدير النظام' };
     }
-    const clinic = this.getClinicById(clinicId);
+    const clinic = (await this.getClinicByIdAsync(clinicId)) || this.getClinicById(clinicId);
     if (!clinic) {
       return { success: false, error: 'العيادة غير موجودة' };
     }
@@ -1045,7 +1103,7 @@ class AppointmentServiceStore {
       return { success: false, error: nameCheck.error || 'اسم المريض غير صالح' };
     }
 
-    const clinic = this.getClinicById(input.clinicId);
+    const clinic = (await this.getClinicByIdAsync(input.clinicId)) || this.getClinicById(input.clinicId);
     if (!clinic || !clinic.isActive) {
       return { success: false, error: 'العيادة المختارة غير موجودة أو غير مفعلة' };
     }
@@ -1994,7 +2052,7 @@ class AppointmentServiceStore {
       }
     }
 
-    const targetClinic = this.getClinicById(targetClinicId);
+    const targetClinic = (await this.getClinicByIdAsync(targetClinicId)) || this.getClinicById(targetClinicId);
     if (!targetClinic) {
       return { success: false, error: 'العيادة المحول إليها غير متوفرة' };
     }

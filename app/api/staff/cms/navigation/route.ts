@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const items = Array.isArray(body) ? body : body.items;
 
     if (!Array.isArray(items)) {

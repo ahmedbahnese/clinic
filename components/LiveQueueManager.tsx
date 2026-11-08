@@ -140,11 +140,11 @@ export default function LiveQueueManager({
 
   // Filter appointments for the selected clinic (or all)
   const filteredAppointments = useMemo(() => {
-    let list = appointments;
+    let list = Array.isArray(appointments) ? appointments : [];
     if (currentUser?.role === 'DOCTOR' && currentUser.clinicId) {
-      list = list.filter((a) => a.clinicId === currentUser.clinicId);
+      list = list.filter((a) => a && a.clinicId === currentUser.clinicId);
     } else if (selectedClinicId !== 'ALL') {
-      list = list.filter((a) => a.clinicId === selectedClinicId);
+      list = list.filter((a) => a && a.clinicId === selectedClinicId);
     }
     return list;
   }, [appointments, selectedClinicId, currentUser]);
@@ -221,9 +221,12 @@ export default function LiveQueueManager({
   const skippedTodayCount = useMemo(() => skippedQueue.length, [skippedQueue]);
   const completedTodayCount = useMemo(() => completedQueue.length, [completedQueue]);
 
+  const currentPatientId = currentPatient?.id;
+  const currentPatientStatus = currentPatient?.status;
+
   // Timer for how long current patient has been in session
   useEffect(() => {
-    if (!currentPatient || currentPatient.status !== 'CHECKED_IN') {
+    if (!currentPatientId || currentPatientStatus !== 'CHECKED_IN') {
       setSessionSeconds(0);
       return;
     }
@@ -233,7 +236,7 @@ export default function LiveQueueManager({
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [currentPatient?.id, currentPatient?.status]);
+  }, [currentPatientId, currentPatientStatus]);
 
   const formatTimer = (totalSecs: number) => {
     const mins = Math.floor(totalSecs / 60);
@@ -488,7 +491,7 @@ export default function LiveQueueManager({
                 className="bg-transparent font-bold text-[#163C3A] focus:outline-none cursor-pointer"
               >
                 <option value="ALL">جميع العيادات</option>
-                {clinics.map((c) => (
+                {(Array.isArray(clinics) ? clinics : []).map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>

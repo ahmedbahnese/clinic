@@ -3,7 +3,7 @@ import { appointmentStore } from '@/services/appointmentService';
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const { clinicId, patientName, phoneNumber, patientAge, patientAddress, appointmentDate, appointmentTime } = body;
 
     if (!clinicId || !patientName || !phoneNumber || !appointmentDate) {

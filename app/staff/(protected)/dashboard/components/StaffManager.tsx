@@ -257,7 +257,7 @@ export default function StaffManager() {
         </div>
       ) : staff.length === 0 ? (
         <div className="py-12 text-center text-[#8493A6] text-xs">
-          لا يوجد موظفون مسجلون بعد. اضغط "إضافة موظف جديد" للبدء.
+          لا يوجد موظفون مسجلون بعد. اضغط &quot;إضافة موظف جديد&quot; للبدء.
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-[#E2E8EE]">

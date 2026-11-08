@@ -38,7 +38,7 @@ export async function POST(
       return NextResponse.json({ error: 'صلاحية غير مصرح بها' }, { status: 403 });
     }
 
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const result = await appointmentStore.createClinicService(id, body, staffUser, token);
 
     if (!result.success) {
@@ -66,7 +66,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'صلاحية غير مصرح بها' }, { status: 403 });
     }
 
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const { serviceId, ...updates } = body;
 
     if (!serviceId) {

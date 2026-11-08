@@ -4,7 +4,7 @@ import { STAFF_SESSION_COOKIE } from '@/lib/staffSessionCookie';
 
 export async function POST(req: NextRequest) {
   try {
-    const { username, password } = await req.json();
+    const { username, password } = await req.json().catch(() => ({}));
 
     if (!username || !password) {
       return NextResponse.json(

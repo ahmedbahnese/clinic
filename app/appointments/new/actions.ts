@@ -120,7 +120,7 @@ export async function submitBooking(data: BookingFormData): Promise<{
     }
 
     // 8. Server validation of clinic operating days & calendar exceptions (Precedence Rule)
-    const clinic = appointmentStore.getClinicById(data.clinicId);
+    const clinic = (await appointmentStore.getClinicByIdAsync(data.clinicId)) || appointmentStore.getClinicById(data.clinicId);
     if (!clinic || !clinic.isActive) {
       return {
         success: false,

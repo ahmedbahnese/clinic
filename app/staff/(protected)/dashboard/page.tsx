@@ -150,6 +150,7 @@ export default function StaffDashboardPage() {
   // Cancellation Requests State
   const [cancellationRequests, setCancellationRequests] = useState<CancellationRequest[]>([]);
   const [loadingCancellationRequests, setLoadingCancellationRequests] = useState(false);
+  const [cancellationRequestsError, setCancellationRequestsError] = useState<string | null>(null);
   const [cancellationFilterStatus, setCancellationFilterStatus] = useState<string>('PENDING');
   const [reviewingReqId, setReviewingReqId] = useState<string | null>(null);
   const [reviewDecision, setReviewDecision] = useState<'APPROVED' | 'REJECTED'>('APPROVED');
@@ -468,12 +469,16 @@ export default function StaffDashboardPage() {
       if (res.ok) {
         const data = await res.json();
         setCancellationRequests(Array.isArray(data?.requests) ? data.requests : []);
+        setCancellationRequestsError(null);
       } else {
+        const data = await res.json().catch(() => null);
         setCancellationRequests([]);
+        setCancellationRequestsError(data?.error || 'تعذر جلب طلبات الإلغاء');
       }
     } catch (err) {
       console.error('Error loading cancellation requests:', err);
       setCancellationRequests([]);
+      setCancellationRequestsError('تعذر الاتصال بالخادم لجلب طلبات الإلغاء');
     } finally {
       setLoadingCancellationRequests(false);
     }
@@ -1697,7 +1702,7 @@ export default function StaffDashboardPage() {
                     لا توجد حجوزات مسجلة لتاريخ {dateFilterType === 'TODAY' ? 'اليوم' : dateFilterType === 'TOMORROW' ? 'غداً' : 'المحدد'}
                   </p>
                   <p className="text-xs text-slate-500">
-                    إذا قمت بتسجيل حجز لتاريخ قادم، يرجى النقر على زر "غداً" أو "عرض كل المواعيد" أدناه:
+                    إذا قمت بتسجيل حجز لتاريخ قادم، يرجى النقر على زر &quot;غداً&quot; أو &quot;عرض كل المواعيد&quot; أدناه:
                   </p>
                   <div className="flex items-center justify-center gap-2 pt-2">
                     {dateFilterType !== 'TOMORROW' && (
@@ -1729,7 +1734,7 @@ export default function StaffDashboardPage() {
                       : 'لا توجد نتائج مطابقة'}
                   </p>
                   <p className="text-2xs text-slate-400">
-                    يمكنك التبديل إلى تبويب "الكل" أو اختيار تاريخ آخر لعرض باقي المواعيد.
+                    يمكنك التبديل إلى تبويب &quot;الكل&quot; أو اختيار تاريخ آخر لعرض باقي المواعيد.
                   </p>
                   <button
                     type="button"
@@ -2673,7 +2678,11 @@ export default function StaffDashboardPage() {
               </div>
             </div>
 
-            {!isReceptionist && !isAdmin ? (
+            {cancellationRequestsError ? (
+              <div className="p-6 text-center text-xs text-red-800 bg-red-50 rounded-xl border border-red-200">
+                {cancellationRequestsError}
+              </div>
+            ) : !isReceptionist && !isAdmin ? (
               <div className="p-8 text-center text-xs text-amber-800 bg-amber-50 rounded-xl border border-amber-200">
                 غير مصرح لهذا الحساب بالاطلاع على طلبات الإلغاء.
               </div>
@@ -2753,7 +2762,7 @@ export default function StaffDashboardPage() {
                           <span className="text-amber-800 font-bold block text-3xs">
                             سبب الإلغاء ({formatSafeDateTime(req.requestedAt)}):
                           </span>
-                          <p className="text-slate-700 italic">"{req.reason || 'طلب إلغاء من ولي الأمر'}"</p>
+                          <p className="text-slate-700 italic">&quot;{req.reason || 'طلب إلغاء من ولي الأمر'}&quot;</p>
                         </div>
 
                         {/* Decision Actions */}
@@ -2835,7 +2844,7 @@ export default function StaffDashboardPage() {
                                 {formatSafeDateTime(req.requestedAt)}
                               </span>
                               <span className="text-xs text-slate-700 block italic">
-                                "{req.reason || 'طلب إلغاء من ولي الأمر'}"
+                                &quot;{req.reason || 'طلب إلغاء من ولي الأمر'}&quot;
                               </span>
                             </td>
                             <td className="py-3 px-4">
