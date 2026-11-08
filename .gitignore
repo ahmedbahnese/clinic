@@ -1,9 +1,39 @@
+# Dependencies
 node_modules/
-.next/
+/.pnp
+.pnp.js
+
+# Testing & Coverage
 coverage/
+
+# Next.js build output
+.next/
+out/
+build/
+dist/
+
+# TypeScript Incremental Build Cache
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Operating System Files
 .DS_Store
+Thumbs.db
+
+# Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files (preserve template)
 .env*
 !.env.example
 
+# Vercel deployment cache
 .vercel
+
+# Temporary files & audit dumps
+security-audit-bundle.txt
+deployment-backup-*
+*.backup
