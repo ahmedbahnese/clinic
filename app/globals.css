@@ -11,6 +11,19 @@
   --border-color: #E2E8EE;
 }
 
+html[data-theme="light"] {
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --page-bg: #0C1717;
+  --surface: #142624;
+  --main-text: #E4F0EE;
+  --secondary-text: #A9BCB9;
+  --border-color: #2D4744;
+}
+
 body {
   background-color: var(--page-bg);
   color: var(--main-text);
@@ -32,6 +45,245 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+html[data-theme="dark"] ::-webkit-scrollbar-track {
+  background: #0C1717;
+}
+
+html[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: #365552;
+}
+
+html[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: #557572;
+}
+
+/* Dark theme surfaces: retain brand accents while replacing pale neutral panels. */
+html[data-theme="dark"] [class~="bg-white"],
+html[data-theme="dark"] [class~="bg-[#F6F9FB]"],
+html[data-theme="dark"] [class~="bg-[#F8FAFC]"],
+html[data-theme="dark"] [class~="bg-[#F1F5F9]"],
+html[data-theme="dark"] [class~="bg-slate-50"],
+html[data-theme="dark"] [class~="bg-slate-100"],
+html[data-theme="dark"] [class~="bg-slate-200"],
+html[data-theme="dark"] [class~="bg-[#E6F4F2]"],
+html[data-theme="dark"] [class~="bg-teal-50"],
+html[data-theme="dark"] [class~="bg-teal-50/40"],
+html[data-theme="dark"] [class~="bg-teal-50/50"],
+html[data-theme="dark"] [class~="bg-teal-50/60"],
+html[data-theme="dark"] [class~="bg-teal-50/70"],
+html[data-theme="dark"] [class~="bg-teal-50/80"],
+html[data-theme="dark"] [class~="bg-teal-50/90"],
+html[data-theme="dark"] [class~="bg-teal-100/70"],
+html[data-theme="dark"] [class~="bg-teal-100/80"],
+html[data-theme="dark"] [class~="bg-teal-200/60"],
+html[data-theme="dark"] [class~="bg-[#F6F9FB]/40"],
+html[data-theme="dark"] [class~="bg-[#F6F9FB]/80"],
+html[data-theme="dark"] [class~="bg-[#F6F9FB]/90"],
+html[data-theme="dark"] [class~="bg-[#E6F4F2]/40"],
+html[data-theme="dark"] [class~="bg-slate-50/50"],
+html[data-theme="dark"] [class~="bg-slate-50/60"],
+html[data-theme="dark"] [class~="bg-slate-50/70"],
+html[data-theme="dark"] [class~="bg-slate-50/80"] {
+  background-color: #152927 !important;
+}
+
+html[data-theme="dark"] [class~="bg-white/90"] {
+  background-color: rgb(20 38 36 / 92%) !important;
+}
+
+/* Keep semantic status colors recognizable, but darken their pale backgrounds. */
+html[data-theme="dark"] [class~="bg-emerald-50"],
+html[data-theme="dark"] [class~="bg-emerald-50/40"],
+html[data-theme="dark"] [class~="bg-emerald-50/60"],
+html[data-theme="dark"] [class~="bg-emerald-50/70"],
+html[data-theme="dark"] [class~="bg-emerald-100"],
+html[data-theme="dark"] [class~="bg-teal-50/50"] {
+  background-color: #17362F !important;
+}
+
+html[data-theme="dark"] [class~="bg-red-50"],
+html[data-theme="dark"] [class~="bg-red-100"] {
+  background-color: #3A2528 !important;
+}
+
+html[data-theme="dark"] [class~="bg-amber-50"],
+html[data-theme="dark"] [class~="bg-amber-50/50"],
+html[data-theme="dark"] [class~="bg-amber-50/60"],
+html[data-theme="dark"] [class~="bg-amber-100"],
+html[data-theme="dark"] [class~="bg-amber-100/80"] {
+  background-color: #392F1F !important;
+}
+
+html[data-theme="dark"] [class~="bg-blue-50"],
+html[data-theme="dark"] [class~="bg-blue-100"],
+html[data-theme="dark"] [class~="bg-sky-50"] {
+  background-color: #1D2D43 !important;
+}
+
+html[data-theme="dark"] [class~="bg-orange-50"],
+html[data-theme="dark"] [class~="bg-orange-50/40"],
+html[data-theme="dark"] [class~="bg-orange-50/60"],
+html[data-theme="dark"] [class~="bg-orange-100"] {
+  background-color: #3A2C21 !important;
+}
+
+/* The PWA information card uses a pale two-stop gradient in light mode. */
+html[data-theme="dark"] [class~="from-white"] {
+  --tw-gradient-from: #142624 var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(20 38 36 / 0) var(--tw-gradient-to-position) !important;
+}
+
+html[data-theme="dark"] [class~="to-[#EFF8F7]"] {
+  --tw-gradient-to: #152927 var(--tw-gradient-to-position) !important;
+}
+
+/* Neutral text uses cool, high-contrast tones; semantic text stays color-coded. */
+html[data-theme="dark"] [class~="text-[#163C3A]"],
+html[data-theme="dark"] [class~="text-[#124E4A]"],
+html[data-theme="dark"] [class~="text-slate-700"],
+html[data-theme="dark"] [class~="text-slate-800"],
+html[data-theme="dark"] [class~="text-slate-900"],
+html[data-theme="dark"] [class~="text-slate-950"],
+html[data-theme="dark"] [class~="text-black"] {
+  color: #E1EEEC !important;
+}
+
+html[data-theme="dark"] [class~="text-[#087F78]"],
+html[data-theme="dark"] [class~="text-[#066560]"] {
+  color: #72D1C7 !important;
+}
+
+html[data-theme="dark"] [class~="text-[#5A6B82]"],
+html[data-theme="dark"] [class~="text-[#5A6E85]"],
+html[data-theme="dark"] [class~="text-[#52666B]"],
+html[data-theme="dark"] [class~="text-[#8493A6]"],
+html[data-theme="dark"] [class~="text-slate-400"],
+html[data-theme="dark"] [class~="text-slate-500"],
+html[data-theme="dark"] [class~="text-slate-600"] {
+  color: #A9BCB9 !important;
+}
+
+html[data-theme="dark"] [class~="text-slate-300"] {
+  color: #C5D4D1 !important;
+}
+
+html[data-theme="dark"] [class~="text-red-500"],
+html[data-theme="dark"] [class~="text-red-600"],
+html[data-theme="dark"] [class~="text-red-700"],
+html[data-theme="dark"] [class~="text-red-800"] {
+  color: #FDA4AF !important;
+}
+
+html[data-theme="dark"] [class~="text-emerald-600"],
+html[data-theme="dark"] [class~="text-emerald-700"],
+html[data-theme="dark"] [class~="text-emerald-800"],
+html[data-theme="dark"] [class~="text-teal-700"],
+html[data-theme="dark"] [class~="text-teal-900"],
+html[data-theme="dark"] [class~="text-teal-950"] {
+  color: #86E8C0 !important;
+}
+
+html[data-theme="dark"] [class~="text-amber-500"],
+html[data-theme="dark"] [class~="text-amber-600"],
+html[data-theme="dark"] [class~="text-amber-700"],
+html[data-theme="dark"] [class~="text-amber-800"],
+html[data-theme="dark"] [class~="text-amber-900"],
+html[data-theme="dark"] [class~="text-amber-950"] {
+  color: #FCD77B !important;
+}
+
+html[data-theme="dark"] [class~="text-orange-500"],
+html[data-theme="dark"] [class~="text-orange-600"],
+html[data-theme="dark"] [class~="text-orange-700"],
+html[data-theme="dark"] [class~="text-orange-800"],
+html[data-theme="dark"] [class~="text-[#C2410C]"] {
+  color: #FDBA74 !important;
+}
+
+html[data-theme="dark"] [class~="text-blue-600"],
+html[data-theme="dark"] [class~="text-blue-700"],
+html[data-theme="dark"] [class~="text-blue-800"],
+html[data-theme="dark"] [class~="text-blue-900"],
+html[data-theme="dark"] [class~="text-sky-700"],
+html[data-theme="dark"] [class~="text-[#0284C7]"] {
+  color: #93C5FD !important;
+}
+
+html[data-theme="dark"] [class~="text-purple-600"] {
+  color: #C4B5FD !important;
+}
+
+html[data-theme="dark"] [class~="text-[#1a0dab]"],
+html[data-theme="dark"] [class~="text-[#202124]"],
+html[data-theme="dark"] [class~="text-[#4d5156]"],
+html[data-theme="dark"] [class~="text-[#5f6368]"] {
+  color: #C7D6E5 !important;
+}
+
+/* Neutral and semantic borders remain visible without becoming bright outlines. */
+html[data-theme="dark"] [class~="border-[#E2E8EE]"],
+html[data-theme="dark"] [class~="border-[#E2E8EE]/80"],
+html[data-theme="dark"] [class~="border-[#CBD5E1]"],
+html[data-theme="dark"] [class~="border-[#D8E8E6]"],
+html[data-theme="dark"] [class~="border-[#F1F5F9]"],
+html[data-theme="dark"] [class~="border-slate-50"],
+html[data-theme="dark"] [class~="border-slate-100"],
+html[data-theme="dark"] [class~="border-slate-100/80"],
+html[data-theme="dark"] [class~="border-slate-200"],
+html[data-theme="dark"] [class~="border-slate-200/70"],
+html[data-theme="dark"] [class~="border-slate-200/80"],
+html[data-theme="dark"] [class~="border-slate-300"],
+html[data-theme="dark"] [class~="border-slate-400"] {
+  border-color: #304A47 !important;
+}
+
+html[data-theme="dark"] [class~="border-red-200"],
+html[data-theme="dark"] [class~="border-red-300"] {
+  border-color: #704047 !important;
+}
+
+html[data-theme="dark"] [class~="border-amber-200"],
+html[data-theme="dark"] [class~="border-amber-200/80"],
+html[data-theme="dark"] [class~="border-amber-300"] {
+  border-color: #67552F !important;
+}
+
+html[data-theme="dark"] [class~="border-emerald-100"],
+html[data-theme="dark"] [class~="border-emerald-200"],
+html[data-theme="dark"] [class~="border-emerald-200/60"],
+html[data-theme="dark"] [class~="border-emerald-200/70"],
+html[data-theme="dark"] [class~="border-emerald-200/80"],
+html[data-theme="dark"] [class~="border-emerald-300"] {
+  border-color: #2D5B47 !important;
+}
+
+html[data-theme="dark"] [class~="border-teal-100"],
+html[data-theme="dark"] [class~="border-teal-100/80"],
+html[data-theme="dark"] [class~="border-teal-200"],
+html[data-theme="dark"] [class~="border-teal-200/70"],
+html[data-theme="dark"] [class~="border-teal-200/80"] {
+  border-color: #2D5A55 !important;
+}
+
+html[data-theme="dark"] [class~="border-blue-200"],
+html[data-theme="dark"] [class~="border-blue-300"] {
+  border-color: #34547C !important;
+}
+
+html[data-theme="dark"] [class~="border-orange-200"],
+html[data-theme="dark"] [class~="border-orange-200/80"] {
+  border-color: #67462F !important;
+}
+
+html[data-theme="dark"] [class~="hover:bg-slate-50"]:hover,
+html[data-theme="dark"] [class~="hover:bg-slate-100"]:hover,
+html[data-theme="dark"] [class~="hover:bg-slate-100/80"]:hover,
+html[data-theme="dark"] [class~="hover:bg-slate-200"]:hover,
+html[data-theme="dark"] [class~="hover:bg-[#F6F9FB]"]:hover,
+html[data-theme="dark"] [class~="hover:bg-[#F0F7F6]"]:hover {
+  background-color: #213936 !important;
 }
 
 @media print {
