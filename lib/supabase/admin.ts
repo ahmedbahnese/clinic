@@ -2,12 +2,14 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../../types/database.types.ts';
 
 /**
- * Decodes the JWT payload of a Supabase API key and verifies it is a genuine
- * service_role key. Prevents an anon/publishable key that was mistakenly placed
+ * Verifies a genuine server-side Supabase key. Supabase supports both the
+ * legacy JWT service_role key and the newer sb_secret_ key format. Prevents an
+ * anon/publishable key that was mistakenly placed
  * in SUPABASE_SERVICE_ROLE_KEY from being silently used as an admin credential
  * (which makes every "admin" query run as `anon` and get rejected by RLS).
  */
-function isServiceRoleJwtKey(key: string): boolean {
+function isServiceRoleKey(key: string): boolean {
+  if (/^sb_secret_[A-Za-z0-9_-]{20,}$/.test(key)) return true;
   try {
     const parts = key.split('.');
     if (parts.length !== 3) return false;
@@ -35,7 +37,7 @@ export function createAdminClient() {
   const supabaseServiceRoleKey = rawKey ? rawKey.trim().replace(/^["']|["']$/g, '') : '';
 
   const hasValidServiceKey =
-    supabaseServiceRoleKey.length >= 20 && isServiceRoleJwtKey(supabaseServiceRoleKey);
+    supabaseServiceRoleKey.length >= 20 && isServiceRoleKey(supabaseServiceRoleKey);
 
   if (!supabaseUrl || !hasValidServiceKey) {
     if (cachedSystemSession && cachedSystemSession.expiresAt > Date.now()) {
@@ -232,7 +234,7 @@ export function isSupabaseAdminConfigured(): boolean {
     serviceKey &&
     serviceKey.length > 20 &&
     !serviceKey.includes('placeholder') &&
-    isServiceRoleJwtKey(serviceKey)
+    isServiceRoleKey(serviceKey)
   );
 }
 
