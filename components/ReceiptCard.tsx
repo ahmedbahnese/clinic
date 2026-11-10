@@ -2,7 +2,7 @@
 
 import React, { useRef, useState } from 'react';
 import Image from 'next/image';
-import { toPng } from 'html-to-image';
+import { toBlob } from 'html-to-image';
 import {
   Printer,
   Download,
@@ -38,29 +38,69 @@ export default function ReceiptCard({
   const [downloadingImage, setDownloadingImage] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
-  // Print Handler
-  const handlePrint = () => {
+  const waitForReceiptImages = async () => {
+    if (!cardRef.current) return;
+    await Promise.all(
+      Array.from(cardRef.current.querySelectorAll('img')).map(async (image) => {
+        if (image.complete) return;
+        await new Promise<void>((resolve) => {
+          image.addEventListener('load', () => resolve(), { once: true });
+          image.addEventListener('error', () => resolve(), { once: true });
+        });
+      })
+    );
+    if (document.fonts?.ready) await document.fonts.ready;
+  };
+
+  // Print Handler — wait for the logo and Arabic font before opening the print sheet.
+  const handlePrint = async () => {
+    await waitForReceiptImages();
     window.print();
   };
 
-  // Download Image Handler (html-to-image)
+  const createReceiptBlob = async () => {
+    if (!cardRef.current) throw new Error('Receipt is not available');
+    await waitForReceiptImages();
+    const blob = await toBlob(cardRef.current, {
+      cacheBust: true,
+      backgroundColor: '#ffffff',
+      pixelRatio: 2,
+      skipFonts: true,
+    });
+    if (!blob) throw new Error('Receipt image could not be generated');
+    return blob;
+  };
+
+  const downloadReceiptBlob = (blob: Blob) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.download = `BSCH-Receipt-${appointment.phoneNumber || phoneQuery || 'booking'}.png`;
+    link.href = url;
+    link.rel = 'noopener';
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+  };
+
+  // Save/share image Handler — works with native share sheets and standalone PWAs.
   const handleDownloadImage = async () => {
     if (!cardRef.current) return;
     setDownloadingImage(true);
     try {
-      const dataUrl = await toPng(cardRef.current, {
-        cacheBust: true,
-        backgroundColor: '#ffffff',
-        pixelRatio: 2,
-      });
-      const link = document.createElement('a');
-      link.download = `BSCH-Receipt-${appointment.phoneNumber || phoneQuery || 'booking'}.png`;
-      link.href = dataUrl;
-      link.click();
+      const blob = await createReceiptBlob();
+      const file = new File([blob], `BSCH-Receipt-${appointment.phoneNumber || phoneQuery || 'booking'}.png`, { type: 'image/png' });
+      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function' && typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: `إيصال حجز - ${appointment.patientName}`,
+          text: `إيصال حجز عيادة ${appointment.clinicName} بمستشفى الأطفال التخصصي`,
+        });
+        return;
+      }
+      downloadReceiptBlob(blob);
     } catch (err) {
       console.error('Error generating receipt image:', err);
       // Fallback to print
-      window.print();
+      await handlePrint();
     } finally {
       setDownloadingImage(false);
     }
@@ -268,7 +308,7 @@ export default function ReceiptCard({
       <div className="no-print pt-2 flex flex-wrap items-center justify-center gap-2.5">
         <button
           type="button"
-          onClick={handlePrint}
+          onClick={() => void handlePrint()}
           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full border border-slate-200 text-xs sm:text-sm font-bold text-[#163C3A] bg-white hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
         >
           <Printer className="w-4 h-4 text-[#087F78]" />
@@ -282,7 +322,7 @@ export default function ReceiptCard({
           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full border border-teal-200 text-xs sm:text-sm font-bold text-[#087F78] bg-teal-50/60 hover:bg-teal-100 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
         >
           <Download className="w-4 h-4 text-[#087F78]" />
-          <span>{downloadingImage ? 'جاري التحميل...' : 'تحميل كصورة (PNG)'}</span>
+          <span>{downloadingImage ? 'جارٍ تجهيز الصورة...' : 'حفظ/مشاركة كصورة'}</span>
         </button>
 
         <button

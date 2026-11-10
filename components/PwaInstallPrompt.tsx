@@ -51,12 +51,27 @@ export function PwaInstallPrompt() {
 
   const shareLink = async (device: Device) => {
     setMessage('');
-    if (device === 'iphone' && isIOS) {
-      setMessage('في Safari اضغط «مشاركة» ثم «إضافة إلى الشاشة الرئيسية».');
+    if (device === 'iphone') {
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: 'عيادات مستشفى الأطفال التخصصي',
+            text: 'أضف منصة العيادات إلى الشاشة الرئيسية للوصول السريع للحجز والمتابعة.',
+            url: window.location.href,
+          });
+          setMessage('تم فتح المشاركة. من قائمة المشاركة اختر «إضافة إلى الشاشة الرئيسية»، ثم وافق على الإضافة.');
+          return;
+        } catch {
+          // The user may have closed the share sheet; show the manual Safari fallback.
+        }
+      }
+      setMessage(isIOS
+        ? 'افتح هذه الصفحة في Safari ثم اختر مشاركة ← إضافة إلى الشاشة الرئيسية، ووافق على الإضافة.'
+        : 'افتح الرابط في Safari ثم اختر مشاركة ← إضافة إلى الشاشة الرئيسية.');
       return;
     }
 
-    if (device !== 'iphone' && installEvent) {
+    if (installEvent) {
       await installEvent.prompt();
       const choice = await installEvent.userChoice;
       setInstallEvent(null);
@@ -79,9 +94,7 @@ export function PwaInstallPrompt() {
       }
     }
 
-    if (device === 'iphone') {
-      setMessage('افتح الرابط في Safari، ثم اختر مشاركة ← إضافة إلى الشاشة الرئيسية.');
-    } else if (device === 'computer') {
+    if (device === 'computer') {
       setMessage('من قائمة المتصفح اختر «تثبيت التطبيق» أو «إنشاء اختصار».');
     } else {
       setMessage('من قائمة Chrome اختر «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية».');
