@@ -31,7 +31,18 @@ const ALLOWED_MIME_TYPES = [
   'image/svg+xml',
   'image/x-icon',
   'image/vnd.microsoft.icon',
+  'application/pdf',
 ];
+const EXTENSION_BY_MIME: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/webp': 'webp',
+  'image/svg+xml': 'svg',
+  'image/x-icon': 'ico',
+  'image/vnd.microsoft.icon': 'ico',
+  'application/pdf': 'pdf',
+};
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 export async function GET(req: NextRequest) {
@@ -130,12 +141,12 @@ export async function POST(req: NextRequest) {
 
     if (!ALLOWED_MIME_TYPES.includes(file.type)) {
       return NextResponse.json(
-        { error: 'صيغة الملف غير مدعومة. الصيغ المسموحة: PNG, JPEG, WebP, SVG, ICO' },
+        { error: 'صيغة الملف غير مدعومة. الصيغ المسموحة: PNG, JPEG, WebP, SVG, ICO, PDF' },
         { status: 400 }
       );
     }
 
-    const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+    const ext = EXTENSION_BY_MIME[file.type];
     const safeBaseName = file.name
       .replace(/\.[^/.]+$/, '')
       .replace(/[^a-zA-Z0-9_-]/g, '_')
@@ -143,6 +154,9 @@ export async function POST(req: NextRequest) {
     const uniqueFilename = `${Date.now()}_${safeBaseName}.${ext}`;
 
     const buffer = Buffer.from(await file.arrayBuffer());
+    if (file.type === 'application/pdf' && buffer.subarray(0, 5).toString('ascii') !== '%PDF-') {
+      return NextResponse.json({ error: 'محتوى ملف PDF غير صالح.' }, { status: 400 });
+    }
     let publicUrl = '';
 
     // Attempt Supabase storage first if configured
@@ -222,4 +236,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'حدث خطأ في الخادم أثناء رفع الملف' }, { status: 500 });
   }
 }
-

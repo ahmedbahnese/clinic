@@ -455,6 +455,29 @@ export interface Database {
         };
         Relationships: [];
       };
+      web_push_subscriptions: {
+        Row: {
+          endpoint: string;
+          p256dh: string;
+          auth: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          endpoint: string;
+          p256dh: string;
+          auth: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          endpoint?: string;
+          p256dh?: string;
+          auth?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       otp_verifications: {
         Row: {
           phone: string;

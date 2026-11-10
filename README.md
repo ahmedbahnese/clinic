@@ -294,3 +294,8 @@ npm run dev
 - **الجهة المستفيدة:** مستشفى الأطفال التخصصي بالبحيرة.
 - **حالة المشروع:** معتمد ومكتمل بنسبة 100% للإصدار `1.30v`.
 - **حقوق الملكية:** جميع الحقوق محفوظة لمستشفى الأطفال التخصصي بالبحيرة © 2026.
+
+
+## تطبيق PWA وAndroid
+
+إعداد تثبيت الموقع مباشرة، وWeb Push، ودعم PDF العام، وغلاف Android وGitHub Actions موثق في [PWA-ANDROID-SETUP.md](PWA-ANDROID-SETUP.md). دليل بناء APK/AAB وأسرار توقيع Android في [android/README.md](android/README.md).
