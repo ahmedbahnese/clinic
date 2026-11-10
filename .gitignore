@@ -19,6 +19,7 @@ tsconfig.tsbuildinfo
 # Operating System Files
 .DS_Store
 Thumbs.db
+__pycache__/
 
 # Logs
 *.log
@@ -32,6 +33,15 @@ yarn-error.log*
 
 # Vercel deployment cache
 .vercel
+
+# Android local SDK state, build outputs, and signing materials
+android/local.properties
+android/.gradle/
+android/**/build/
+android/**/*.jks
+android/**/*.keystore
+android/**/*.apk
+android/**/*.aab
 
 # Temporary files & audit dumps
 security-audit-bundle.txt

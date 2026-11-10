@@ -12,6 +12,8 @@ import { HospitalBanner } from '@/components/HospitalBanner';
 import { TrustAndInfo } from '@/components/TrustAndInfo';
 import { FaqSection } from '@/components/FaqSection';
 import { SiteFooter } from '@/components/SiteFooter';
+import { PwaInstallPrompt } from '@/components/PwaInstallPrompt';
+import { HospitalMapCard } from '@/components/HospitalMapCard';
 
 export const revalidate = 60; // ISR cache revalidation every 60s or upon admin mutation
 
@@ -62,6 +64,8 @@ export default async function HomePage() {
         {/* 3. Deep Teal Radial Hero Banner with Glassmorphism & Feature Highlights */}
         <HeroBanner section={getSection('hero')} />
 
+        <PwaInstallPrompt />
+
         {/* 4. 4-Column Key Metrics & Trust Stats Bar (2x2 Mobile, 1x4 Desktop) */}
         <TrustStatsBar section={getSection('trust_stats')} />
 
@@ -76,6 +80,8 @@ export default async function HomePage() {
 
         {/* 8. Official Hospital Portal Link Banner */}
         <HospitalBanner section={getSection('hospital_banner')} />
+
+        <HospitalMapCard />
 
         {/* 9. Parent Guidelines, What to Bring & Central Emergency Info */}
         <TrustAndInfo section={getSection('trust_info')} />

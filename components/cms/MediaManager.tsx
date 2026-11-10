@@ -13,6 +13,7 @@ import {
   X,
   AlertCircle,
   FileImage,
+  FileText,
 } from 'lucide-react';
 import type { MediaAsset } from '@/types/cms';
 
@@ -79,7 +80,7 @@ export default function MediaManager({
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedFile) {
-      setError('يرجى اختيار ملف صورة أولاً');
+      setError('يرجى اختيار صورة أو ملف PDF عام أولاً');
       return;
     }
 
@@ -107,7 +108,7 @@ export default function MediaManager({
         throw new Error(data.error || 'فشل رفع الملف');
       }
 
-      setSuccessMsg('تم رفع الصورة بنجاح إلى مكتبة الوسائط');
+      setSuccessMsg('تم رفع الملف بنجاح إلى مكتبة الوسائط العامة');
       setSelectedFile(null);
       setCustomName('');
       setCustomAlt('');
@@ -136,18 +137,18 @@ export default function MediaManager({
       <div className="bg-[#F8FAFC] border-2 border-dashed border-[#CBD5E1] rounded-2xl p-6 transition-all hover:border-[#087F78]">
         <h4 className="text-sm font-bold text-[#163C3A] mb-3 flex items-center gap-2">
           <Upload className="w-4 h-4 text-[#087F78]" />
-          <span>رفع صورة جديدة إلى الموقع (PNG, JPEG, WebP, SVG)</span>
+          <span>رفع صورة أو ملف PDF عام إلى الموقع</span>
         </h4>
 
         <form onSubmit={handleUpload} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-semibold text-[#5A6E85] mb-1">
-                ملف الصورة (حد أقصى 5 ميجابايت) *
+                صورة أو PDF عام (حد أقصى 5 ميجابايت) *
               </label>
               <input
                 type="file"
-                accept="image/png,image/jpeg,image/webp,image/svg+xml,image/x-icon"
+                accept="image/png,image/jpeg,image/webp,image/svg+xml,image/x-icon,application/pdf,.pdf"
                 onChange={(e) => {
                   const file = e.target.files?.[0] || null;
                   setSelectedFile(file);
@@ -209,6 +210,9 @@ export default function MediaManager({
             </button>
           </div>
         </form>
+        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-5 text-amber-900">
+          ملفات PDF في مكتبة الوسائط متاحة للعامة عبر رابطها. ارفع نشرات المستشفى العامة فقط؛ لا ترفع ملفات مرضى أو تقارير أو بيانات شخصية.
+        </p>
       </div>
 
       {/* Notifications */}
@@ -261,7 +265,9 @@ export default function MediaManager({
               >
                 {/* Thumbnail */}
                 <div className="relative w-full h-28 bg-[#F1F5F9] rounded-xl overflow-hidden flex items-center justify-center p-2 mb-2">
-                  {asset.url.endsWith('.ico') ? (
+                  {asset.mime_type === 'application/pdf' || asset.url.split('?')[0].toLowerCase().endsWith('.pdf') ? (
+                    <FileText className="w-10 h-10 text-[#087F78]" aria-label="ملف PDF" />
+                  ) : asset.url.endsWith('.ico') ? (
                     <FileImage className="w-10 h-10 text-[#087F78]" />
                   ) : (
                     <Image
@@ -291,7 +297,7 @@ export default function MediaManager({
 
                 {/* Actions */}
                 <div className="flex items-center gap-1 pt-2 border-t border-[#F1F5F9]">
-                  {onSelectAsset ? (
+                  {onSelectAsset && asset.mime_type !== 'application/pdf' ? (
                     <button
                       type="button"
                       onClick={() => onSelectAsset(asset.url)}
@@ -326,7 +332,7 @@ export default function MediaManager({
                     target="_blank"
                     rel="noreferrer"
                     className="p-1.5 bg-slate-100 hover:bg-slate-200 text-[#5A6E85] rounded-lg transition-all"
-                    title="فتح الرابط الأصلي"
+                    title={asset.mime_type === 'application/pdf' ? 'فتح ملف PDF أو تنزيله من عارض المتصفح' : 'فتح الرابط الأصلي'}
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
@@ -364,4 +370,3 @@ export default function MediaManager({
 
   return content;
 }
-

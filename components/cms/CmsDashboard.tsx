@@ -15,6 +15,7 @@ import {
   RefreshCw,
   AlertCircle,
   CheckCircle2,
+  BellRing,
 } from 'lucide-react';
 import type { CmsFullPayload, MediaAsset } from '@/types/cms';
 import IdentityEditor from './IdentityEditor';
@@ -24,6 +25,7 @@ import FooterEditor from './FooterEditor';
 import ClinicsPresentationEditor from './ClinicsPresentationEditor';
 import SeoEditor from './SeoEditor';
 import MediaManager from './MediaManager';
+import PushNotificationEditor from './PushNotificationEditor';
 
 interface CmsDashboardProps {
   currentUser?: {
@@ -40,7 +42,8 @@ type CmsSubTab =
   | 'FOOTER'
   | 'CLINICS'
   | 'SEO'
-  | 'MEDIA';
+  | 'MEDIA'
+  | 'NOTIFICATIONS';
 
 export default function CmsDashboard({ currentUser }: CmsDashboardProps) {
   const [activeSubTab, setActiveSubTab] = useState<CmsSubTab>('IDENTITY');
@@ -85,6 +88,7 @@ export default function CmsDashboard({ currentUser }: CmsDashboardProps) {
     { id: 'CLINICS', label: 'بطاقات العيادات', icon: Sliders },
     { id: 'SEO', label: 'محركات البحث', icon: Search },
     { id: 'MEDIA', label: 'مكتبة الوسائط', icon: ImageIcon },
+    { id: 'NOTIFICATIONS', label: 'الإشعارات', icon: BellRing },
   ];
 
   if (loading) {
@@ -241,8 +245,11 @@ export default function CmsDashboard({ currentUser }: CmsDashboardProps) {
             <MediaManager isModal={false} />
           </div>
         )}
+
+        {activeSubTab === 'NOTIFICATIONS' && currentUser?.role === 'ADMIN' && (
+          <PushNotificationEditor />
+        )}
       </div>
     </div>
   );
 }
-
