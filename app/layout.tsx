@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Cairo } from 'next/font/google';
 import Script from 'next/script';
 import { PwaRuntime } from '@/components/PwaRuntime';
-import { ThemeToggle } from '@/components/ThemeToggle';
+import { PwaInstallPrompt } from '@/components/PwaInstallPrompt';
 import './globals.css';
 
 const cairo = Cairo({
@@ -68,7 +68,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className={`${cairo.className} antialiased min-h-screen`}>
         <PwaRuntime />
-        <ThemeToggle />
+        <PwaInstallPrompt />
         {children}
       </body>
     </html>

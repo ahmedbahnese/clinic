@@ -15,6 +15,7 @@ import {
   Stethoscope,
   Globe,
 } from 'lucide-react';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import type { NavigationItem } from '@/types/cms';
 
 interface SiteHeaderProps {
@@ -114,7 +115,8 @@ export function SiteHeader({ logoUrl = '/logo-main.png', navigationItems }: Site
         </nav>
 
         {/* Left side: External Hospital Site Link */}
-        <div className="hidden md:flex items-center">
+        <div className="hidden md:flex items-center gap-2">
+          <ThemeToggle />
           <a
             href="https://mohp.gov.eg"
             target="_blank"
@@ -128,6 +130,7 @@ export function SiteHeader({ logoUrl = '/logo-main.png', navigationItems }: Site
 
         {/* Mobile Menu Button */}
         <div className="flex md:hidden items-center gap-2">
+          <ThemeToggle />
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="min-w-[44px] min-h-[44px] p-2.5 rounded-xl text-[#163C3A] hover:bg-slate-100 active:bg-slate-200 flex items-center justify-center focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#087F78]"

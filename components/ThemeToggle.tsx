@@ -71,13 +71,13 @@ export function ThemeToggle() {
     <button
       type="button"
       onClick={toggleTheme}
-      className="no-print fixed bottom-4 right-4 z-[45] inline-flex min-h-12 min-w-12 items-center justify-center rounded-full border border-[#E2E8EE] bg-white text-[#087F78] shadow-lg transition hover:-translate-y-0.5 hover:bg-[#F0F7F6] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#087F78] focus-visible:ring-offset-2"
+      className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full border border-[#79C7C1]/60 bg-white/80 text-[#087F78] shadow-2xs transition hover:bg-[#F0F7F6] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#087F78] focus-visible:ring-offset-2 dark:bg-[#142624]/80"
       aria-label={actionLabel}
       aria-pressed={theme === 'dark'}
       title={actionLabel}
       dir="rtl"
     >
-      <Icon className="h-5 w-5" aria-hidden="true" />
+      <Icon className="h-4 w-4" aria-hidden="true" />
     </button>
   );
 }
