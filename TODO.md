@@ -24,6 +24,7 @@
 - [x] إنشاء مفاتيح VAPID وإضافتها إلى بيئتي Preview وProduction في Vercel؛ المفتاح الخاص مخزن بنوع `sensitive` ولم يُحفظ في المستودع.
 - [ ] إعداد GitHub Secrets الأربعة لمفتاح توقيع Android كي ينتج Workflow ملف AAB/Release APK موقّعًا.
 - [x] دفع التغييرات إلى `feature/pwa-android-push` وفتح PR رقم 1؛ نجح GitHub Actions وأنتج APK debug، واكتملت فحوص Vercel Preview للـcommit الحالي.
-- [ ] إعادة إنشاء Vercel Preview بعد إضافة مفاتيح VAPID للتحقق من أن النشر الجديد يقرأ الإعدادات؛ لم يُدمج PR ولم يُنشر Production.
+- [x] إعادة إنشاء Vercel Preview بعد إضافة مفاتيح VAPID؛ النشر READY على `https://clinic-huhh98uk4-clinic-05ab.vercel.app`، وما زال PR غير مدموج وProduction دون نشر.
+- [ ] فحص endpoint عبر جلسة Vercel؛ طلب HTTP غير المسجل أعاد 302 إلى SSO لأن حماية Preview مفعلة.
 - [ ] الاختبار على Safari/iPhone وChrome/Android فعليين؛ لم يتوفر جهاز متصل بهذه البيئة.
 - [ ] استكمال صفحة التطبيق وإقرارات البيانات والخصوصية والتصنيف، والتحقق من توفر `com.bschclinic.app` قبل أول نشر على Google Play.
