@@ -21,8 +21,9 @@
 - [x] PDF عبر HTTP: أعاد Next.js الإنتاجي `200 OK` و`Content-Type: application/pdf` و`Accept-Ranges: bytes` لعينة اختبار مؤقتة؛ حُذفت العينة بعد التحقق.
 
 ## ما يزال يحتاج إعداد/تسليم
-- [ ] إنشاء مفاتيح VAPID وإضافتها كمتغيرات سرية إلى Vercel؛ واجهة VAPID تُرجع حاليًا 503 متوقعًا قبل الإعداد.
+- [x] إنشاء مفاتيح VAPID وإضافتها إلى بيئتي Preview وProduction في Vercel؛ المفتاح الخاص مخزن بنوع `sensitive` ولم يُحفظ في المستودع.
 - [ ] إعداد GitHub Secrets الأربعة لمفتاح توقيع Android كي ينتج Workflow ملف AAB/Release APK موقّعًا.
-- [ ] دفع التغييرات إلى فرع معاينة GitHub، ثم التحقق من نجاح GitHub Actions وظهور Preview في Vercel. لن يُنشر Production دون إذن نشر واضح.
+- [x] دفع التغييرات إلى `feature/pwa-android-push` وفتح PR رقم 1؛ نجح GitHub Actions وأنتج APK debug، واكتملت فحوص Vercel Preview للـcommit الحالي.
+- [ ] إعادة إنشاء Vercel Preview بعد إضافة مفاتيح VAPID للتحقق من أن النشر الجديد يقرأ الإعدادات؛ لم يُدمج PR ولم يُنشر Production.
 - [ ] الاختبار على Safari/iPhone وChrome/Android فعليين؛ لم يتوفر جهاز متصل بهذه البيئة.
 - [ ] استكمال صفحة التطبيق وإقرارات البيانات والخصوصية والتصنيف، والتحقق من توفر `com.bschclinic.app` قبل أول نشر على Google Play.
