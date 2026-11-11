@@ -276,7 +276,11 @@ export async function DELETE(req: NextRequest) {
       if (storageError) return NextResponse.json({ error: 'تعذر حذف الملف الفعلي من التخزين، ولم يتم حذف السجل.', details: storageError.message }, { status: 502 });
     } else if (typeof asset.url === 'string' && asset.url.startsWith('/uploads/cms/')) {
       const localFile = path.join(process.cwd(), 'public', asset.url.replace(/^\//, ''));
-      await fs.unlink(localFile).catch(() => undefined);
+      try {
+        await fs.unlink(localFile);
+      } catch (localError: any) {
+        return NextResponse.json({ error: 'تعذر حذف الملف المحلي الفعلي، ولم يتم حذف السجل.', details: localError?.message }, { status: 502 });
+      }
     } else {
       return NextResponse.json({ error: 'هذا الوسيط مرتبط برابط خارجي ولا يملك النظام ملفًا فعليًا يمكن حذفه بأمان.' }, { status: 409 });
     }
