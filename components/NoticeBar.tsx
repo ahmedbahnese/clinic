@@ -34,6 +34,7 @@ function safeDestination(value?: string): string | null {
 }
 
 function isActiveAnnouncement(announcement: NoticeAnnouncement, now: number): boolean {
+  if (announcement.is_enabled === false || announcement.show_on_site === false) return false;
   const startsAt = announcement.starts_at ? Date.parse(announcement.starts_at) : Number.NaN;
   const endsAt = announcement.ends_at ? Date.parse(announcement.ends_at) : Number.NaN;
   if (Number.isFinite(startsAt) && startsAt > now) return false;
@@ -144,6 +145,10 @@ export function NoticeBar({ config }: NoticeBarProps) {
   const currentAnnouncement = announcements[activeIndex % announcements.length];
   const currentLink = safeDestination(currentAnnouncement.link_url);
   const hotlineLabel = config?.hotline_label?.trim() || 'مستشفى الأطفال التخصصي — دمسنا';
+  const display = config?.display;
+  const widthClass = display?.width === 'contained' ? 'mx-auto max-w-[1100px] rounded-2xl' : 'w-full';
+  const heightClass = display?.height === 'compact' ? 'min-h-[64px]' : 'min-h-[88px] sm:min-h-[92px]';
+  const placementClass = display?.placement === 'floating' ? 'fixed inset-x-3 top-3 z-[70] mx-auto max-w-[1100px] rounded-2xl shadow-2xl' : 'relative z-50';
 
   if (config?.is_enabled === false || !isMounted || !isVisible) return null;
 
@@ -176,7 +181,7 @@ export function NoticeBar({ config }: NoticeBarProps) {
       <aside
         dir="rtl"
         aria-label="إعلانات وتنبيهات المستشفى"
-        className="relative z-50 border-b border-[#163C3A] bg-gradient-to-l from-[#0A3D39] via-[#0D5F5A] to-[#124E4A] text-white shadow-xs"
+        className={`${placementClass} border-b border-[#163C3A] bg-gradient-to-l from-[#0A3D39] via-[#0D5F5A] to-[#124E4A] text-white shadow-xs`}
         style={{ backgroundColor: '#0A3D39' }}
         onMouseEnter={() => setIsPaused(true)}
         onMouseLeave={() => setIsPaused(false)}
@@ -185,7 +190,7 @@ export function NoticeBar({ config }: NoticeBarProps) {
           if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsPaused(false);
         }}
       >
-        <div className="mx-auto flex min-h-[88px] max-w-[1100px] items-center gap-2 px-3 py-2 sm:min-h-[92px] sm:gap-3 sm:px-6">
+        <div className={`${widthClass} flex ${heightClass} items-center gap-2 px-3 py-2 sm:gap-3 sm:px-6`}>
           <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
             <h2 className="text-[10px] font-bold leading-4 tracking-wide text-emerald-100 sm:text-[11px]">
               إعلانات وتنبيهات المستشفى

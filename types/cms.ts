@@ -15,6 +15,15 @@ export interface NoticeAnnouncement {
   link_url?: string;
   starts_at?: string;
   ends_at?: string;
+  is_enabled?: boolean;
+  show_on_site?: boolean;
+  send_push?: boolean;
+}
+
+export interface NoticeBarDisplayConfig {
+  placement?: 'top' | 'below_header' | 'floating';
+  width?: 'full' | 'contained';
+  height?: 'compact' | 'standard';
 }
 
 export interface NoticeBarConfig {
@@ -23,6 +32,7 @@ export interface NoticeBarConfig {
   message: string;
   hotline_label: string;
   announcements?: NoticeAnnouncement[];
+  display?: NoticeBarDisplayConfig;
 }
 
 export interface WebsiteSettings {

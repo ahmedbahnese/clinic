@@ -53,8 +53,8 @@ export default async function HomePage() {
       dir="rtl"
       className="flex flex-col min-h-screen bg-[#F6F9FB] selection:bg-[#087F78] selection:text-white font-sans antialiased"
     >
-      {/* 1. Dismissible Urgent Announcement Notice Bar */}
-      <NoticeBar config={settings.notice_bar} />
+      {/* Announcement placement is controlled independently from Push notifications. */}
+      {settings.notice_bar.display?.placement !== 'below_header' && <NoticeBar config={settings.notice_bar} />}
 
       {/* 2. Main Sticky Hospital Header Navigation */}
       <SiteHeader
@@ -62,6 +62,7 @@ export default async function HomePage() {
         navigationItems={navigation}
         hospitalUrl={settings.hospital_website_url || getSection('hospital_banner')?.content?.btn_url || settings.canonical_url || 'https://albahira.elyoser.cloud'}
       />
+      {settings.notice_bar.display?.placement === 'below_header' && <NoticeBar config={settings.notice_bar} />}
 
       <main className="flex-1 w-full max-w-[1100px] mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {/* 3. Deep Teal Radial Hero Banner with Glassmorphism & Feature Highlights */}
