@@ -2,6 +2,13 @@ import React from 'react';
 import { Clock, ExternalLink } from 'lucide-react';
 import type { HomepageSection, HospitalBannerSectionContent } from '@/types/cms';
 
+function formatExternalUrl(url?: string): string {
+  if (!url || !url.trim()) return '#';
+  const trimmed = url.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
 interface HospitalBannerProps {
   section?: HomepageSection;
 }
@@ -18,7 +25,8 @@ export function HospitalBanner({ section }: HospitalBannerProps) {
     section?.subtitle ||
     'زر موقع المستشفى الرسمي لمعرفة المزيد عن الخدمات والأقسام الطبية';
   const btnLabel = content.btn_label || 'زيارة الموقع';
-  const btnUrl = content.btn_url || 'https://mohp.gov.eg';
+  const rawUrl = content.btn_url?.trim() || 'https://albahira.elyoser.cloud';
+  const btnUrl = formatExternalUrl(rawUrl);
 
   return (
     <section

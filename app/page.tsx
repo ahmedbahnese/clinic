@@ -57,7 +57,11 @@ export default async function HomePage() {
       <NoticeBar config={settings.notice_bar} />
 
       {/* 2. Main Sticky Hospital Header Navigation */}
-      <SiteHeader logoUrl={settings.header_logo_url} navigationItems={navigation} />
+      <SiteHeader
+        logoUrl={settings.header_logo_url}
+        navigationItems={navigation}
+        hospitalUrl={settings.hospital_website_url || getSection('hospital_banner')?.content?.btn_url || settings.canonical_url || 'https://albahira.elyoser.cloud'}
+      />
 
       <main className="flex-1 w-full max-w-[1100px] mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {/* 3. Deep Teal Radial Hero Banner with Glassmorphism & Feature Highlights */}

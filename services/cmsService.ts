@@ -43,7 +43,8 @@ export const DEFAULT_WEBSITE_SETTINGS: WebsiteSettings = {
   meta_description:
     'منصة حجز المواعيد والاستعلام للعيادات الخارجية بمستشفى الأطفال التخصصي بالبحيرة — احجز موعدك بالاسم ورقم الهاتف فقط وتابع حالة حجزك وتعليمات الحضور.',
   og_image_url: '/logo-main.png',
-  canonical_url: 'https://bsch-clinics.gov.eg',
+  canonical_url: 'https://albahira.elyoser.cloud',
+  hospital_website_url: 'https://albahira.elyoser.cloud',
   social_links: [
     { platform: 'facebook', label: 'فيسبوك المستشفى', url: 'https://facebook.com', is_active: false },
     { platform: 'mohp', label: 'بوابة وزارة الصحة', url: 'https://mohp.gov.eg', is_active: false },
@@ -155,7 +156,7 @@ export const DEFAULT_HOMEPAGE_SECTIONS: HomepageSection[] = [
     subtitle: 'زر موقع المستشفى الرسمي لمعرفة المزيد عن الخدمات والأقسام الطبية',
     content: {
       btn_label: 'زيارة الموقع',
-      btn_url: 'https://mohp.gov.eg',
+      btn_url: 'https://albahira.elyoser.cloud',
       icon: 'Clock',
     },
   },
@@ -305,14 +306,26 @@ class CmsService {
         ]);
 
         const settings = (settingsRes.data as unknown as WebsiteSettings) || this.settings;
+        if (!settings.hospital_website_url) {
+          settings.hospital_website_url = settings.canonical_url || 'https://albahira.elyoser.cloud';
+        }
         const sections = (sectionsRes.data as unknown as HomepageSection[]) || this.sections;
-        const navigation = (navRes.data as unknown as NavigationItem[]) || this.navigation;
+        const rawNav = (navRes.data as unknown as NavigationItem[]) || this.navigation;
+        const navigation = rawNav
+          .map((n) => ({
+            ...n,
+            is_active: n.is_active ?? n.is_visible ?? true,
+            is_visible: n.is_visible ?? n.is_active ?? true,
+            target: n.target || (n.is_external ? '_blank' : '_self'),
+          }))
+          .filter((n) => n.is_visible !== false && n.is_active !== false)
+          .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
         const clinics = (clinicsRes.data as unknown as ClinicPresentation[]) || this.clinicsPresentation;
 
         return {
           settings,
           sections: sections.filter((s) => s.is_visible),
-          navigation: navigation.filter((n) => n.is_visible),
+          navigation,
           clinics: clinics.filter((c) => c.is_featured_on_homepage && c.is_active),
         };
       } catch (err) {
@@ -320,10 +333,22 @@ class CmsService {
       }
     }
 
+    if (!this.settings.hospital_website_url) {
+      this.settings.hospital_website_url = this.settings.canonical_url || 'https://albahira.elyoser.cloud';
+    }
+
     return {
       settings: this.settings,
       sections: this.sections.filter((s) => s.is_visible),
-      navigation: this.navigation.filter((n) => n.is_visible),
+      navigation: this.navigation
+        .map((n) => ({
+          ...n,
+          is_active: n.is_active ?? n.is_visible ?? true,
+          is_visible: n.is_visible ?? n.is_active ?? true,
+          target: n.target || (n.is_external ? '_blank' : '_self'),
+        }))
+        .filter((n) => n.is_visible !== false && n.is_active !== false)
+        .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0)),
       clinics: this.clinicsPresentation.filter((c) => c.is_featured_on_homepage && c.is_active),
     };
   }
@@ -342,9 +367,21 @@ class CmsService {
           supabase.from('media_assets').select('*').order('created_at', { ascending: false }),
         ]);
 
-        if (settingsRes.data) this.settings = settingsRes.data as unknown as WebsiteSettings;
+        if (settingsRes.data) {
+          this.settings = settingsRes.data as unknown as WebsiteSettings;
+          if (!this.settings.hospital_website_url) {
+            this.settings.hospital_website_url = this.settings.canonical_url || 'https://albahira.elyoser.cloud';
+          }
+        }
         if (sectionsRes.data && sectionsRes.data.length > 0) this.sections = sectionsRes.data as unknown as HomepageSection[];
-        if (navRes.data && navRes.data.length > 0) this.navigation = navRes.data as unknown as NavigationItem[];
+        if (navRes.data && navRes.data.length > 0) {
+          this.navigation = (navRes.data as unknown as NavigationItem[]).map((n) => ({
+            ...n,
+            is_active: n.is_active ?? n.is_visible ?? true,
+            is_visible: n.is_visible ?? n.is_active ?? true,
+            target: n.target || (n.is_external ? '_blank' : '_self'),
+          })).sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
+        }
         if (clinicsRes.data && clinicsRes.data.length > 0) this.clinicsPresentation = clinicsRes.data as unknown as ClinicPresentation[];
         if (mediaRes.data && mediaRes.data.length > 0) {
           assets = mediaRes.data as unknown as MediaAsset[];
@@ -354,10 +391,19 @@ class CmsService {
       }
     }
 
+    if (!this.settings.hospital_website_url) {
+      this.settings.hospital_website_url = this.settings.canonical_url || 'https://albahira.elyoser.cloud';
+    }
+
     return {
       settings: this.settings,
       sections: this.sections,
-      navigation: this.navigation,
+      navigation: this.navigation.map((n) => ({
+        ...n,
+        is_active: n.is_active ?? n.is_visible ?? true,
+        is_visible: n.is_visible ?? n.is_active ?? true,
+        target: n.target || (n.is_external ? '_blank' : '_self'),
+      })).sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0)),
       clinics: this.clinicsPresentation,
       assets,
     };
@@ -372,9 +418,29 @@ class CmsService {
       return { success: false, error: 'غير مصرح بتعديل إعدادات وهوية الموقع. صلاحية مدير النظام مطلوبة.' };
     }
 
+    if (isSupabaseConfigured()) {
+      try {
+        const supabase: any = this.getSupabaseClient(userToken);
+        const { data: existingDb } = await supabase
+          .from('website_settings')
+          .select('*')
+          .eq('id', 'default')
+          .maybeSingle();
+        if (existingDb) {
+          this.settings = { ...this.settings, ...existingDb };
+        }
+      } catch (fetchErr) {
+        console.warn('Pre-update fetch existing settings warning:', fetchErr);
+      }
+    }
+
+    const canonicalUrl = updates.canonical_url || updates.hospital_website_url || this.settings.hospital_website_url || this.settings.canonical_url || 'https://albahira.elyoser.cloud';
+
     const updated: WebsiteSettings = {
       ...this.settings,
       ...updates,
+      canonical_url: canonicalUrl,
+      hospital_website_url: canonicalUrl,
       id: 'default',
       updated_at: new Date().toISOString(),
       updated_by: user.name || user.username || 'admin',
@@ -439,6 +505,8 @@ class CmsService {
 
     this.settings = updated;
     await safeRevalidatePath('/');
+    await safeRevalidatePath('/appointments/new');
+    await safeRevalidatePath('/appointments/track');
     return { success: true, settings: this.settings };
   }
 
@@ -573,15 +641,53 @@ class CmsService {
     }
 
     const isUUID = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-    const sanitizedItems: NavigationItem[] = items.map((item, idx) => ({
-      ...item,
-      id: isUUID(item.id) ? item.id : (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `nav-${Date.now()}-${idx}`),
-      display_order: item.display_order ?? (idx + 1),
-    }));
 
     if (isSupabaseConfigured()) {
       try {
         const supabase: any = this.getSupabaseClient(userToken);
+        const { data: existingDbItems } = await supabase.from('navigation_items').select('*');
+        const existingList: any[] = existingDbItems || [];
+
+        const sanitizedItems: NavigationItem[] = [];
+        for (let idx = 0; idx < items.length; idx++) {
+          const item = items[idx];
+          const isAct = item.is_active ?? item.is_visible ?? true;
+          const isVis = item.is_visible ?? item.is_active ?? true;
+          const isExt = item.is_external ?? (item.target === '_blank');
+          const loc = item.location || 'HEADER';
+
+          let matchedId: string;
+          if (isUUID(item.id)) {
+            matchedId = item.id;
+          } else {
+            const found = existingList.find((e) => e.location === loc && e.href === item.href);
+            if (found && found.id) {
+              matchedId = found.id;
+            } else {
+              matchedId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `nav-${Date.now()}-${idx}`;
+            }
+          }
+
+          sanitizedItems.push({
+            ...item,
+            id: matchedId,
+            display_order: item.display_order ?? (idx + 1),
+            is_active: isAct,
+            is_visible: isVis,
+            is_external: isExt,
+            target: item.target || (isExt ? '_blank' : '_self'),
+            location: loc,
+          });
+        }
+
+        // Delete items removed by the user
+        const keepIds = sanitizedItems.map((i) => i.id).filter(Boolean);
+        for (const oldItem of existingList) {
+          if (!keepIds.includes(oldItem.id)) {
+            await supabase.from('navigation_items').delete().eq('id', oldItem.id);
+          }
+        }
+
         for (const item of sanitizedItems) {
           const dbItem = {
             id: item.id,
@@ -591,7 +697,7 @@ class CmsService {
             is_visible: item.is_visible,
             is_external: item.is_external,
             location: item.location,
-            icon_name: item.icon_name,
+            icon_name: item.icon_name || 'Globe',
             updated_at: new Date().toISOString(),
           };
           const { error } = await supabase.from('navigation_items').upsert(dbItem as any, { onConflict: 'id' });
@@ -603,6 +709,8 @@ class CmsService {
             };
           }
         }
+
+        this.navigation = sanitizedItems;
       } catch (err: any) {
         console.error('Supabase updateNavigation exception:', err?.message || 'Network error');
         return {
@@ -615,10 +723,19 @@ class CmsService {
         success: false,
         error: 'خدمة تعديل القوائم غير متصلة بقاعدة البيانات في بيئة الإنتاج.',
       };
+    } else {
+      this.navigation = items.map((item, idx) => ({
+        ...item,
+        id: isUUID(item.id) ? item.id : `nav-${Date.now()}-${idx}`,
+        display_order: item.display_order ?? (idx + 1),
+        is_active: item.is_active ?? item.is_visible ?? true,
+        is_visible: item.is_visible ?? item.is_active ?? true,
+      }));
     }
 
-    this.navigation = sanitizedItems;
     await safeRevalidatePath('/');
+    await safeRevalidatePath('/appointments/new');
+    await safeRevalidatePath('/appointments/track');
     return { success: true, navigation: this.navigation };
   }
 

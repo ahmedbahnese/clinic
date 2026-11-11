@@ -15,6 +15,7 @@ import {
   RefreshCw,
   Image as ImageIcon,
   ExternalLink,
+  Globe,
 } from 'lucide-react';
 import type { WebsiteSettings } from '@/types/cms';
 import MediaManager from './MediaManager';
@@ -144,6 +145,30 @@ export default function IdentityEditor({ initialSettings, token, onSaved }: Iden
               onChange={(e) => handleChange('site_tagline', e.target.value)}
               className="w-full text-sm bg-[#F8FAFC] border border-[#CBD5E1] rounded-xl px-4 py-2.5 text-[#163C3A] focus:outline-none focus:border-[#087F78] focus:bg-white"
             />
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="block text-xs font-semibold text-[#5A6E85] mb-1.5 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Globe className="w-4 h-4 text-[#087F78]" />
+                <span>رابط موقع تعريف المستشفى الرسمي (يفتح عند الضغط على زر &quot;موقع المستشفى&quot; بالشريط العلوي)</span>
+              </span>
+              <span className="text-[11px] text-[#087F78] font-mono">albahira.elyoser.cloud</span>
+            </label>
+            <input
+              type="text"
+              value={settings.hospital_website_url || settings.canonical_url || ''}
+              onChange={(e) => {
+                const val = e.target.value;
+                handleChange('hospital_website_url', val);
+                handleChange('canonical_url', val);
+              }}
+              placeholder="https://albahira.elyoser.cloud"
+              className="w-full text-sm bg-[#F8FAFC] border border-[#CBD5E1] rounded-xl px-4 py-2.5 text-[#163C3A] font-mono focus:outline-none focus:border-[#087F78] focus:bg-white"
+            />
+            <p className="text-[11px] text-[#8493A6] mt-1">
+              الرابط الذي يتم فتحه للزائر عند الضغط على زر &quot;موقع المستشفى&quot; في الشريط العلوي وقوائم التنقل وبنرات الموقع.
+            </p>
           </div>
         </div>
 

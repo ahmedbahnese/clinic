@@ -28,6 +28,7 @@ export interface WebsiteSettings {
   meta_description: string;
   og_image_url: string;
   canonical_url?: string;
+  hospital_website_url?: string;
   social_links: SocialLinkItem[];
   notice_bar: NoticeBarConfig;
   footer_summary: string;

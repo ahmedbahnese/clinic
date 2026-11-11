@@ -18,12 +18,24 @@ import {
 import { ThemeToggle } from '@/components/ThemeToggle';
 import type { NavigationItem } from '@/types/cms';
 
+function formatExternalUrl(url?: string): string {
+  if (!url || !url.trim()) return '#';
+  const trimmed = url.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  return `https://${trimmed}`;
+}
+
 interface SiteHeaderProps {
   logoUrl?: string;
   navigationItems?: NavigationItem[];
+  hospitalUrl?: string;
 }
 
-export function SiteHeader({ logoUrl = '/logo-main.png', navigationItems }: SiteHeaderProps) {
+export function SiteHeader({
+  logoUrl = '/logo-main.png',
+  navigationItems,
+  hospitalUrl = 'https://albahira.elyoser.cloud',
+}: SiteHeaderProps) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -36,13 +48,24 @@ export function SiteHeader({ logoUrl = '/logo-main.png', navigationItems }: Site
     return Globe;
   };
 
+  const isExternalNav = (item: NavigationItem) => {
+    if (item.target === '_blank' || item.is_external) return true;
+    if (item.href.startsWith('http://') || item.href.startsWith('https://')) return true;
+    if (item.href.includes('.') && !item.href.startsWith('/')) return true;
+    return false;
+  };
+
   const activeNavItems = navigationItems && navigationItems.length > 0
-    ? navigationItems.filter((i) => i.is_active)
+    ? navigationItems
+        .filter((i) => i.is_active !== false && i.is_visible !== false)
+        .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0))
     : [
-        { id: 'home', label: 'الرئيسية', href: '/', target: '_self' as const, display_order: 1, is_active: true },
-        { id: 'book', label: 'حجز موعد', href: '/appointments/new', target: '_self' as const, display_order: 2, is_active: true },
-        { id: 'track', label: 'متابعة حجز', href: '/appointments/track', target: '_self' as const, display_order: 3, is_active: true },
+        { id: 'home', label: 'الرئيسية', href: '/', target: '_self' as const, display_order: 1, is_active: true, is_visible: true },
+        { id: 'book', label: 'حجز موعد', href: '/appointments/new', target: '_self' as const, display_order: 2, is_active: true, is_visible: true },
+        { id: 'track', label: 'متابعة حجز', href: '/appointments/track', target: '_self' as const, display_order: 3, is_active: true, is_visible: true },
       ];
+
+  const formattedHospitalUrl = formatExternalUrl(hospitalUrl || 'https://albahira.elyoser.cloud');
 
   return (
     <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md backdrop-saturate-150 border-b border-[#E2E8EE]/80 shadow-[0_1px_4px_0_rgba(18,78,74,0.03)]">
@@ -67,16 +90,17 @@ export function SiteHeader({ logoUrl = '/logo-main.png', navigationItems }: Site
         <nav className="hidden md:flex items-center gap-1.5" aria-label="التنقل الرئيسي">
           {activeNavItems.map((item) => {
             const Icon = getNavIcon(item.href);
+            const external = isExternalNav(item);
             const isCurrent =
               item.href === '/'
                 ? pathname === '/'
                 : pathname.startsWith(item.href);
 
-            if (item.target === '_blank') {
+            if (external) {
               return (
                 <a
                   key={item.id}
-                  href={item.href}
+                  href={formatExternalUrl(item.href)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-[#79C7C1] text-xs font-semibold text-[#087F78] hover:bg-[#087F78] hover:text-white transition-all shadow-2xs hover:shadow-xs ml-1"
@@ -87,10 +111,12 @@ export function SiteHeader({ logoUrl = '/logo-main.png', navigationItems }: Site
               );
             }
 
+            const cleanHref = item.href.startsWith('/') ? item.href : `/${item.href}`;
+
             return (
               <Link
                 key={item.id}
-                href={item.href}
+                href={cleanHref}
                 className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all duration-200 ease-out focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#087F78] ${
                   isCurrent
                     ? 'bg-[#087F78] text-white shadow-[0_2px_8px_rgba(8,127,120,0.25)]'
@@ -118,10 +144,11 @@ export function SiteHeader({ logoUrl = '/logo-main.png', navigationItems }: Site
         <div className="hidden md:flex items-center gap-2">
           <ThemeToggle />
           <a
-            href="https://mohp.gov.eg"
+            href={formattedHospitalUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-[#79C7C1] text-xs font-semibold text-[#087F78] hover:bg-[#087F78] hover:text-white transition-all shadow-2xs hover:shadow-xs focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#087F78]"
+            title="زيارة موقع تعريف المستشفى الرسمي"
           >
             <span>موقع المستشفى</span>
             <ExternalLink className="w-3.5 h-3.5" />
@@ -147,16 +174,17 @@ export function SiteHeader({ logoUrl = '/logo-main.png', navigationItems }: Site
           <div className="space-y-1.5">
             {activeNavItems.map((item) => {
               const Icon = getNavIcon(item.href);
+              const external = isExternalNav(item);
               const isCurrent =
                 item.href === '/'
                   ? pathname === '/'
                   : pathname.startsWith(item.href);
 
-              if (item.target === '_blank') {
+              if (external) {
                 return (
                   <a
                     key={item.id}
-                    href={item.href}
+                    href={formatExternalUrl(item.href)}
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => setMobileMenuOpen(false)}
@@ -171,10 +199,12 @@ export function SiteHeader({ logoUrl = '/logo-main.png', navigationItems }: Site
                 );
               }
 
+              const cleanHref = item.href.startsWith('/') ? item.href : `/${item.href}`;
+
               return (
                 <Link
                   key={item.id}
-                  href={item.href}
+                  href={cleanHref}
                   onClick={() => setMobileMenuOpen(false)}
                   className={`flex items-center gap-3 px-4 py-3 rounded-xl text-base font-semibold transition-colors ${
                     isCurrent
@@ -203,10 +233,11 @@ export function SiteHeader({ logoUrl = '/logo-main.png', navigationItems }: Site
             </Link>
 
             <a
-              href="https://mohp.gov.eg"
+              href={formattedHospitalUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-[#79C7C1] text-xs font-semibold text-[#087F78] hover:bg-[#087F78] hover:text-white transition-colors"
+              title="زيارة موقع تعريف المستشفى الرسمي"
             >
               <span>موقع المستشفى الرسمي</span>
               <ExternalLink className="w-3.5 h-3.5" />

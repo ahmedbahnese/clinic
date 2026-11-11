@@ -29,7 +29,14 @@ export default function NavbarEditor({
   onSaved,
 }: NavbarEditorProps) {
   const [items, setItems] = useState<NavigationItem[]>(
-    [...initialNavigation].sort((a, b) => a.display_order - b.display_order)
+    [...initialNavigation]
+      .map((item) => ({
+        ...item,
+        is_active: item.is_active ?? item.is_visible ?? true,
+        is_visible: item.is_visible ?? item.is_active ?? true,
+        target: item.target || (item.is_external ? '_blank' : '_self'),
+      }))
+      .sort((a, b) => a.display_order - b.display_order)
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +60,13 @@ export default function NavbarEditor({
 
   const handleUpdate = (index: number, field: keyof NavigationItem, val: any) => {
     const updated = [...items];
-    updated[index] = { ...updated[index], [field]: val };
+    if (field === 'is_active' || field === 'is_visible') {
+      updated[index] = { ...updated[index], is_active: val, is_visible: val };
+    } else if (field === 'target') {
+      updated[index] = { ...updated[index], target: val, is_external: val === '_blank' };
+    } else {
+      updated[index] = { ...updated[index], [field]: val };
+    }
     setItems(updated);
   };
 
@@ -65,6 +78,9 @@ export default function NavbarEditor({
       target: '_self',
       display_order: items.length + 1,
       is_active: true,
+      is_visible: true,
+      is_external: false,
+      location: 'HEADER',
     };
     setItems([...items, newItem]);
   };
@@ -234,17 +250,17 @@ export default function NavbarEditor({
                       ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                       : 'bg-slate-200 text-slate-600'
                   }`}
-                  title={item.is_active ? 'الرابط مفعّل' : 'الرابط معطّل ومخفي'}
+                  title={item.is_active ? 'الرابط معروض ويظهر في القائمة' : 'الرابط مخفي ولا يظهر في القائمة'}
                 >
                   {item.is_active ? (
                     <>
                       <Eye className="w-3.5 h-3.5" />
-                      <span>مفعّل</span>
+                      <span>معروض</span>
                     </>
                   ) : (
                     <>
                       <EyeOff className="w-3.5 h-3.5" />
-                      <span>معطّل</span>
+                      <span>مخفي</span>
                     </>
                   )}
                 </button>

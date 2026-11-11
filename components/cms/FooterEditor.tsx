@@ -191,6 +191,7 @@ export default function FooterEditor({ initialSettings, token, onSaved }: Footer
                     className="w-full text-xs bg-white border border-[#CBD5E1] rounded-xl px-3 py-2 text-[#163C3A]"
                   >
                     <option value="facebook">فيسبوك (Facebook)</option>
+                    <option value="website">موقع المستشفى التعريفي / بوابة إلكترونية</option>
                     <option value="mohp">وزارة الصحة (MOHP Portal)</option>
                     <option value="youtube">يوتيوب (YouTube)</option>
                     <option value="whatsapp">واتساب (WhatsApp)</option>
@@ -205,6 +206,7 @@ export default function FooterEditor({ initialSettings, token, onSaved }: Footer
                   <input
                     type="text"
                     value={link.label}
+                    placeholder="مثال: صفحة المستشفى الرسمية"
                     onChange={(e) => handleUpdateSocial(idx, 'label', e.target.value)}
                     className="w-full text-xs bg-white border border-[#CBD5E1] rounded-xl px-3 py-2 text-[#163C3A] font-bold"
                   />
@@ -215,6 +217,7 @@ export default function FooterEditor({ initialSettings, token, onSaved }: Footer
                   <input
                     type="text"
                     value={link.url}
+                    placeholder="https://albahira.elyoser.cloud أو https://facebook.com/..."
                     onChange={(e) => handleUpdateSocial(idx, 'url', e.target.value)}
                     className="w-full text-xs bg-white border border-[#CBD5E1] rounded-xl px-3 py-2 text-[#163C3A] font-mono"
                   />
