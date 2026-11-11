@@ -39,10 +39,11 @@ function isActiveAnnouncement(announcement: NoticeAnnouncement, now: number): bo
   const endsAt = announcement.ends_at ? Date.parse(announcement.ends_at) : Number.NaN;
   if (Number.isFinite(startsAt) && startsAt > now) return false;
   if (Number.isFinite(endsAt) && endsAt <= now) return false;
-  return Boolean(announcement.title?.trim() && (announcement.summary?.trim() || announcement.message?.trim()));
+  return Boolean(announcement.title?.trim() || announcement.summary?.trim() || announcement.message?.trim() || announcement.details?.trim() || announcement.image_url || announcement.link_url);
 }
 
 export function NoticeBar({ config }: NoticeBarProps) {
+  const noticeStorageKey = `${NOTICE_STORAGE_KEY}:${(config?.announcements ?? []).map((item) => item.id).join('|') || 'legacy'}`;
   const [isVisible, setIsVisible] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -56,7 +57,7 @@ export function NoticeBar({ config }: NoticeBarProps) {
   useEffect(() => {
     setIsMounted(true);
     try {
-      const dismissedUntil = localStorage.getItem(NOTICE_STORAGE_KEY);
+      const dismissedUntil = localStorage.getItem(noticeStorageKey);
       setIsVisible(!dismissedUntil || Date.now() > Number(dismissedUntil));
     } catch {
       setIsVisible(true);
@@ -67,7 +68,7 @@ export function NoticeBar({ config }: NoticeBarProps) {
     updateMotionPreference();
     motionPreference.addEventListener('change', updateMotionPreference);
     return () => motionPreference.removeEventListener('change', updateMotionPreference);
-  }, []);
+  }, [noticeStorageKey]);
 
   useEffect(() => {
     let timer: number;
@@ -96,7 +97,8 @@ export function NoticeBar({ config }: NoticeBarProps) {
     if (activeCampaigns.length > 0) {
       return activeCampaigns.map((item) => ({
         ...item,
-        summary: item.summary?.trim() || item.message?.trim() || '',
+        title: item.title?.trim() || 'تنبيه من المستشفى',
+        summary: item.summary?.trim() || item.message?.trim() || item.details?.trim() || '',
       }));
     }
 
@@ -132,7 +134,7 @@ export function NoticeBar({ config }: NoticeBarProps) {
   const handleDismiss = () => {
     setIsVisible(false);
     try {
-      localStorage.setItem(NOTICE_STORAGE_KEY, String(Date.now() + DISMISS_DURATION_MS));
+      localStorage.setItem(noticeStorageKey, String(Date.now() + DISMISS_DURATION_MS));
     } catch {
       // Ignore storage errors.
     }
@@ -161,14 +163,14 @@ export function NoticeBar({ config }: NoticeBarProps) {
           width={56}
           height={56}
           unoptimized
-          className="h-12 w-12 shrink-0 rounded-lg bg-white/10 object-cover sm:h-14 sm:w-14"
+          className="absolute inset-0 z-0 h-full w-full rounded-lg object-cover opacity-45"
         />
       ) : (
         <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-400/15 text-amber-300 ring-1 ring-amber-400/25 sm:h-11 sm:w-11" aria-hidden="true">
           <Bell className="h-4 w-4" />
         </span>
       )}
-      <span className="min-w-0 flex-1 text-right">
+        <span className="relative z-10 min-w-0 flex-1 rounded-lg bg-black/25 px-2 py-1 text-right">
         <span className="block truncate text-xs font-bold text-amber-300 sm:text-sm">{currentAnnouncement.title}</span>
         <span className="mt-0.5 block line-clamp-2 text-[11px] leading-4 text-emerald-50 sm:text-xs">{currentAnnouncement.summary}</span>
       </span>
@@ -230,7 +232,7 @@ export function NoticeBar({ config }: NoticeBarProps) {
                 <a
                   key={currentAnnouncement.id}
                   href={currentLink}
-                  className="notice-slide-in flex min-w-0 flex-1 items-center gap-2.5 rounded-lg text-inherit outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-amber-300 sm:gap-3"
+                  className="notice-slide-in relative flex min-h-12 min-w-0 flex-1 items-center gap-2.5 overflow-hidden rounded-lg text-inherit outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-amber-300 sm:gap-3"
                   aria-label={`${currentAnnouncement.title}: ${currentAnnouncement.summary}`}
                 >
                   {content}
@@ -240,7 +242,7 @@ export function NoticeBar({ config }: NoticeBarProps) {
                   key={currentAnnouncement.id}
                   type="button"
                   onClick={() => setDetailsAnnouncement(currentAnnouncement)}
-                  className="notice-slide-in flex min-w-0 flex-1 items-center gap-2.5 rounded-lg text-inherit text-right outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-amber-300 sm:gap-3"
+                  className="notice-slide-in relative flex min-h-12 min-w-0 flex-1 items-center gap-2.5 overflow-hidden rounded-lg text-inherit text-right outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-amber-300 sm:gap-3"
                   aria-label={`عرض تفاصيل الإعلان: ${currentAnnouncement.title}`}
                 >
                   {content}

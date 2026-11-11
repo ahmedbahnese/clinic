@@ -7,9 +7,10 @@ function validateNoticeBar(noticeBar: any) {
   if (noticeBar.announcements.length > 100) return 'لا يمكن حفظ أكثر من 100 إعلان.';
   for (const item of noticeBar.announcements) {
     if (!item || typeof item.id !== 'string' || item.id.length > 120) return 'بيانات أحد الإعلانات غير صالحة.';
-    if (typeof item.title !== 'string' || item.title.trim().length < 1 || item.title.length > 180) return 'عنوان الإعلان مطلوب وبحد أقصى 180 حرفاً.';
+    if (typeof item.title !== 'string' || item.title.length > 180) return 'عنوان الإعلان اختياري وبحد أقصى 180 حرفاً.';
     const summary = typeof item.summary === 'string' ? item.summary : item.message;
-    if (typeof summary !== 'string' || summary.trim().length < 1 || summary.length > 500) return 'نص الإعلان المختصر مطلوب وبحد أقصى 500 حرف.';
+    if (summary !== undefined && (typeof summary !== 'string' || summary.length > 500)) return 'نص الإعلان المختصر اختياري وبحد أقصى 500 حرف.';
+    if (!(item.title?.trim() || summary?.trim() || item.details?.trim() || item.image_url || item.link_url)) return 'يجب أن يحتوي الإعلان على صورة أو تفاصيل أو رابط أو نص واحد على الأقل.';
     const starts = item.starts_at ? Date.parse(item.starts_at) : NaN;
     const ends = item.ends_at ? Date.parse(item.ends_at) : NaN;
     if (item.starts_at && !Number.isFinite(starts)) return 'تاريخ بداية أحد الإعلانات غير صالح.';

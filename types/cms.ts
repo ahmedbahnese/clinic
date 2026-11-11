@@ -21,7 +21,7 @@ export interface NoticeAnnouncement {
 }
 
 export interface NoticeBarDisplayConfig {
-  placement?: 'top' | 'below_header' | 'floating';
+  placement?: 'top' | 'below_header' | 'after_hero' | 'after_primary_actions' | 'after_clinics' | 'after_how_it_works' | 'before_footer' | 'floating';
   width?: 'full' | 'contained';
   height?: 'compact' | 'standard';
 }
