@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight, ExternalLink, Pause, Play, X } from 'lucide-react';
 import type { NoticeAnnouncement, NoticeBarConfig, NoticeBarDisplayConfig } from '@/types/cms';
@@ -69,6 +69,7 @@ export function NoticeBar({ config, slot, showFallback = true }: NoticeBarProps)
   const [slideStep, setSlideStep] = useState(0);
   const [slideWidth, setSlideWidth] = useState(0);
   const [isResettingLoop, setIsResettingLoop] = useState(false);
+  const measuredStep = useRef(0);
   const pointerStart = useRef<{ x: number; pointerId: number } | null>(null);
   const suppressClickUntil = useRef(0);
   const interactionTimer = useRef<number | null>(null);
@@ -164,26 +165,37 @@ export function NoticeBar({ config, slot, showFallback = true }: NoticeBarProps)
     setIsResettingLoop(false);
   }, [announcements.length, isSingleAnnouncement]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const viewport = viewportRef.current;
     const track = trackRef.current;
     const firstSlide = track?.querySelector<HTMLElement>('[data-notice-slide]');
     if (!viewport || !track || !firstSlide) return;
 
+    let resetFrame = 0;
     const measure = () => {
       const measuredGap = Number.parseFloat(window.getComputedStyle(track).columnGap) || SLIDE_GAP_PX;
       const viewportWidth = viewport.getBoundingClientRect().width;
-      const widthRatio = viewportWidth < 640 ? 0.82 : 0.64;
+      const widthRatio = viewportWidth < 640 ? 0.72 : 0.70;
       const measuredWidth = Math.min(520, viewportWidth * widthRatio);
+      const nextStep = measuredWidth + measuredGap;
+      if (measuredStep.current > 0 && Math.abs(nextStep - measuredStep.current) > 0.5) {
+        setIsResettingLoop(true);
+        window.cancelAnimationFrame(resetFrame);
+        resetFrame = window.requestAnimationFrame(() => setIsResettingLoop(false));
+      }
+      measuredStep.current = nextStep;
       setSlideWidth(measuredWidth);
-      setSlideStep(measuredWidth + measuredGap);
+      setSlideStep(nextStep);
     };
 
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(viewport);
     observer.observe(firstSlide);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      window.cancelAnimationFrame(resetFrame);
+    };
   }, [announcements.length, isMounted]);
 
   const pauseAfterInteraction = useCallback(() => {
@@ -404,7 +416,7 @@ export function NoticeBar({ config, slot, showFallback = true }: NoticeBarProps)
               style={{
                 transform: isSingleAnnouncement ? 'translate3d(0, 0, 0)' : `translate3d(-${trackPosition * slideStep}px, 0, 0)`,
                 transitionProperty: 'transform',
-                transitionDuration: prefersReducedMotion || isResettingLoop || isSingleAnnouncement ? '0ms' : '500ms',
+                transitionDuration: slideStep === 0 || prefersReducedMotion || isResettingLoop || isSingleAnnouncement ? '0ms' : '500ms',
                 transitionTimingFunction: 'cubic-bezier(0.22, 1, 0.36, 1)',
               }}
             >
