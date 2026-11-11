@@ -2,12 +2,13 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
-import { Bell, ChevronLeft, ChevronRight, ExternalLink, PhoneCall, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ExternalLink, X } from 'lucide-react';
 import type { NoticeAnnouncement, NoticeBarConfig, NoticeBarDisplayConfig } from '@/types/cms';
 
 const NOTICE_STORAGE_KEY = 'bsch_notice_dismissed_until';
 const DISMISS_DURATION_MS = 24 * 60 * 60 * 1000;
 const ROTATION_INTERVAL_MS = 5000;
+const INTERACTION_PAUSE_MS = 7000;
 
 interface NoticeBarProps {
   config?: NoticeBarConfig;
@@ -16,6 +17,7 @@ interface NoticeBarProps {
 }
 
 interface DisplayAnnouncement extends NoticeAnnouncement {
+  title: string;
   summary: string;
 }
 
@@ -44,6 +46,10 @@ function isActiveAnnouncement(announcement: NoticeAnnouncement, now: number): bo
   return Boolean(announcement.title?.trim() || announcement.summary?.trim() || announcement.message?.trim() || announcement.details?.trim() || announcement.image_url || announcement.link_url);
 }
 
+function announcementHasText(announcement: DisplayAnnouncement): boolean {
+  return Boolean(announcement.title.trim() || announcement.summary.trim());
+}
+
 export function NoticeBar({ config, slot, showFallback = true }: NoticeBarProps) {
   const noticeStorageKey = `${NOTICE_STORAGE_KEY}:${(config?.announcements ?? []).map((item) => item.id).join('|') || 'legacy'}`;
   const [isVisible, setIsVisible] = useState(false);
@@ -55,6 +61,7 @@ export function NoticeBar({ config, slot, showFallback = true }: NoticeBarProps)
   const [detailsAnnouncement, setDetailsAnnouncement] = useState<DisplayAnnouncement | null>(null);
   const pointerStartX = useRef<number | null>(null);
   const lastSwipeAt = useRef(0);
+  const interactionTimer = useRef<number | null>(null);
 
   useEffect(() => {
     setIsMounted(true);
@@ -71,6 +78,10 @@ export function NoticeBar({ config, slot, showFallback = true }: NoticeBarProps)
     motionPreference.addEventListener('change', updateMotionPreference);
     return () => motionPreference.removeEventListener('change', updateMotionPreference);
   }, [noticeStorageKey]);
+
+  useEffect(() => () => {
+    if (interactionTimer.current !== null) window.clearTimeout(interactionTimer.current);
+  }, []);
 
   useEffect(() => {
     let timer: number;
@@ -103,7 +114,8 @@ export function NoticeBar({ config, slot, showFallback = true }: NoticeBarProps)
     if (activeCampaigns.length > 0) {
       return activeCampaigns.map((item) => ({
         ...item,
-        title: item.title?.trim() || 'تنبيه من المستشفى',
+        // Empty fields stay empty: image-only announcements must not gain placeholder text.
+        title: item.title?.trim() || '',
         summary: item.summary?.trim() || item.message?.trim() || item.details?.trim() || '',
       }));
     }
@@ -147,50 +159,134 @@ export function NoticeBar({ config, slot, showFallback = true }: NoticeBarProps)
     }
   };
 
+  const pauseAfterInteraction = useCallback(() => {
+    setIsPaused(true);
+    if (interactionTimer.current !== null) window.clearTimeout(interactionTimer.current);
+    interactionTimer.current = window.setTimeout(() => {
+      setIsPaused(false);
+      interactionTimer.current = null;
+    }, INTERACTION_PAUSE_MS);
+  }, []);
+
   const changeSlide = useCallback((direction: -1 | 1) => {
+    if (announcements.length < 2) return;
+    pauseAfterInteraction();
     setActiveIndex((index) => (index + direction + announcements.length) % announcements.length);
-  }, [announcements.length]);
+  }, [announcements.length, pauseAfterInteraction]);
 
   const currentAnnouncement = announcements[activeIndex % announcements.length];
   if (!currentAnnouncement || config?.is_enabled === false || !isMounted || !isVisible) return null;
-  const currentLink = safeDestination(currentAnnouncement.link_url);
-  const hotlineLabel = config?.hotline_label?.trim() || 'مستشفى الأطفال التخصصي — دمسنا';
-  const display = currentAnnouncement.display || config?.display;
-  const widthClass = display?.width === 'contained' ? 'mx-auto max-w-[1100px] rounded-2xl' : 'w-full';
-  const heightClass = display?.height === 'compact' ? 'min-h-[64px]' : 'min-h-[88px] sm:min-h-[92px]';
-  const placementClass = display?.placement === 'floating' ? 'fixed inset-x-3 top-3 z-[70] mx-auto max-w-[1100px] rounded-2xl shadow-2xl' : 'relative z-50';
 
-  const content = (
-    <>
-      {currentAnnouncement.image_url ? (
+  const currentLink = safeDestination(currentAnnouncement.link_url);
+  const display = currentAnnouncement.display || config?.display;
+  const isSingleAnnouncement = announcements.length === 1;
+  const hasText = announcementHasText(currentAnnouncement);
+  const hasAnyImageOnly = announcements.some((announcement) => announcement.image_url && !announcementHasText(announcement));
+  const isCompact = display?.height === 'compact';
+  const frameHeight = hasAnyImageOnly
+    ? (isCompact ? 'h-[76px] sm:h-[88px]' : 'h-[92px] sm:h-[108px]')
+    : (isCompact ? 'min-h-[64px] sm:min-h-[68px]' : 'min-h-[76px] sm:min-h-[84px]');
+  const widthClass = display?.width === 'contained' ? 'mx-auto max-w-[1100px]' : 'w-full';
+  const placementClass = display?.placement === 'floating'
+    ? 'fixed inset-x-3 top-3 z-[70] mx-auto max-w-[1100px]'
+    : 'relative z-20';
+  const transitionDuration = prefersReducedMotion || isSingleAnnouncement ? '0ms' : '500ms';
+
+  const renderAnnouncementContent = (announcement: DisplayAnnouncement, active: boolean) => {
+    const image = announcement.image_url ? (
+      <span className={`relative block shrink-0 overflow-hidden rounded-lg bg-slate-50 ${
+        announcementHasText(announcement)
+          ? 'h-14 w-20 sm:h-[68px] sm:w-28'
+          : 'h-full w-full'
+      }`}>
         <Image
-          src={currentAnnouncement.image_url}
+          src={announcement.image_url}
           alt=""
-          width={56}
-          height={56}
+          fill
+          sizes={announcementHasText(announcement) ? '(max-width: 640px) 80px, 112px' : '100vw'}
           unoptimized
-          className="absolute inset-0 z-0 h-full w-full rounded-lg object-cover opacity-40"
+          className="object-contain"
         />
-      ) : (
-        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-400/15 text-amber-300 ring-1 ring-amber-400/25 sm:h-11 sm:w-11" aria-hidden="true">
-          <Bell className="h-4 w-4" />
-        </span>
-      )}
-        <span className="relative z-10 min-w-0 flex-1 rounded-lg bg-black/25 px-2 py-1 text-right">
-        <span className="block truncate text-xs font-bold text-amber-300 sm:text-sm">{currentAnnouncement.title}</span>
-        <span className="mt-0.5 block line-clamp-2 text-[11px] leading-4 text-emerald-50 sm:text-xs">{currentAnnouncement.summary}</span>
       </span>
-      {currentLink && <ExternalLink className="h-3.5 w-3.5 shrink-0 text-emerald-100" aria-hidden="true" />}
-    </>
-  );
+    ) : null;
+
+    const text = announcementHasText(announcement) ? (
+      <span className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 text-right">
+        {announcement.title && (
+          <span className="block truncate text-xs font-extrabold leading-5 text-[#124E4A] sm:text-sm">
+            {announcement.title}
+          </span>
+        )}
+        {announcement.summary && (
+          <span className="line-clamp-2 text-[11px] leading-4 text-slate-600 sm:text-xs sm:leading-5">
+            {announcement.summary}
+          </span>
+        )}
+      </span>
+    ) : null;
+
+    return (
+      <>
+        {image}
+        {text}
+        {active && currentLink && (
+          <ExternalLink className="h-3.5 w-3.5 shrink-0 text-[#087F78]" aria-hidden="true" />
+        )}
+      </>
+    );
+  };
+
+  const renderSlide = (announcement: DisplayAnnouncement, index: number) => {
+    const isActive = index === activeIndex;
+    const slideLink = safeDestination(announcement.link_url);
+    const canOpenDetails = announcementHasText(announcement);
+    const content = renderAnnouncementContent(announcement, isActive);
+    const commonClassName = `flex ${frameHeight} w-full items-center ${
+      announcement.image_url && !canOpenDetails ? 'p-1' : 'gap-2.5 px-2.5 py-1.5 sm:gap-3 sm:px-3'
+    } text-inherit outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#087F78]`;
+
+    if (slideLink) {
+      return (
+        <a
+          href={slideLink}
+          tabIndex={isActive ? 0 : -1}
+          aria-hidden={!isActive}
+          aria-label={[announcement.title, announcement.summary].filter(Boolean).join(': ') || 'فتح الإعلان'}
+          className={`${commonClassName} hover:bg-teal-50/50`}
+        >
+          {content}
+        </a>
+      );
+    }
+
+    if (canOpenDetails) {
+      return (
+        <button
+          type="button"
+          tabIndex={isActive ? 0 : -1}
+          aria-hidden={!isActive}
+          aria-label={`عرض تفاصيل الإعلان${announcement.title ? `: ${announcement.title}` : ''}`}
+          onClick={() => setDetailsAnnouncement(announcement)}
+          className={`${commonClassName} text-right hover:bg-teal-50/50`}
+        >
+          {content}
+        </button>
+      );
+    }
+
+    return (
+      <div aria-hidden={!isActive} className={commonClassName}>
+        {content}
+      </div>
+    );
+  };
 
   return (
     <>
       <aside
         dir="rtl"
         aria-label="إعلانات وتنبيهات المستشفى"
-        className={`${placementClass} border-b border-[#163C3A] bg-gradient-to-l from-[#0A3D39] via-[#0D5F5A] to-[#124E4A] text-white shadow-xs`}
-        style={{ backgroundColor: '#0A3D39' }}
+        className={`${placementClass} ${widthClass} px-3 py-1.5 sm:px-6 sm:py-2`}
         onMouseEnter={() => setIsPaused(true)}
         onMouseLeave={() => setIsPaused(false)}
         onFocus={() => setIsPaused(true)}
@@ -198,103 +294,94 @@ export function NoticeBar({ config, slot, showFallback = true }: NoticeBarProps)
           if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsPaused(false);
         }}
       >
-        <div className={`${widthClass} flex ${heightClass} items-center gap-2 px-3 py-2 sm:gap-3 sm:px-6`}>
-          <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
-            <h2 className="text-[10px] font-bold leading-4 tracking-wide text-emerald-100 sm:text-[11px]">
-              إعلانات وتنبيهات المستشفى
-            </h2>
+        <div className="mx-auto flex w-full max-w-[1100px] items-stretch gap-1.5 rounded-xl border border-[#D8E8E6] bg-white shadow-sm sm:gap-2">
+          <div
+            className={`relative min-w-0 flex-1 overflow-hidden rounded-xl ${frameHeight}`}
+            dir="ltr"
+            aria-roledescription="carousel"
+            aria-label="إعلانات المستشفى"
+            onTouchStart={(event) => {
+              pointerStartX.current = event.changedTouches[0]?.clientX ?? null;
+              if (!isSingleAnnouncement) pauseAfterInteraction();
+            }}
+            onTouchEnd={(event) => {
+              const endX = event.changedTouches[0]?.clientX;
+              if (pointerStartX.current === null || endX === undefined || isSingleAnnouncement) return;
+              const delta = endX - pointerStartX.current;
+              if (Math.abs(delta) > 40) {
+                lastSwipeAt.current = Date.now();
+                changeSlide(delta < 0 ? 1 : -1);
+              }
+              pointerStartX.current = null;
+            }}
+            onClickCapture={(event) => {
+              if (Date.now() - lastSwipeAt.current < 700) {
+                event.preventDefault();
+                event.stopPropagation();
+              }
+            }}
+            style={{ touchAction: 'pan-y' }}
+          >
             <div
-              className="flex min-w-0 items-center gap-2"
-              tabIndex={0}
-              aria-label={`الإعلان ${activeIndex + 1} من ${announcements.length}: ${currentAnnouncement.title}`}
-              onKeyDown={(event) => {
-                if (event.key === 'ArrowLeft' && announcements.length > 1) {
-                  event.preventDefault();
-                  changeSlide(1);
-                } else if (event.key === 'ArrowRight' && announcements.length > 1) {
-                  event.preventDefault();
-                  changeSlide(-1);
-                }
-              }}
-              onTouchStart={(event) => { pointerStartX.current = event.changedTouches[0]?.clientX ?? null; }}
-              onTouchEnd={(event) => {
-                const endX = event.changedTouches[0]?.clientX;
-                if (pointerStartX.current === null || endX === undefined || announcements.length < 2) return;
-                const delta = endX - pointerStartX.current;
-                if (Math.abs(delta) > 40) {
-                  lastSwipeAt.current = Date.now();
-                  changeSlide(delta < 0 ? 1 : -1);
-                }
-                pointerStartX.current = null;
-              }}
-              onClickCapture={(event) => {
-                if (Date.now() - lastSwipeAt.current < 700) {
-                  event.preventDefault();
-                  event.stopPropagation();
-                }
+              className="flex h-full"
+              style={{
+                width: `${announcements.length * 100}%`,
+                transform: `translate3d(-${activeIndex * (100 / announcements.length)}%, 0, 0)`,
+                transitionProperty: 'transform',
+                transitionDuration,
+                transitionTimingFunction: 'cubic-bezier(0.22, 1, 0.36, 1)',
               }}
             >
-              {currentLink ? (
-                <a
-                  key={currentAnnouncement.id}
-                  href={currentLink}
-                  className="notice-slide-in relative flex min-h-12 min-w-0 flex-1 items-center gap-2.5 overflow-hidden rounded-lg text-inherit outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-amber-300 sm:gap-3"
-                  aria-label={`${currentAnnouncement.title}: ${currentAnnouncement.summary}`}
+              {announcements.map((announcement, index) => (
+                <div
+                  key={announcement.id}
+                  className="h-full shrink-0"
+                  style={{ width: `${100 / announcements.length}%` }}
                 >
-                  {content}
-                </a>
-              ) : (
-                <button
-                  key={currentAnnouncement.id}
-                  type="button"
-                  onClick={() => setDetailsAnnouncement(currentAnnouncement)}
-                  className="notice-slide-in relative flex min-h-12 min-w-0 flex-1 items-center gap-2.5 overflow-hidden rounded-lg text-inherit text-right outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-amber-300 sm:gap-3"
-                  aria-label={`عرض تفاصيل الإعلان: ${currentAnnouncement.title}`}
-                >
-                  {content}
-                </button>
-              )}
+                  {renderSlide(announcement, index)}
+                </div>
+              ))}
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-1">
-            {announcements.length > 1 && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => changeSlide(-1)}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-emerald-100 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
-                  aria-label="الإعلان السابق"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-                <span className="min-w-7 text-center text-[10px] text-emerald-100" aria-live="polite">
-                  {activeIndex + 1}/{announcements.length}
+          {!isSingleAnnouncement && (
+            <div className="flex shrink-0 items-center gap-0.5 px-1" dir="rtl">
+              <button
+                type="button"
+                onClick={() => changeSlide(-1)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#087F78] transition-colors hover:bg-teal-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#087F78]"
+                aria-label="الإعلان السابق"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+              <div className="flex min-w-9 flex-col items-center justify-center gap-1" aria-live="polite" aria-atomic="true" aria-label={`الإعلان ${activeIndex + 1} من ${announcements.length}`}>
+                <span className="text-[10px] font-semibold tabular-nums text-slate-500">{activeIndex + 1}/{announcements.length}</span>
+                <span className="flex items-center gap-1" aria-hidden="true">
+                  {announcements.map((announcement, index) => (
+                    <span key={announcement.id} className={`h-1.5 rounded-full transition-all ${index === activeIndex ? 'w-3 bg-[#087F78]' : 'w-1.5 bg-slate-300'}`} />
+                  ))}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => changeSlide(1)}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-emerald-100 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
-                  aria-label="الإعلان التالي"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-              </>
-            )}
-            <span className="hidden items-center gap-1 rounded-md border border-white/15 bg-white/10 px-2 py-1 text-[10px] font-medium text-emerald-100 lg:inline-flex">
-              <PhoneCall className="h-3 w-3 text-amber-300" aria-hidden="true" />
-              {hotlineLabel}
-            </span>
-            <button
-              type="button"
-              onClick={handleDismiss}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-emerald-100 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
-              aria-label="إغلاق الإعلانات لمدة 24 ساعة"
-              title="إغلاق الإعلانات لمدة 24 ساعة"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => changeSlide(1)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#087F78] transition-colors hover:bg-teal-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#087F78]"
+                aria-label="الإعلان التالي"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={handleDismiss}
+            className="my-auto ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#087F78]"
+            aria-label="إغلاق الإعلانات لمدة 24 ساعة"
+            title="إغلاق الإعلانات لمدة 24 ساعة"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
       </aside>
 
@@ -314,7 +401,7 @@ export function NoticeBar({ config, slot, showFallback = true }: NoticeBarProps)
             className="w-full max-w-lg rounded-2xl bg-white p-5 text-[#163C3A] shadow-2xl sm:p-6"
           >
             <div className="mb-4 flex items-start justify-between gap-4">
-              <h2 id="notice-details-title" className="text-lg font-bold">{detailsAnnouncement.title}</h2>
+              <h2 id="notice-details-title" className="text-lg font-bold">{detailsAnnouncement.title || detailsAnnouncement.summary}</h2>
               <button
                 type="button"
                 onClick={() => setDetailsAnnouncement(null)}
@@ -325,11 +412,11 @@ export function NoticeBar({ config, slot, showFallback = true }: NoticeBarProps)
               </button>
             </div>
             {detailsAnnouncement.image_url && (
-              <Image src={detailsAnnouncement.image_url} alt="" width={640} height={360} unoptimized className="mb-4 max-h-56 w-full rounded-xl object-cover" />
+              <Image src={detailsAnnouncement.image_url} alt="" width={640} height={360} unoptimized className="mb-4 max-h-56 w-full rounded-xl bg-slate-50 object-contain" />
             )}
-            <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">
-              {detailsAnnouncement.details?.trim() || detailsAnnouncement.summary}
-            </p>
+            {detailsAnnouncement.details?.trim() && detailsAnnouncement.details.trim() !== detailsAnnouncement.summary && (
+              <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">{detailsAnnouncement.details}</p>
+            )}
             <button
               type="button"
               onClick={() => setDetailsAnnouncement(null)}
