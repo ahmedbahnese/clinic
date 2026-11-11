@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { toBlob } from 'html-to-image';
 import {
   Printer,
   Download,
+  FileDown,
   Share2,
   FileText,
   Info,
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Appointment } from '@/types';
 import { formatArabicDate } from '@/lib/rules';
+import { createReceiptPdf } from '@/lib/receiptPdf';
 
 export interface ReceiptCardProps {
   appointment: Appointment;
@@ -36,6 +38,10 @@ export default function ReceiptCard({
 }: ReceiptCardProps) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [downloadingImage, setDownloadingImage] = useState(false);
+  const [creatingPdf, setCreatingPdf] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [exportMessage, setExportMessage] = useState('');
+  const [preparedPdfUrl, setPreparedPdfUrl] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
 
   const waitForReceiptImages = async () => {
@@ -52,8 +58,69 @@ export default function ReceiptCard({
     if (document.fonts?.ready) await document.fonts.ready;
   };
 
-  // Print Handler — wait for the logo and Arabic font before opening the print sheet.
+  useEffect(() => {
+    const standalone = window.matchMedia('(display-mode: standalone)').matches
+      || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+    setIsStandalone(standalone);
+  }, []);
+
+  useEffect(() => () => {
+    if (preparedPdfUrl) URL.revokeObjectURL(preparedPdfUrl);
+  }, [preparedPdfUrl]);
+
+  const handlePdfExport = async () => {
+    if (!cardRef.current || creatingPdf) return;
+    setCreatingPdf(true);
+    setExportMessage('');
+    setPreparedPdfUrl(null);
+    try {
+      await waitForReceiptImages();
+      const blob = await createReceiptPdf(cardRef.current);
+      const file = new File([blob], 'BSCH-Receipt.pdf', { type: 'application/pdf' });
+      let canShareFiles = false;
+      try {
+        canShareFiles = typeof navigator.share === 'function'
+          && typeof navigator.canShare === 'function'
+          && navigator.canShare({ files: [file] });
+      } catch {
+        canShareFiles = false;
+      }
+
+      let shareWasCancelled = false;
+      if (canShareFiles) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: 'إيصال حجز مستشفى الأطفال التخصصي',
+          });
+          setExportMessage('تم فتح خيارات المشاركة؛ اختر الطباعة أو حفظ الملف من قائمة الجهاز.');
+          return;
+        } catch (error) {
+          if (error instanceof DOMException && error.name === 'AbortError') {
+            shareWasCancelled = true;
+          }
+          // If native file sharing is rejected by the platform, fall back to a local PDF.
+        }
+      }
+
+      setPreparedPdfUrl(URL.createObjectURL(blob));
+      setExportMessage(shareWasCancelled
+        ? 'أُغلقت قائمة المشاركة. افتح نسخة PDF للطباعة أو المشاركة يدويًا.'
+        : 'تم تجهيز PDF على هذا الجهاز. افتح النسخة للطباعة أو المشاركة.');
+    } catch (error) {
+      console.error('Error generating receipt PDF:', error);
+      setExportMessage(error instanceof Error ? error.message : 'تعذر إنشاء PDF. جرّب تنزيل الإيصال كصورة.');
+    } finally {
+      setCreatingPdf(false);
+    }
+  };
+
+  // Browser print remains unchanged; installed PWAs use a local PDF print/share path.
   const handlePrint = async () => {
+    if (isStandalone) {
+      await handlePdfExport();
+      return;
+    }
     await waitForReceiptImages();
     window.print();
   };
@@ -99,8 +166,9 @@ export default function ReceiptCard({
       downloadReceiptBlob(blob);
     } catch (err) {
       console.error('Error generating receipt image:', err);
-      // Fallback to print
-      await handlePrint();
+      // Fall back to PDF in standalone mode and preserve the browser's print flow.
+      if (isStandalone) void handlePdfExport();
+      else await handlePrint();
     } finally {
       setDownloadingImage(false);
     }
@@ -312,7 +380,17 @@ export default function ReceiptCard({
           className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full border border-slate-200 text-xs sm:text-sm font-bold text-[#163C3A] bg-white hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
         >
           <Printer className="w-4 h-4 text-[#087F78]" />
-          <span>طباعة التذكرة</span>
+          <span>{isStandalone ? 'فتح PDF للطباعة' : 'طباعة التذكرة'}</span>
+        </button>
+
+        <button
+          type="button"
+          disabled={creatingPdf}
+          onClick={() => void handlePdfExport()}
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full border border-teal-200 text-xs sm:text-sm font-bold text-[#087F78] bg-teal-50/60 hover:bg-teal-100 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
+        >
+          <FileDown className="w-4 h-4 text-[#087F78]" />
+          <span>{creatingPdf ? 'جارٍ تجهيز PDF…' : 'حفظ / مشاركة PDF'}</span>
         </button>
 
         <button
@@ -348,6 +426,21 @@ export default function ReceiptCard({
 
         {extraActions}
       </div>
+      {exportMessage && <p role="status" className="no-print text-center text-xs leading-6 text-slate-600">{exportMessage}</p>}
+      {preparedPdfUrl && (
+        <div className="no-print flex justify-center pt-1">
+          <a
+            href={preparedPdfUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="فتح نسخة PDF للطباعة أو المشاركة"
+            className="inline-flex items-center gap-2 rounded-full bg-[#087F78] px-5 py-2.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-[#066560] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#087F78] focus-visible:ring-offset-2"
+          >
+            <FileText className="h-4 w-4" />
+            <span>فتح PDF للطباعة أو المشاركة</span>
+          </a>
+        </div>
+      )}
     </div>
   );
 }

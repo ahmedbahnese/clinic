@@ -5,11 +5,24 @@ export interface SocialLinkItem {
   is_active: boolean;
 }
 
+export interface NoticeAnnouncement {
+  id: string;
+  title: string;
+  summary: string;
+  message?: string;
+  details?: string;
+  image_url?: string;
+  link_url?: string;
+  starts_at?: string;
+  ends_at?: string;
+}
+
 export interface NoticeBarConfig {
   is_enabled: boolean;
   title: string;
   message: string;
   hotline_label: string;
+  announcements?: NoticeAnnouncement[];
 }
 
 export interface WebsiteSettings {

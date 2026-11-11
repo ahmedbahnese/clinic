@@ -1,95 +1,332 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Bell, X, PhoneCall } from 'lucide-react';
-import type { NoticeBarConfig } from '@/types/cms';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
+import { Bell, ChevronLeft, ChevronRight, ExternalLink, PhoneCall, X } from 'lucide-react';
+import type { NoticeAnnouncement, NoticeBarConfig } from '@/types/cms';
 
 const NOTICE_STORAGE_KEY = 'bsch_notice_dismissed_until';
-const DISMISS_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
+const DISMISS_DURATION_MS = 24 * 60 * 60 * 1000;
+const ROTATION_INTERVAL_MS = 5000;
 
 interface NoticeBarProps {
   config?: NoticeBarConfig;
 }
 
+interface DisplayAnnouncement extends NoticeAnnouncement {
+  summary: string;
+}
+
+function safeDestination(value?: string): string | null {
+  const destination = value?.trim();
+  if (!destination || /[\u0000-\u001f\\]/.test(destination)) return null;
+
+  if (destination.startsWith('/') && !destination.startsWith('//')) return destination;
+
+  try {
+    const parsed = new URL(destination);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return parsed.href;
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function isActiveAnnouncement(announcement: NoticeAnnouncement, now: number): boolean {
+  const startsAt = announcement.starts_at ? Date.parse(announcement.starts_at) : Number.NaN;
+  const endsAt = announcement.ends_at ? Date.parse(announcement.ends_at) : Number.NaN;
+  if (Number.isFinite(startsAt) && startsAt > now) return false;
+  if (Number.isFinite(endsAt) && endsAt <= now) return false;
+  return Boolean(announcement.title?.trim() && (announcement.summary?.trim() || announcement.message?.trim()));
+}
+
 export function NoticeBar({ config }: NoticeBarProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const [detailsAnnouncement, setDetailsAnnouncement] = useState<DisplayAnnouncement | null>(null);
+  const pointerStartX = useRef<number | null>(null);
+  const lastSwipeAt = useRef(0);
 
   useEffect(() => {
     setIsMounted(true);
     try {
       const dismissedUntil = localStorage.getItem(NOTICE_STORAGE_KEY);
-      if (!dismissedUntil || Date.now() > Number(dismissedUntil)) {
-        setIsVisible(true);
-      }
+      setIsVisible(!dismissedUntil || Date.now() > Number(dismissedUntil));
     } catch {
-      // In case localStorage is blocked or throws in private browsing
       setIsVisible(true);
     }
+
+    const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const updateMotionPreference = () => setPrefersReducedMotion(motionPreference.matches);
+    updateMotionPreference();
+    motionPreference.addEventListener('change', updateMotionPreference);
+    return () => motionPreference.removeEventListener('change', updateMotionPreference);
   }, []);
+
+  useEffect(() => {
+    let timer: number;
+    const scheduleClockUpdate = () => {
+      const currentTime = Date.now();
+      const boundaries = (config?.announcements ?? [])
+        .flatMap((announcement) => [announcement.starts_at, announcement.ends_at])
+        .filter((value): value is string => Boolean(value))
+        .map((value) => Date.parse(value))
+        .filter((timestamp) => Number.isFinite(timestamp) && timestamp > currentTime);
+      const nextBoundary = boundaries.length > 0 ? Math.min(...boundaries) : currentTime + 60_000;
+      const delay = Math.max(50, Math.min(60_000, nextBoundary - currentTime + 50));
+
+      timer = window.setTimeout(() => {
+        setNow(Date.now());
+        scheduleClockUpdate();
+      }, delay);
+    };
+
+    scheduleClockUpdate();
+    return () => window.clearTimeout(timer);
+  }, [config?.announcements]);
+
+  const announcements = useMemo<DisplayAnnouncement[]>(() => {
+    const activeCampaigns = (config?.announcements ?? []).filter((item) => isActiveAnnouncement(item, now));
+    if (activeCampaigns.length > 0) {
+      return activeCampaigns.map((item) => ({
+        ...item,
+        summary: item.summary?.trim() || item.message?.trim() || '',
+      }));
+    }
+
+    return [{
+      id: 'legacy-notice',
+      title: config?.title?.trim() || 'تنظيم العيادات الخارجية:',
+      summary: config?.message?.trim() || 'الحجز الإلكتروني متاح بنظام تذاكر الدور وأسبقية الحضور اليومي بالعيادات التخصصية.',
+      details: config?.message?.trim() || 'الحجز الإلكتروني متاح بنظام تذاكر الدور وأسبقية الحضور اليومي بالعيادات التخصصية.',
+    }];
+  }, [config, now]);
+
+  useEffect(() => {
+    if (activeIndex >= announcements.length) setActiveIndex(0);
+  }, [activeIndex, announcements.length]);
+
+  useEffect(() => {
+    if (prefersReducedMotion || isPaused || announcements.length < 2) return;
+    const timer = window.setInterval(() => {
+      setActiveIndex((index) => (index + 1) % announcements.length);
+    }, ROTATION_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [announcements.length, isPaused, prefersReducedMotion]);
+
+  useEffect(() => {
+    if (!detailsAnnouncement) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setDetailsAnnouncement(null);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [detailsAnnouncement]);
 
   const handleDismiss = () => {
     setIsVisible(false);
     try {
-      const expiry = Date.now() + DISMISS_DURATION_MS;
-      localStorage.setItem(NOTICE_STORAGE_KEY, expiry.toString());
+      localStorage.setItem(NOTICE_STORAGE_KEY, String(Date.now() + DISMISS_DURATION_MS));
     } catch {
-      // Ignore storage errors
+      // Ignore storage errors.
     }
   };
 
-  // If disabled via CMS or dismissed, don't render
-  if (config?.is_enabled === false) {
-    return null;
-  }
+  const changeSlide = useCallback((direction: -1 | 1) => {
+    setActiveIndex((index) => (index + direction + announcements.length) % announcements.length);
+  }, [announcements.length]);
 
-  // Prevent hydration mismatch
-  if (!isMounted || !isVisible) {
-    return null;
-  }
+  const currentAnnouncement = announcements[activeIndex % announcements.length];
+  const currentLink = safeDestination(currentAnnouncement.link_url);
+  const hotlineLabel = config?.hotline_label?.trim() || 'مستشفى الأطفال التخصصي — دمسنا';
 
-  const title = config?.title || 'تنظيم العيادات الخارجية:';
-  const message =
-    config?.message ||
-    'الحجز الإلكتروني متاح بنظام تذاكر الدور وأسبقية الحضور اليومي بالعيادات التخصصية.';
-  const hotlineLabel =
-    config?.hotline_label || 'مستشفى الأطفال التخصصي — دمسنا';
+  if (config?.is_enabled === false || !isMounted || !isVisible) return null;
+
+  const content = (
+    <>
+      {currentAnnouncement.image_url ? (
+        <Image
+          src={currentAnnouncement.image_url}
+          alt=""
+          width={56}
+          height={56}
+          unoptimized
+          className="h-12 w-12 shrink-0 rounded-lg bg-white/10 object-cover sm:h-14 sm:w-14"
+        />
+      ) : (
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-400/15 text-amber-300 ring-1 ring-amber-400/25 sm:h-11 sm:w-11" aria-hidden="true">
+          <Bell className="h-4 w-4" />
+        </span>
+      )}
+      <span className="min-w-0 flex-1 text-right">
+        <span className="block truncate text-xs font-bold text-amber-300 sm:text-sm">{currentAnnouncement.title}</span>
+        <span className="mt-0.5 block line-clamp-2 text-[11px] leading-4 text-emerald-50 sm:text-xs">{currentAnnouncement.summary}</span>
+      </span>
+      {currentLink && <ExternalLink className="h-3.5 w-3.5 shrink-0 text-emerald-100" aria-hidden="true" />}
+    </>
+  );
 
   return (
-    <aside
-      dir="rtl"
-      role="alert"
-      aria-label="تنبيه إداري عاجل"
-      className="relative z-50 bg-[#0A3D39] bg-gradient-to-r from-[#0A3D39] via-[#0D5F5A] to-[#124E4A] text-white border-b border-[#163C3A] shadow-xs"
-      style={{ backgroundColor: '#0A3D39' }}
-    >
-      <div className="max-w-[1100px] mx-auto px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3 text-xs sm:text-sm">
-        {/* Announcement Content */}
-        <div className="flex items-center gap-2.5 flex-1 min-w-0">
-          <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-400/20 text-amber-300 shrink-0 ring-1 ring-amber-400/30 animate-pulse">
-            <Bell className="w-3.5 h-3.5" />
-          </span>
+    <>
+      <aside
+        dir="rtl"
+        aria-label="إعلانات وتنبيهات المستشفى"
+        className="relative z-50 border-b border-[#163C3A] bg-gradient-to-l from-[#0A3D39] via-[#0D5F5A] to-[#124E4A] text-white shadow-xs"
+        style={{ backgroundColor: '#0A3D39' }}
+        onMouseEnter={() => setIsPaused(true)}
+        onMouseLeave={() => setIsPaused(false)}
+        onFocus={() => setIsPaused(true)}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsPaused(false);
+        }}
+      >
+        <div className="mx-auto flex min-h-[88px] max-w-[1100px] items-center gap-2 px-3 py-2 sm:min-h-[92px] sm:gap-3 sm:px-6">
+          <div className="flex min-w-0 flex-1 flex-col justify-center gap-1">
+            <h2 className="text-[10px] font-bold leading-4 tracking-wide text-emerald-100 sm:text-[11px]">
+              إعلانات وتنبيهات المستشفى
+            </h2>
+            <div
+              className="flex min-w-0 items-center gap-2"
+              tabIndex={0}
+              aria-label={`الإعلان ${activeIndex + 1} من ${announcements.length}: ${currentAnnouncement.title}`}
+              onKeyDown={(event) => {
+                if (event.key === 'ArrowLeft' && announcements.length > 1) {
+                  event.preventDefault();
+                  changeSlide(1);
+                } else if (event.key === 'ArrowRight' && announcements.length > 1) {
+                  event.preventDefault();
+                  changeSlide(-1);
+                }
+              }}
+              onTouchStart={(event) => { pointerStartX.current = event.changedTouches[0]?.clientX ?? null; }}
+              onTouchEnd={(event) => {
+                const endX = event.changedTouches[0]?.clientX;
+                if (pointerStartX.current === null || endX === undefined || announcements.length < 2) return;
+                const delta = endX - pointerStartX.current;
+                if (Math.abs(delta) > 40) {
+                  lastSwipeAt.current = Date.now();
+                  changeSlide(delta < 0 ? 1 : -1);
+                }
+                pointerStartX.current = null;
+              }}
+              onClickCapture={(event) => {
+                if (Date.now() - lastSwipeAt.current < 700) {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }
+              }}
+            >
+              {currentLink ? (
+                <a
+                  key={currentAnnouncement.id}
+                  href={currentLink}
+                  className="notice-slide-in flex min-w-0 flex-1 items-center gap-2.5 rounded-lg text-inherit outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-amber-300 sm:gap-3"
+                  aria-label={`${currentAnnouncement.title}: ${currentAnnouncement.summary}`}
+                >
+                  {content}
+                </a>
+              ) : (
+                <button
+                  key={currentAnnouncement.id}
+                  type="button"
+                  onClick={() => setDetailsAnnouncement(currentAnnouncement)}
+                  className="notice-slide-in flex min-w-0 flex-1 items-center gap-2.5 rounded-lg text-inherit text-right outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-amber-300 sm:gap-3"
+                  aria-label={`عرض تفاصيل الإعلان: ${currentAnnouncement.title}`}
+                >
+                  {content}
+                </button>
+              )}
+            </div>
+          </div>
 
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-right text-emerald-50 leading-relaxed">
-            <span className="font-bold text-amber-300 shrink-0">{title}</span>
-            <span>{message}</span>
-            <span className="hidden sm:inline-flex items-center gap-1.5 text-emerald-100 font-medium bg-white/10 px-2 py-0.5 rounded-md border border-white/15">
-              <PhoneCall className="w-3 h-3 text-amber-300" />
-              <span>{hotlineLabel}</span>
+          <div className="flex shrink-0 items-center gap-1">
+            {announcements.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => changeSlide(-1)}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-emerald-100 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+                  aria-label="الإعلان السابق"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+                <span className="min-w-7 text-center text-[10px] text-emerald-100" aria-live="polite">
+                  {activeIndex + 1}/{announcements.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => changeSlide(1)}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-emerald-100 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+                  aria-label="الإعلان التالي"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+              </>
+            )}
+            <span className="hidden items-center gap-1 rounded-md border border-white/15 bg-white/10 px-2 py-1 text-[10px] font-medium text-emerald-100 lg:inline-flex">
+              <PhoneCall className="h-3 w-3 text-amber-300" aria-hidden="true" />
+              {hotlineLabel}
             </span>
+            <button
+              type="button"
+              onClick={handleDismiss}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-emerald-100 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+              aria-label="إغلاق الإعلانات لمدة 24 ساعة"
+              title="إغلاق الإعلانات لمدة 24 ساعة"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
         </div>
+      </aside>
 
-        {/* Dismiss Button */}
-        <button
-          onClick={handleDismiss}
-          className="inline-flex items-center justify-center min-w-[36px] min-h-[36px] p-1.5 rounded-lg text-emerald-200/80 hover:text-white hover:bg-white/10 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-300"
-          aria-label="إغلاق التنبيه لمدة 24 ساعة"
-          title="إغلاق التنبيه لمدة 24 ساعة"
+      {detailsAnnouncement && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 p-4"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setDetailsAnnouncement(null);
+          }}
         >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-    </aside>
+          <section
+            dir="rtl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="notice-details-title"
+            className="w-full max-w-lg rounded-2xl bg-white p-5 text-[#163C3A] shadow-2xl sm:p-6"
+          >
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <h2 id="notice-details-title" className="text-lg font-bold">{detailsAnnouncement.title}</h2>
+              <button
+                type="button"
+                onClick={() => setDetailsAnnouncement(null)}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#087F78]"
+                aria-label="إغلاق تفاصيل الإعلان"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {detailsAnnouncement.image_url && (
+              <Image src={detailsAnnouncement.image_url} alt="" width={640} height={360} unoptimized className="mb-4 max-h-56 w-full rounded-xl object-cover" />
+            )}
+            <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700">
+              {detailsAnnouncement.details?.trim() || detailsAnnouncement.summary}
+            </p>
+            <button
+              type="button"
+              onClick={() => setDetailsAnnouncement(null)}
+              className="mt-5 rounded-xl bg-[#087F78] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#066560] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#087F78] focus-visible:ring-offset-2"
+            >
+              إغلاق
+            </button>
+          </section>
+        </div>
+      )}
+    </>
   );
 }
