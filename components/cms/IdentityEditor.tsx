@@ -16,9 +16,26 @@ import {
   Image as ImageIcon,
   ExternalLink,
   Globe,
+  Plus,
+  Trash2,
 } from 'lucide-react';
-import type { WebsiteSettings } from '@/types/cms';
+import type { NoticeAnnouncement, WebsiteSettings } from '@/types/cms';
 import MediaManager from './MediaManager';
+
+type MediaPickerTarget = 'header' | 'footer' | 'favicon' | { announcementId: string } | null;
+
+function toLocalDateTime(value?: string): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
+function toIsoDateTime(value: string): string | undefined {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
 
 interface IdentityEditorProps {
   initialSettings: WebsiteSettings;
@@ -33,7 +50,7 @@ export default function IdentityEditor({ initialSettings, token, onSaved }: Iden
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   // Media Picker Modal State
-  const [mediaPickerTarget, setMediaPickerTarget] = useState<'header' | 'footer' | 'favicon' | null>(null);
+  const [mediaPickerTarget, setMediaPickerTarget] = useState<MediaPickerTarget>(null);
 
   const handleChange = (field: keyof WebsiteSettings, value: any) => {
     setSettings((prev) => ({
@@ -50,6 +67,29 @@ export default function IdentityEditor({ initialSettings, token, onSaved }: Iden
         [field]: value,
       },
     }));
+  };
+
+  const updateAnnouncement = (id: string, changes: Partial<NoticeAnnouncement>) => {
+    const announcements = settings.notice_bar.announcements ?? [];
+    handleNoticeBarChange('announcements', announcements.map((announcement) =>
+      announcement.id === id ? { ...announcement, ...changes } : announcement,
+    ));
+  };
+
+  const addAnnouncement = () => {
+    const announcement: NoticeAnnouncement = {
+      id: `announcement-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      title: '',
+      summary: '',
+    };
+    handleNoticeBarChange('announcements', [...(settings.notice_bar.announcements ?? []), announcement]);
+  };
+
+  const removeAnnouncement = (id: string) => {
+    handleNoticeBarChange(
+      'announcements',
+      (settings.notice_bar.announcements ?? []).filter((announcement) => announcement.id !== id),
+    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -93,6 +133,8 @@ export default function IdentityEditor({ initialSettings, token, onSaved }: Iden
       handleChange('footer_logo_url', url);
     } else if (mediaPickerTarget === 'favicon') {
       handleChange('favicon_url', url);
+    } else if (mediaPickerTarget && typeof mediaPickerTarget === 'object') {
+      updateAnnouncement(mediaPickerTarget.announcementId, { image_url: url });
     }
     setMediaPickerTarget(null);
   };
@@ -420,6 +462,147 @@ export default function IdentityEditor({ initialSettings, token, onSaved }: Iden
           </div>
         </div>
 
+        <div className="space-y-4 border-t border-[#F1F5F9] pt-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-bold text-[#163C3A]">إعلانات وتنبيهات المستشفى</h4>
+              <p className="mt-1 text-[11px] leading-5 text-[#8493A6]">
+                تظهر الإعلانات التي تقع ضمن موعدها فقط؛ وعند عدم وجود إعلان نشط يظهر التنبيه القديم أعلاه.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={addAnnouncement}
+              className="inline-flex items-center gap-2 rounded-xl border border-[#087F78]/30 px-3 py-2 text-xs font-bold text-[#087F78] hover:bg-[#087F78]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#087F78]"
+            >
+              <Plus className="h-4 w-4" />
+              إضافة إعلان
+            </button>
+          </div>
+
+          {(settings.notice_bar.announcements ?? []).length === 0 ? (
+            <p className="rounded-xl border border-dashed border-[#CBD5E1] bg-[#F8FAFC] px-4 py-3 text-xs text-[#8493A6]">
+              لا توجد إعلانات إضافية. سيستمر عرض التنبيه القديم وفق الحقول أعلاه.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {(settings.notice_bar.announcements ?? []).map((announcement, index) => (
+                <article key={announcement.id} className="space-y-4 rounded-2xl border border-[#E2E8EE] bg-[#F8FAFC] p-4 sm:p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <h5 className="text-xs font-bold text-[#163C3A]">الإعلان {index + 1}</h5>
+                    <button
+                      type="button"
+                      onClick={() => removeAnnouncement(announcement.id)}
+                      className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+                      aria-label={`حذف الإعلان ${index + 1}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      حذف الإعلان
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label htmlFor={`notice-title-${announcement.id}`} className="mb-1.5 block text-xs font-semibold text-[#5A6E85]">عنوان الإعلان</label>
+                      <input
+                        id={`notice-title-${announcement.id}`}
+                        type="text"
+                        value={announcement.title}
+                        onChange={(event) => updateAnnouncement(announcement.id, { title: event.target.value })}
+                        placeholder="مثال: تعديل مواعيد العيادات"
+                        className="w-full rounded-xl border border-[#CBD5E1] bg-white px-3 py-2.5 text-sm text-[#163C3A] focus:border-[#087F78] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor={`notice-image-${announcement.id}`} className="mb-1.5 block text-xs font-semibold text-[#5A6E85]">رابط الصورة (اختياري)</label>
+                      <div className="flex gap-2">
+                        <input
+                          id={`notice-image-${announcement.id}`}
+                          type="text"
+                          value={announcement.image_url ?? ''}
+                          onChange={(event) => updateAnnouncement(announcement.id, { image_url: event.target.value })}
+                          placeholder="اختر صورة من مكتبة الوسائط"
+                          className="min-w-0 flex-1 rounded-xl border border-[#CBD5E1] bg-white px-3 py-2.5 text-xs text-[#163C3A] focus:border-[#087F78] focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setMediaPickerTarget({ announcementId: announcement.id })}
+                          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-[#087F78]/30 bg-white px-3 text-[11px] font-bold text-[#087F78] hover:bg-[#087F78]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#087F78]"
+                          aria-label={`اختيار صورة للإعلان ${index + 1} من مكتبة الوسائط`}
+                        >
+                          <ImageIcon className="h-4 w-4" />
+                          المكتبة
+                        </button>
+                      </div>
+                      {announcement.image_url && (
+                        <Image src={announcement.image_url} alt="معاينة صورة الإعلان" width={96} height={64} unoptimized className="mt-2 h-16 w-24 rounded-lg border border-[#E2E8EE] bg-white object-cover" />
+                      )}
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label htmlFor={`notice-summary-${announcement.id}`} className="mb-1.5 block text-xs font-semibold text-[#5A6E85]">النص المختصر / الرسالة</label>
+                      <textarea
+                        id={`notice-summary-${announcement.id}`}
+                        rows={2}
+                        value={announcement.summary ?? announcement.message ?? ''}
+                        onChange={(event) => updateAnnouncement(announcement.id, { summary: event.target.value })}
+                        placeholder="اكتب ملخصًا واضحًا يظهر في الشريط"
+                        className="w-full resize-y rounded-xl border border-[#CBD5E1] bg-white p-3 text-sm text-[#163C3A] focus:border-[#087F78] focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label htmlFor={`notice-details-${announcement.id}`} className="mb-1.5 block text-xs font-semibold text-[#5A6E85]">التفاصيل الإضافية (اختياري)</label>
+                      <textarea
+                        id={`notice-details-${announcement.id}`}
+                        rows={3}
+                        value={announcement.details ?? ''}
+                        onChange={(event) => updateAnnouncement(announcement.id, { details: event.target.value })}
+                        placeholder="تظهر عند فتح الإعلان إذا لم يُضف رابط"
+                        className="w-full resize-y rounded-xl border border-[#CBD5E1] bg-white p-3 text-sm text-[#163C3A] focus:border-[#087F78] focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label htmlFor={`notice-link-${announcement.id}`} className="mb-1.5 block text-xs font-semibold text-[#5A6E85]">رابط آمن (اختياري)</label>
+                      <input
+                        id={`notice-link-${announcement.id}`}
+                        type="text"
+                        value={announcement.link_url ?? ''}
+                        onChange={(event) => updateAnnouncement(announcement.id, { link_url: event.target.value })}
+                        placeholder="/صفحة-داخلية أو https://example.gov.eg"
+                        className="w-full rounded-xl border border-[#CBD5E1] bg-white px-3 py-2.5 text-sm text-[#163C3A] focus:border-[#087F78] focus:outline-none"
+                      />
+                      <p className="mt-1 text-[10px] text-[#8493A6]">تُقبل المسارات الداخلية أو روابط http/https؛ دون رابط تُفتح تفاصيل الإعلان.</p>
+                    </div>
+
+                    <div>
+                      <label htmlFor={`notice-start-${announcement.id}`} className="mb-1.5 block text-xs font-semibold text-[#5A6E85]">بداية العرض (اختياري)</label>
+                      <input
+                        id={`notice-start-${announcement.id}`}
+                        type="datetime-local"
+                        value={toLocalDateTime(announcement.starts_at)}
+                        onChange={(event) => updateAnnouncement(announcement.id, { starts_at: toIsoDateTime(event.target.value) })}
+                        className="w-full rounded-xl border border-[#CBD5E1] bg-white px-3 py-2.5 text-xs text-[#163C3A] focus:border-[#087F78] focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor={`notice-end-${announcement.id}`} className="mb-1.5 block text-xs font-semibold text-[#5A6E85]">نهاية العرض (اختياري)</label>
+                      <input
+                        id={`notice-end-${announcement.id}`}
+                        type="datetime-local"
+                        value={toLocalDateTime(announcement.ends_at)}
+                        onChange={(event) => updateAnnouncement(announcement.id, { ends_at: toIsoDateTime(event.target.value) })}
+                        className="w-full rounded-xl border border-[#CBD5E1] bg-white px-3 py-2.5 text-xs text-[#163C3A] focus:border-[#087F78] focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Live Preview of NoticeBar */}
         {settings.notice_bar.is_enabled && (
           <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-3 flex items-center justify-between text-xs text-amber-900 font-medium">
@@ -468,4 +651,3 @@ export default function IdentityEditor({ initialSettings, token, onSaved }: Iden
     </form>
   );
 }
-

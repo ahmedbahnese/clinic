@@ -26,6 +26,7 @@ import ClinicsPresentationEditor from './ClinicsPresentationEditor';
 import SeoEditor from './SeoEditor';
 import MediaManager from './MediaManager';
 import PushNotificationEditor from './PushNotificationEditor';
+import AnnouncementManager from './AnnouncementManager';
 
 interface CmsDashboardProps {
   currentUser?: {
@@ -43,6 +44,7 @@ type CmsSubTab =
   | 'CLINICS'
   | 'SEO'
   | 'MEDIA'
+  | 'ANNOUNCEMENTS'
   | 'NOTIFICATIONS';
 
 export default function CmsDashboard({ currentUser }: CmsDashboardProps) {
@@ -88,6 +90,7 @@ export default function CmsDashboard({ currentUser }: CmsDashboardProps) {
     { id: 'CLINICS', label: 'بطاقات العيادات', icon: Sliders },
     { id: 'SEO', label: 'محركات البحث', icon: Search },
     { id: 'MEDIA', label: 'مكتبة الوسائط', icon: ImageIcon },
+    { id: 'ANNOUNCEMENTS', label: 'إدارة إعلانات وتنبيهات المستشفى', icon: BellRing },
     { id: 'NOTIFICATIONS', label: 'الإشعارات', icon: BellRing },
   ];
 
@@ -244,6 +247,13 @@ export default function CmsDashboard({ currentUser }: CmsDashboardProps) {
           <div className="bg-white border border-[#E2E8EE] rounded-3xl p-6 shadow-xs">
             <MediaManager isModal={false} />
           </div>
+        )}
+
+        {activeSubTab === 'ANNOUNCEMENTS' && (
+          <AnnouncementManager
+            initialSettings={data.settings}
+            onSaved={(newSettings) => setData((prev) => (prev ? { ...prev, settings: newSettings } : prev))}
+          />
         )}
 
         {activeSubTab === 'NOTIFICATIONS' && currentUser?.role === 'ADMIN' && (
