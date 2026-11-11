@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Metadata } from 'next';
+import type { NoticeBarDisplayConfig } from '@/types/cms';
 import { cmsService } from '@/services/cmsService';
 import { NoticeBar } from '@/components/NoticeBar';
 import { SiteHeader } from '@/components/SiteHeader';
@@ -48,7 +49,10 @@ export default async function HomePage() {
 
   const getSection = (id: string) => sections.find((s) => s.id === id);
   const placement = settings.notice_bar.display?.placement || 'top';
-  const renderNoticeAt = (target: string) => placement === target ? <NoticeBar config={settings.notice_bar} /> : null;
+  const renderNoticeAt = (target: NoticeBarDisplayConfig['placement']) => {
+    if (!target) return null;
+    return <NoticeBar config={settings.notice_bar} slot={target} showFallback={placement === target} />;
+  };
 
   return (
     <div
@@ -56,7 +60,8 @@ export default async function HomePage() {
       className="flex flex-col min-h-screen bg-[#F6F9FB] selection:bg-[#087F78] selection:text-white font-sans antialiased"
     >
       {/* Announcement placement is controlled independently from Push notifications. */}
-      {(placement === 'top' || placement === 'floating') && <NoticeBar config={settings.notice_bar} />}
+      {renderNoticeAt('top')}
+      {renderNoticeAt('floating')}
 
       {/* 2. Main Sticky Hospital Header Navigation */}
       <SiteHeader

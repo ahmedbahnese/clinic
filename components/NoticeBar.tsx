@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { Bell, ChevronLeft, ChevronRight, ExternalLink, PhoneCall, X } from 'lucide-react';
-import type { NoticeAnnouncement, NoticeBarConfig } from '@/types/cms';
+import type { NoticeAnnouncement, NoticeBarConfig, NoticeBarDisplayConfig } from '@/types/cms';
 
 const NOTICE_STORAGE_KEY = 'bsch_notice_dismissed_until';
 const DISMISS_DURATION_MS = 24 * 60 * 60 * 1000;
@@ -11,6 +11,8 @@ const ROTATION_INTERVAL_MS = 5000;
 
 interface NoticeBarProps {
   config?: NoticeBarConfig;
+  slot?: NoticeBarDisplayConfig['placement'];
+  showFallback?: boolean;
 }
 
 interface DisplayAnnouncement extends NoticeAnnouncement {
@@ -42,7 +44,7 @@ function isActiveAnnouncement(announcement: NoticeAnnouncement, now: number): bo
   return Boolean(announcement.title?.trim() || announcement.summary?.trim() || announcement.message?.trim() || announcement.details?.trim() || announcement.image_url || announcement.link_url);
 }
 
-export function NoticeBar({ config }: NoticeBarProps) {
+export function NoticeBar({ config, slot, showFallback = true }: NoticeBarProps) {
   const noticeStorageKey = `${NOTICE_STORAGE_KEY}:${(config?.announcements ?? []).map((item) => item.id).join('|') || 'legacy'}`;
   const [isVisible, setIsVisible] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
@@ -93,7 +95,11 @@ export function NoticeBar({ config }: NoticeBarProps) {
   }, [config?.announcements]);
 
   const announcements = useMemo<DisplayAnnouncement[]>(() => {
-    const activeCampaigns = (config?.announcements ?? []).filter((item) => isActiveAnnouncement(item, now));
+    const selectedSlot = slot || config?.display?.placement || 'top';
+    const activeCampaigns = (config?.announcements ?? []).filter((item) => {
+      const itemSlot = item.display?.placement || config?.display?.placement || 'top';
+      return itemSlot === selectedSlot && isActiveAnnouncement(item, now);
+    });
     if (activeCampaigns.length > 0) {
       return activeCampaigns.map((item) => ({
         ...item,
@@ -102,13 +108,14 @@ export function NoticeBar({ config }: NoticeBarProps) {
       }));
     }
 
+    if (!showFallback) return [];
     return [{
       id: 'legacy-notice',
       title: config?.title?.trim() || 'تنظيم العيادات الخارجية:',
       summary: config?.message?.trim() || 'الحجز الإلكتروني متاح بنظام تذاكر الدور وأسبقية الحضور اليومي بالعيادات التخصصية.',
       details: config?.message?.trim() || 'الحجز الإلكتروني متاح بنظام تذاكر الدور وأسبقية الحضور اليومي بالعيادات التخصصية.',
     }];
-  }, [config, now]);
+  }, [config, now, showFallback, slot]);
 
   useEffect(() => {
     if (activeIndex >= announcements.length) setActiveIndex(0);
@@ -145,14 +152,13 @@ export function NoticeBar({ config }: NoticeBarProps) {
   }, [announcements.length]);
 
   const currentAnnouncement = announcements[activeIndex % announcements.length];
+  if (!currentAnnouncement || config?.is_enabled === false || !isMounted || !isVisible) return null;
   const currentLink = safeDestination(currentAnnouncement.link_url);
   const hotlineLabel = config?.hotline_label?.trim() || 'مستشفى الأطفال التخصصي — دمسنا';
-  const display = config?.display;
+  const display = currentAnnouncement.display || config?.display;
   const widthClass = display?.width === 'contained' ? 'mx-auto max-w-[1100px] rounded-2xl' : 'w-full';
   const heightClass = display?.height === 'compact' ? 'min-h-[64px]' : 'min-h-[88px] sm:min-h-[92px]';
   const placementClass = display?.placement === 'floating' ? 'fixed inset-x-3 top-3 z-[70] mx-auto max-w-[1100px] rounded-2xl shadow-2xl' : 'relative z-50';
-
-  if (config?.is_enabled === false || !isMounted || !isVisible) return null;
 
   const content = (
     <>
@@ -163,7 +169,7 @@ export function NoticeBar({ config }: NoticeBarProps) {
           width={56}
           height={56}
           unoptimized
-          className="absolute inset-0 z-0 h-full w-full rounded-lg object-cover opacity-45"
+          className="absolute inset-0 z-0 h-full w-full rounded-lg object-cover opacity-40"
         />
       ) : (
         <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-400/15 text-amber-300 ring-1 ring-amber-400/25 sm:h-11 sm:w-11" aria-hidden="true">

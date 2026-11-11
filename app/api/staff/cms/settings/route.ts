@@ -11,6 +11,9 @@ function validateNoticeBar(noticeBar: any) {
     const summary = typeof item.summary === 'string' ? item.summary : item.message;
     if (summary !== undefined && (typeof summary !== 'string' || summary.length > 500)) return 'نص الإعلان المختصر اختياري وبحد أقصى 500 حرف.';
     if (!(item.title?.trim() || summary?.trim() || item.details?.trim() || item.image_url || item.link_url)) return 'يجب أن يحتوي الإعلان على صورة أو تفاصيل أو رابط أو نص واحد على الأقل.';
+    if (item.display?.placement && !['top', 'below_header', 'after_hero', 'after_primary_actions', 'after_clinics', 'after_how_it_works', 'before_footer', 'floating'].includes(item.display.placement)) return 'موضع أحد الإعلانات غير صالح.';
+    if (item.display?.width && !['full', 'contained'].includes(item.display.width)) return 'عرض مستطيل أحد الإعلانات غير صالح.';
+    if (item.display?.height && !['compact', 'standard'].includes(item.display.height)) return 'ارتفاع مستطيل أحد الإعلانات غير صالح.';
     const starts = item.starts_at ? Date.parse(item.starts_at) : NaN;
     const ends = item.ends_at ? Date.parse(item.ends_at) : NaN;
     if (item.starts_at && !Number.isFinite(starts)) return 'تاريخ بداية أحد الإعلانات غير صالح.';

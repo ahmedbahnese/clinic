@@ -18,6 +18,7 @@ export interface NoticeAnnouncement {
   is_enabled?: boolean;
   show_on_site?: boolean;
   send_push?: boolean;
+  display?: NoticeBarDisplayConfig;
 }
 
 export interface NoticeBarDisplayConfig {
