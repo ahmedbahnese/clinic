@@ -46,8 +46,8 @@ export function resolveNoticeAnnouncements(
   if (activeCampaigns.length > 0) {
     return activeCampaigns.map((item) => ({
       ...item,
-      title: item.title?.trim() || 'تنبيه من المستشفى',
-      summary: item.summary?.trim() || item.message?.trim() || item.details?.trim() || '',
+      title: item.title?.trim() || '',
+      summary: item.summary?.trim() || item.message?.trim() || '',
     }));
   }
 

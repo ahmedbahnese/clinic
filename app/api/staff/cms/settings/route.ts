@@ -21,6 +21,7 @@ function validateNoticeBar(noticeBar: any) {
     if (Number.isFinite(starts) && Number.isFinite(ends) && starts >= ends) return 'يجب أن تكون نهاية الإعلان بعد بدايته.';
     if (item.link_url && (typeof item.link_url !== 'string' || item.link_url.length > 1000 || /[\u0000-\u001f\\]/.test(item.link_url))) return 'رابط أحد الإعلانات غير صالح.';
   }
+  if (noticeBar.display?.autoplay_enabled !== undefined && typeof noticeBar.display.autoplay_enabled !== 'boolean') return 'إعداد التشغيل التلقائي غير صالح.';
   if (noticeBar.display?.autoplay_seconds !== undefined && (!Number.isFinite(Number(noticeBar.display.autoplay_seconds)) || Number(noticeBar.display.autoplay_seconds) < 2 || Number(noticeBar.display.autoplay_seconds) > 60)) return 'مدة الانتقال التلقائي يجب أن تكون بين ثانيتين و60 ثانية.';
   return null;
 }

@@ -28,6 +28,8 @@ const ALLOWED_MIME_TYPES = [
   'image/jpeg',
   'image/jpg',
   'image/webp',
+  'image/gif',
+  'image/apng',
   'image/svg+xml',
   'image/x-icon',
   'image/vnd.microsoft.icon',
@@ -38,6 +40,8 @@ const EXTENSION_BY_MIME: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/jpg': 'jpg',
   'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/apng': 'apng',
   'image/svg+xml': 'svg',
   'image/x-icon': 'ico',
   'image/vnd.microsoft.icon': 'ico',
@@ -141,7 +145,7 @@ export async function POST(req: NextRequest) {
 
     if (!ALLOWED_MIME_TYPES.includes(file.type)) {
       return NextResponse.json(
-        { error: 'صيغة الملف غير مدعومة. الصيغ المسموحة: PNG, JPEG, WebP, SVG, ICO, PDF' },
+        { error: 'صيغة الملف غير مدعومة. الصيغ المسموحة: PNG, JPEG, WebP, GIF, APNG, SVG, ICO, PDF' },
         { status: 400 }
       );
     }

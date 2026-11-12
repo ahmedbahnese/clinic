@@ -51,7 +51,7 @@ test('الإعلانات تظهر فقط في الموضع المحفوظ، مع
   assert.equal(resolveNoticeAnnouncements(settings, 'top', now, false).length, 0);
   const afterHero = resolveNoticeAnnouncements(settings, 'after_hero', now, false);
   assert.equal(afterHero.length, 1);
-  assert.equal(afterHero[0].title, 'تنبيه من المستشفى');
+  assert.equal(afterHero[0].title, '');
   assert.equal(afterHero[0].summary, 'النص البديل');
 });
 
