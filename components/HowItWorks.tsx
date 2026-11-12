@@ -1,5 +1,4 @@
 import React from 'react';
-import Image from 'next/image';
 import { Calendar, ShieldCheck, UserCheck } from 'lucide-react';
 import type { HomepageSection, HowItWorksSectionContent } from '@/types/cms';
 
@@ -66,10 +65,6 @@ export function HowItWorks({ section }: HowItWorksProps) {
         <p className="text-xs sm:text-sm text-[#5A6B82] mt-1 leading-relaxed">
           {subtitle}
         </p>
-      </div>
-
-      <div className="mb-6 overflow-hidden rounded-2xl border border-[#B7DCD7] bg-[#06302F] shadow-sm">
-        <Image src="/booking-followup-guide.svg" alt="شرح متحرك من الحجز إلى متابعة الحجز برقم الهاتف" width={1200} height={420} unoptimized className="h-auto w-full" />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative">
