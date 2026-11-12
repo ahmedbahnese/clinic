@@ -48,6 +48,7 @@ export function resolveNoticeAnnouncements(
       ...item,
       title: item.title?.trim() || '',
       summary: item.summary?.trim() || item.message?.trim() || '',
+      link_url: item.link_url?.trim() || (item as NoticeAnnouncement & { link?: string; url?: string }).link?.trim() || (item as NoticeAnnouncement & { url?: string }).url?.trim() || '',
     }));
   }
 

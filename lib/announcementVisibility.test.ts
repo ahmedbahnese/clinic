@@ -76,3 +76,10 @@ test('لا يظهر التنبيه القديم في المواضع الأخرى
   assert.equal(resolveNoticeAnnouncements(settings, 'after_hero', now, false).length, 0);
   assert.equal(resolveNoticeAnnouncements(settings, 'top', now, true).length, 1);
 });
+
+test('رابط الإعلان القديم أو الجديد يصلح لزر اضغط هنا', () => {
+  const settings = config({ announcements: [announcement({ link_url: 'https://example.com' })] });
+  assert.equal(resolveNoticeAnnouncements(settings, 'top', now, false)[0].link_url, 'https://example.com');
+  const legacy = config({ announcements: [{ ...announcement(), link: '/appointments/new' } as NoticeAnnouncement & { link: string }] });
+  assert.equal(resolveNoticeAnnouncements(legacy, 'top', now, false)[0].link_url, '/appointments/new');
+});
