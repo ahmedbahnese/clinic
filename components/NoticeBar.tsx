@@ -248,8 +248,8 @@ export function NoticeBar({ config, slot, showFallback = true, initialNow }: Not
               type="button"
               onClick={handleDismiss}
               className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-emerald-100 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
-              aria-label="إغلاق الإعلانات لمدة 24 ساعة"
-              title="إغلاق الإعلانات لمدة 24 ساعة"
+              aria-label="إغلاق الإعلانات مؤقتًا"
+              title="إغلاق الإعلانات مؤقتًا"
             >
               <X className="h-4 w-4" />
             </button>
