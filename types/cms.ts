@@ -18,6 +18,8 @@ export interface NoticeAnnouncement {
   is_enabled?: boolean;
   show_on_site?: boolean;
   send_push?: boolean;
+  image_3d?: boolean;
+  image_frameless?: boolean;
   display?: NoticeBarDisplayConfig;
 }
 
