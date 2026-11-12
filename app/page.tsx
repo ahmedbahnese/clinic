@@ -46,12 +46,13 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function HomePage() {
   const cmsContent = await cmsService.getPublishedContent();
   const { settings, sections, navigation, clinics } = cmsContent;
+  const initialNow = Date.now();
 
   const getSection = (id: string) => sections.find((s) => s.id === id);
   const placement = settings.notice_bar.display?.placement || 'top';
   const renderNoticeAt = (target: NoticeBarDisplayConfig['placement']) => {
     if (!target) return null;
-    return <NoticeBar config={settings.notice_bar} slot={target} showFallback={placement === target} />;
+    return <NoticeBar config={settings.notice_bar} slot={target} showFallback={placement === target} initialNow={initialNow} />;
   };
 
   return (

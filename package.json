@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "node --test lib/rules.test.ts lib/security.test.ts lib/persistence.test.ts lib/otp.test.ts",
+    "test": "node --test lib/rules.test.ts lib/security.test.ts lib/persistence.test.ts lib/otp.test.ts lib/announcementVisibility.test.ts",
     "test:integration": "node --test tests/integration/supabase-rls.test.ts",
     "clean": "node -e \"try { require('fs').rmSync('.next', { recursive: true, force: true }); } catch {}\""
   },

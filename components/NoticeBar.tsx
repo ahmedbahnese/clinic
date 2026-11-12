@@ -3,16 +3,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { Bell, ChevronLeft, ChevronRight, ExternalLink, PhoneCall, X } from 'lucide-react';
+import { resolveNoticeAnnouncements } from '@/lib/announcementVisibility';
 import type { NoticeAnnouncement, NoticeBarConfig, NoticeBarDisplayConfig } from '@/types/cms';
 
-const NOTICE_STORAGE_KEY = 'bsch_notice_dismissed_until';
-const DISMISS_DURATION_MS = 24 * 60 * 60 * 1000;
 const ROTATION_INTERVAL_MS = 5000;
 
 interface NoticeBarProps {
   config?: NoticeBarConfig;
   slot?: NoticeBarDisplayConfig['placement'];
   showFallback?: boolean;
+  initialNow?: number;
 }
 
 interface DisplayAnnouncement extends NoticeAnnouncement {
@@ -35,20 +35,9 @@ function safeDestination(value?: string): string | null {
   return null;
 }
 
-function isActiveAnnouncement(announcement: NoticeAnnouncement, now: number): boolean {
-  if (announcement.is_enabled === false || announcement.show_on_site === false) return false;
-  const startsAt = announcement.starts_at ? Date.parse(announcement.starts_at) : Number.NaN;
-  const endsAt = announcement.ends_at ? Date.parse(announcement.ends_at) : Number.NaN;
-  if (Number.isFinite(startsAt) && startsAt > now) return false;
-  if (Number.isFinite(endsAt) && endsAt <= now) return false;
-  return Boolean(announcement.title?.trim() || announcement.summary?.trim() || announcement.message?.trim() || announcement.details?.trim() || announcement.image_url || announcement.link_url);
-}
-
-export function NoticeBar({ config, slot, showFallback = true }: NoticeBarProps) {
-  const noticeStorageKey = `${NOTICE_STORAGE_KEY}:${(config?.announcements ?? []).map((item) => item.id).join('|') || 'legacy'}`;
-  const [isVisible, setIsVisible] = useState(false);
-  const [isMounted, setIsMounted] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
+export function NoticeBar({ config, slot, showFallback = true, initialNow }: NoticeBarProps) {
+  const [isVisible, setIsVisible] = useState(true);
+  const [now, setNow] = useState(() => initialNow ?? Date.now());
   const [activeIndex, setActiveIndex] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
@@ -57,20 +46,13 @@ export function NoticeBar({ config, slot, showFallback = true }: NoticeBarProps)
   const lastSwipeAt = useRef(0);
 
   useEffect(() => {
-    setIsMounted(true);
-    try {
-      const dismissedUntil = localStorage.getItem(noticeStorageKey);
-      setIsVisible(!dismissedUntil || Date.now() > Number(dismissedUntil));
-    } catch {
-      setIsVisible(true);
-    }
-
+    setNow(Date.now());
     const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
     const updateMotionPreference = () => setPrefersReducedMotion(motionPreference.matches);
     updateMotionPreference();
     motionPreference.addEventListener('change', updateMotionPreference);
     return () => motionPreference.removeEventListener('change', updateMotionPreference);
-  }, [noticeStorageKey]);
+  }, []);
 
   useEffect(() => {
     let timer: number;
@@ -94,28 +76,10 @@ export function NoticeBar({ config, slot, showFallback = true }: NoticeBarProps)
     return () => window.clearTimeout(timer);
   }, [config?.announcements]);
 
-  const announcements = useMemo<DisplayAnnouncement[]>(() => {
-    const selectedSlot = slot || config?.display?.placement || 'top';
-    const activeCampaigns = (config?.announcements ?? []).filter((item) => {
-      const itemSlot = item.display?.placement || config?.display?.placement || 'top';
-      return itemSlot === selectedSlot && isActiveAnnouncement(item, now);
-    });
-    if (activeCampaigns.length > 0) {
-      return activeCampaigns.map((item) => ({
-        ...item,
-        title: item.title?.trim() || 'تنبيه من المستشفى',
-        summary: item.summary?.trim() || item.message?.trim() || item.details?.trim() || '',
-      }));
-    }
-
-    if (!showFallback) return [];
-    return [{
-      id: 'legacy-notice',
-      title: config?.title?.trim() || 'تنظيم العيادات الخارجية:',
-      summary: config?.message?.trim() || 'الحجز الإلكتروني متاح بنظام تذاكر الدور وأسبقية الحضور اليومي بالعيادات التخصصية.',
-      details: config?.message?.trim() || 'الحجز الإلكتروني متاح بنظام تذاكر الدور وأسبقية الحضور اليومي بالعيادات التخصصية.',
-    }];
-  }, [config, now, showFallback, slot]);
+  const announcements = useMemo<DisplayAnnouncement[]>(
+    () => resolveNoticeAnnouncements(config, slot, now, showFallback),
+    [config, now, showFallback, slot],
+  );
 
   useEffect(() => {
     if (activeIndex >= announcements.length) setActiveIndex(0);
@@ -140,11 +104,6 @@ export function NoticeBar({ config, slot, showFallback = true }: NoticeBarProps)
 
   const handleDismiss = () => {
     setIsVisible(false);
-    try {
-      localStorage.setItem(noticeStorageKey, String(Date.now() + DISMISS_DURATION_MS));
-    } catch {
-      // Ignore storage errors.
-    }
   };
 
   const changeSlide = useCallback((direction: -1 | 1) => {
@@ -152,7 +111,7 @@ export function NoticeBar({ config, slot, showFallback = true }: NoticeBarProps)
   }, [announcements.length]);
 
   const currentAnnouncement = announcements[activeIndex % announcements.length];
-  if (!currentAnnouncement || config?.is_enabled === false || !isMounted || !isVisible) return null;
+  if (!currentAnnouncement || config?.is_enabled === false || !isVisible) return null;
   const currentLink = safeDestination(currentAnnouncement.link_url);
   const hotlineLabel = config?.hotline_label?.trim() || 'مستشفى الأطفال التخصصي — دمسنا';
   const display = currentAnnouncement.display || config?.display;
