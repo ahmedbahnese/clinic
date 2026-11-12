@@ -14,13 +14,18 @@ function validateNoticeBar(noticeBar: any) {
     if (item.display?.placement && !['top', 'below_header', 'after_hero', 'after_primary_actions', 'after_clinics', 'after_how_it_works', 'before_footer', 'floating'].includes(item.display.placement)) return 'موضع أحد الإعلانات غير صالح.';
     if (item.display?.width && !['full', 'contained'].includes(item.display.width)) return 'عرض مستطيل أحد الإعلانات غير صالح.';
     if (item.display?.height && !['compact', 'standard'].includes(item.display.height)) return 'ارتفاع مستطيل أحد الإعلانات غير صالح.';
+    if (item.image_3d !== undefined && typeof item.image_3d !== 'boolean') return 'إعداد الصورة ثلاثية الأبعاد غير صالح.';
+    if (item.image_frameless !== undefined && typeof item.image_frameless !== 'boolean') return 'إعداد الصورة بدون إطار غير صالح.';
     const starts = item.starts_at ? Date.parse(item.starts_at) : NaN;
     const ends = item.ends_at ? Date.parse(item.ends_at) : NaN;
     if (item.starts_at && !Number.isFinite(starts)) return 'تاريخ بداية أحد الإعلانات غير صالح.';
     if (item.ends_at && !Number.isFinite(ends)) return 'تاريخ نهاية أحد الإعلانات غير صالح.';
     if (Number.isFinite(starts) && Number.isFinite(ends) && starts >= ends) return 'يجب أن تكون نهاية الإعلان بعد بدايته.';
     if (item.link_url && (typeof item.link_url !== 'string' || item.link_url.length > 1000 || /[\u0000-\u001f\\]/.test(item.link_url))) return 'رابط أحد الإعلانات غير صالح.';
+    if (item.link_label !== undefined && (typeof item.link_label !== 'string' || item.link_label.length > 80)) return 'اسم زر الرابط يجب ألا يتجاوز 80 حرفًا.';
   }
+  if (noticeBar.display?.autoplay_enabled !== undefined && typeof noticeBar.display.autoplay_enabled !== 'boolean') return 'إعداد التشغيل التلقائي غير صالح.';
+  if (noticeBar.display?.autoplay_seconds !== undefined && (!Number.isFinite(Number(noticeBar.display.autoplay_seconds)) || Number(noticeBar.display.autoplay_seconds) < 2 || Number(noticeBar.display.autoplay_seconds) > 60)) return 'مدة الانتقال التلقائي يجب أن تكون بين ثانيتين و60 ثانية.';
   return null;
 }
 

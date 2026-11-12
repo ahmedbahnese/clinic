@@ -170,7 +170,7 @@ export default function MediaManager({
               </label>
               <input
                 type="file"
-                accept="image/png,image/jpeg,image/webp,image/svg+xml,image/x-icon,application/pdf,.pdf"
+                accept="image/png,image/jpeg,image/webp,image/gif,image/apng,image/svg+xml,image/x-icon,application/pdf,.pdf,.gif,.apng"
                 onChange={(e) => {
                   const file = e.target.files?.[0] || null;
                   setSelectedFile(file);
