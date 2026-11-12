@@ -13,6 +13,7 @@ export interface NoticeAnnouncement {
   details?: string;
   image_url?: string;
   link_url?: string;
+  link_label?: string;
   starts_at?: string;
   ends_at?: string;
   is_enabled?: boolean;

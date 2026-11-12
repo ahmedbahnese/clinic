@@ -82,4 +82,7 @@ test('رابط الإعلان القديم أو الجديد يصلح لزر ا�
   assert.equal(resolveNoticeAnnouncements(settings, 'top', now, false)[0].link_url, 'https://example.com');
   const legacy = config({ announcements: [{ ...announcement(), link: '/appointments/new' } as NoticeAnnouncement & { link: string }] });
   assert.equal(resolveNoticeAnnouncements(legacy, 'top', now, false)[0].link_url, '/appointments/new');
+  assert.equal(resolveNoticeAnnouncements(settings, 'top', now, false)[0].link_label, 'اضغط هنا');
+  const custom = config({ announcements: [{ ...announcement({ link_url: 'https://example.com' }), link_label: 'احجز الآن' }] });
+  assert.equal(resolveNoticeAnnouncements(custom, 'top', now, false)[0].link_label, 'احجز الآن');
 });

@@ -15,7 +15,9 @@ export default function AnnouncementPreview({ announcement, onClose }: { announc
   const hasImage = Boolean(announcement.image_url?.trim());
   const title = announcement.title?.trim();
   const summary = announcement.summary?.trim() || announcement.message?.trim();
-  const link = safeLink(announcement.link_url);
+  const legacyLink = (announcement as NoticeAnnouncement & { link?: string; url?: string }).link || (announcement as NoticeAnnouncement & { url?: string }).url;
+  const link = safeLink(announcement.link_url || legacyLink);
+  const linkLabel = announcement.link_label?.trim() || 'اضغط هنا';
   const frame = announcement.image_frameless ? 'rounded-none' : 'rounded-3xl';
   const mediaStyle = announcement.image_3d ? { transform: 'perspective(1000px) rotateX(3deg) rotateY(-3deg) scale(1.04)' } : undefined;
   return <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/75 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
@@ -28,7 +30,7 @@ export default function AnnouncementPreview({ announcement, onClose }: { announc
           {!hasImage && <div className="absolute inset-0 bg-gradient-to-br from-[#0A3D39] via-[#087F78] to-[#06302f]" />}
         </div>
         {summary && <div className="bg-[#0A3D39] px-5 py-3 text-center text-sm font-bold leading-6 text-white">{summary}</div>}
-        {(announcement.details?.trim() || link) && <div className="space-y-4 bg-white p-5 text-right">{announcement.details?.trim() && <p className="whitespace-pre-wrap text-sm leading-7 text-[#163C3A]">{announcement.details.trim()}</p>}{link && <div className="text-center"><span className="inline-flex items-center rounded-xl bg-[#087F78] px-6 py-3 text-sm font-black text-white shadow-lg">اضغط هنا <ExternalLink className="mr-1 h-4 w-4" /></span></div>}</div>}
+        {(announcement.details?.trim() || link) && <div className="space-y-4 bg-white p-5 text-right">{announcement.details?.trim() && <p className="whitespace-pre-wrap text-sm leading-7 text-[#163C3A]">{announcement.details.trim()}</p>}{link && <div className="text-center"><span className="inline-flex items-center rounded-xl bg-[#087F78] px-6 py-3 text-sm font-black text-white shadow-lg">{linkLabel} <ExternalLink className="mr-1 h-4 w-4" /></span></div>}</div>}
       </div>
       <p className="mt-3 text-center text-xs text-white/80">معاينة الشكل النهائي: العنوان قبل الصورة، النص المختصر أسفلها، والتفاصيل والرابط أسفل إطار الصورة عند الفتح.</p>
     </div>
