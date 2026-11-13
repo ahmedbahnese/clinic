@@ -216,6 +216,7 @@ export default function StaffDashboardPage() {
   const [newServiceCapacity, setNewServiceCapacity] = useState(20);
   const [newServiceDocs, setNewServiceDocs] = useState('');
   const [newServiceInstructions, setNewServiceInstructions] = useState('');
+  const [newServiceWalkInOnly, setNewServiceWalkInOnly] = useState(false);
   const [addingServiceLoading, setAddingServiceLoading] = useState(false);
   const [deletingServiceId, setDeletingServiceId] = useState<string | null>(null);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
@@ -251,6 +252,10 @@ export default function StaffDashboardPage() {
   // Admin Audit Logs State
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [loadingAuditLogs, setLoadingAuditLogs] = useState(false);
+  const [appointmentRetentionDays, setAppointmentRetentionDays] = useState(30);
+  const [auditLogRetentionDays, setAuditLogRetentionDays] = useState(14);
+  const [savingRetentionSettings, setSavingRetentionSettings] = useState(false);
+  const [retentionMessage, setRetentionMessage] = useState<string | null>(null);
 
   // Helper date calculators
   const getEffectiveDateString = useCallback((): string => {
@@ -442,6 +447,57 @@ export default function StaffDashboardPage() {
     }
   }, []);
 
+  const fetchRetentionSettings = useCallback(async () => {
+    const token = localStorage.getItem('bsch_staff_token');
+    if (!token) return;
+    try {
+      const res = await fetch('/api/staff/retention', { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
+      if (data.success) {
+        setAppointmentRetentionDays(Number(data.appointmentRetentionDays || 30));
+        setAuditLogRetentionDays(Number(data.auditLogRetentionDays || 14));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  async function saveRetentionSettings() {
+    const token = localStorage.getItem('bsch_staff_token');
+    if (!token) return;
+    setSavingRetentionSettings(true);
+    setRetentionMessage(null);
+    try {
+      const res = await fetch('/api/staff/retention', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ appointmentRetentionDays, auditLogRetentionDays }),
+      });
+      const data = await res.json();
+      setRetentionMessage(data.success ? 'تم حفظ مدد الاحتفاظ. سيطبق التنظيف التلقائي يوميًا.' : (data.error || 'تعذر الحفظ'));
+    } catch {
+      setRetentionMessage('تعذر الاتصال بالخادم لحفظ الإعدادات.');
+    } finally {
+      setSavingRetentionSettings(false);
+    }
+  }
+
+  async function runRetentionCleanup() {
+    const token = localStorage.getItem('bsch_staff_token');
+    if (!token || !window.confirm('سيتم حذف السجلات الأقدم من مدد الاحتفاظ المحددة. هل تريد المتابعة؟')) return;
+    setSavingRetentionSettings(true);
+    try {
+      const res = await fetch('/api/staff/retention', { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
+      setRetentionMessage(data.success ? `تم التنظيف: حذف ${Number(data.appointments_deleted || 0)} حجز و${Number(data.audit_logs_deleted || 0)} سجل عمليات.` : (data.error || 'تعذر تشغيل التنظيف'));
+      fetchAuditLogs();
+    } catch {
+      setRetentionMessage('تعذر الاتصال بالخادم لتشغيل التنظيف.');
+    } finally {
+      setSavingRetentionSettings(false);
+    }
+  }
+
   const loadCancellationRequests = useCallback(async () => {
     const token = localStorage.getItem('bsch_staff_token');
     if (!token) return;
@@ -501,6 +557,7 @@ export default function StaffDashboardPage() {
         })
         .catch((e) => console.error(e));
     } else if (activeTab === 'AUDIT') {
+      fetchRetentionSettings();
       fetch('/api/staff/audit-logs', {
         headers: { Authorization: `Bearer ${token}` },
       })
@@ -518,7 +575,7 @@ export default function StaffDashboardPage() {
     return () => {
       active = false;
     };
-  }, [activeTab, loadCancellationRequests]);
+  }, [activeTab, loadCancellationRequests, fetchRetentionSettings]);
 
   useEffect(() => {
     loadCancellationRequests();
@@ -719,6 +776,13 @@ export default function StaffDashboardPage() {
 
     const chosenDate = walkInAppointmentDate || formatLocalDate();
 
+    // Direct-attendance services can only be registered on the current day.
+    const chosenService = walkInServicesList.find((service) => service.id === walkInServiceId);
+    if (chosenService?.isWalkInOnly && chosenDate !== formatLocalDate()) {
+      setWalkInError('خدمة الحضور المباشر تُسجل في نفس اليوم فقط.');
+      return;
+    }
+
     // Check clinic working days
     const currentClinic = clinics.find((c) => c.id === walkInClinicId);
     if (currentClinic && currentClinic.daysOfWeek && currentClinic.daysOfWeek.length > 0) {
@@ -792,6 +856,7 @@ export default function StaffDashboardPage() {
           maxDailyCapacity: Number(newServiceCapacity) || 20,
           requiredDocuments: newServiceDocs.split('\n').map((s) => s.trim()).filter(Boolean),
           instructions: newServiceInstructions.trim(),
+          isWalkInOnly: newServiceWalkInOnly,
           isActive: true,
         }),
       });
@@ -802,6 +867,7 @@ export default function StaffDashboardPage() {
         setNewServiceCapacity(20);
         setNewServiceDocs('');
         setNewServiceInstructions('');
+        setNewServiceWalkInOnly(false);
         alert('تمت إضافة الخدمة للعيادة بنجاح');
       } else {
         alert(data.error || 'تعذر إضافة الخدمة');
@@ -850,6 +916,7 @@ export default function StaffDashboardPage() {
     setNewServiceCapacity(service.maxDailyCapacity ?? 20);
     setNewServiceDocs((service.requiredDocuments || []).join('\n'));
     setNewServiceInstructions(service.instructions || '');
+    setNewServiceWalkInOnly(Boolean(service.isWalkInOnly));
   }
 
   // Cancel Edit Service Handler
@@ -859,6 +926,7 @@ export default function StaffDashboardPage() {
     setNewServiceCapacity(20);
     setNewServiceDocs('');
     setNewServiceInstructions('');
+    setNewServiceWalkInOnly(false);
   }
 
   // Save / Update Service Handler
@@ -884,6 +952,7 @@ export default function StaffDashboardPage() {
           maxDailyCapacity: Number(newServiceCapacity) || 20,
           requiredDocuments: newServiceDocs.split('\n').map((s) => s.trim()).filter(Boolean),
           instructions: newServiceInstructions.trim(),
+          isWalkInOnly: newServiceWalkInOnly,
           isActive: true,
         }),
       });
@@ -2593,6 +2662,26 @@ export default function StaffDashboardPage() {
               </button>
             </div>
 
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 space-y-3">
+              <div>
+                <h4 className="text-sm font-black text-amber-900">حذف السجلات القديمة تلقائيًا</h4>
+                <p className="text-[11px] text-amber-800 mt-1">التنظيف الآلي يعمل يوميًا. لا يتم حذف الحجز إلا بعد مرور المدة على تاريخ الموعد، وسجل العمليات بعد المدة المحددة.</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="text-xs font-bold text-amber-950">الاحتفاظ بالحجوزات (يومًا)
+                  <input type="number" min={30} max={3650} value={appointmentRetentionDays} onChange={(e) => setAppointmentRetentionDays(Number(e.target.value))} className="mt-1 w-full rounded-xl border border-amber-200 bg-white px-3 py-2 font-mono" />
+                </label>
+                <label className="text-xs font-bold text-amber-950">الاحتفاظ بسجل العمليات (يومًا)
+                  <input type="number" min={14} max={3650} value={auditLogRetentionDays} onChange={(e) => setAuditLogRetentionDays(Number(e.target.value))} className="mt-1 w-full rounded-xl border border-amber-200 bg-white px-3 py-2 font-mono" />
+                </label>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" onClick={saveRetentionSettings} disabled={savingRetentionSettings} className="rounded-xl bg-amber-700 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">حفظ المدد</button>
+                <button type="button" onClick={runRetentionCleanup} disabled={savingRetentionSettings} className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-xs font-bold text-amber-800 disabled:opacity-50">تشغيل التنظيف الآن</button>
+                {retentionMessage && <span className="text-xs font-semibold text-amber-900">{retentionMessage}</span>}
+              </div>
+            </div>
+
             {loadingAuditLogs ? (
               <div className="p-8 text-center text-xs text-[#8493A6]">جاري تحميل السجلات...</div>
             ) : auditLogs.length === 0 ? (
@@ -3071,7 +3160,7 @@ export default function StaffDashboardPage() {
                   <option value="">كشف واستشارة طبية عامة (افتراضي)</option>
                   {walkInServicesList.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name} {s.maxDailyCapacity ? `(السعة اليومية: ${s.maxDailyCapacity} مريض)` : ''}
+                      {s.name} {s.maxDailyCapacity ? `(السعة اليومية: ${s.maxDailyCapacity} مريض)` : ''} {s.isWalkInOnly ? '— حضور مباشر' : ''}
                     </option>
                   ))}
                 </select>
@@ -3085,10 +3174,14 @@ export default function StaffDashboardPage() {
                 <input
                   type="date"
                   min={formatLocalDate()}
+                  max={walkInServicesList.find((service) => service.id === walkInServiceId)?.isWalkInOnly ? formatLocalDate() : undefined}
                   value={walkInAppointmentDate || formatLocalDate()}
                   onChange={(e) => setWalkInAppointmentDate(e.target.value)}
                   className="w-full px-3 py-2.5 rounded-xl border border-[#E2E8EE] text-sm font-bold text-[#124E4A] bg-white focus:border-[#087F78]"
                 />
+                {walkInServicesList.find((service) => service.id === walkInServiceId)?.isWalkInOnly && (
+                  <span className="block text-[11px] text-amber-700 mt-1 font-bold">خدمة حضور مباشر: الحجز متاح لليوم الحالي فقط.</span>
+                )}
                 {(() => {
                   const selClinic = clinics.find((c) => c.id === walkInClinicId);
                   const dayNames = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
@@ -3638,6 +3731,11 @@ export default function StaffDashboardPage() {
                         <div className="space-y-0.5 flex-1">
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-[#163C3A]">{service.name}</span>
+                            {service.isWalkInOnly && (
+                              <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 text-3xs font-bold">
+                                حضور مباشر فقط
+                              </span>
+                            )}
                             {service.maxDailyCapacity && (
                               <span className="px-2 py-0.5 rounded-md bg-teal-50 text-[#087F78] text-3xs font-bold font-mono">
                                 سعة: {service.maxDailyCapacity} مريض/يوم
@@ -3747,6 +3845,18 @@ export default function StaffDashboardPage() {
                       className="w-full px-2.5 py-2 rounded-lg border border-teal-200 text-sm bg-white"
                     />
                   </div>
+                  <label className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2.5 text-xs text-amber-900 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newServiceWalkInOnly}
+                      onChange={(e) => setNewServiceWalkInOnly(e.target.checked)}
+                      className="mt-0.5 accent-amber-600"
+                    />
+                    <span>
+                      <strong className="block">حضور مباشر فقط</strong>
+                      <span className="text-2xs">تظهر للمستخدم للتوضيح فقط، ولا يُسمح بالحجز بها إلكترونيًا. يسجلها موظف الاستقبال أو مدير النظام في نفس اليوم.</span>
+                    </span>
+                  </label>
                   {editingServiceId ? (
                     <div className="flex items-center gap-2 pt-1">
                       <button

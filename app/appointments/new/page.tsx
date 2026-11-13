@@ -50,52 +50,52 @@ import type { Clinic, ClinicService, ClinicScheduleException, Appointment } from
 // 1. ZOD SCHEMA & TYPES
 // ============================================================================
 
-const bookingSchema = z
-  .object({
-    // Section 1: Patient & Parent Data
-    patientName: z
-      .string()
-      .min(1, 'الاسم الرباعي للطفل مطلوب')
-      .refine(
-        (val) => validatePatientName(val).isValid,
-        'يرجى كتابة الاسم ثلاثياً أو رباعياً على الأقل كما هو مسجل في شهادة الميلاد'
-      ),
-    ageValue: z.string().min(1, 'يرجى كتابة عمر الطفل'),
-    ageUnit: z.enum(['سنة', 'شهر', 'يوم'] as const),
-    phoneNumber: z
-      .string()
-      .min(1, 'رقم الهاتف مطلوب لمتابعة الحجز')
-      .refine(
-        (val) => normalizeAndValidateEgyptianPhone(val).isValid,
-        'رقم الهاتف غير صحيح، يجب أن يتكون من 11 رقماً ويبدأ بـ 01 (010 / 011 / 012 / 015)'
-      ),
-    patientAddress: z
-      .string()
-      .min(3, 'العنوان بالتفصيل مطلوب (المركز / المدينة / القرية / الشارع)'),
-    nationalId: z
-      .string()
-      .optional()
-      .refine((val) => {
-        if (!val || val.trim() === '') return true;
-        return validateGuardianNationalId(val).isValid;
-      }, 'الرقم القومي لولي الأمر يجب أن يتكون من 14 رقماً ويبدأ بـ 2 أو 3'),
+function calculateAgeFromBirthDate(birthDate: string): { value: string; unit: 'سنة' | 'شهر' | 'يوم'; label: string } | null {
+  const birth = new Date(`${birthDate}T00:00:00`);
+  const now = new Date();
+  if (!birthDate || Number.isNaN(birth.getTime()) || birth > now) return null;
+  let years = now.getFullYear() - birth.getFullYear();
+  let months = now.getMonth() - birth.getMonth();
+  let days = now.getDate() - birth.getDate();
+  if (days < 0) {
+    months -= 1;
+    days += new Date(now.getFullYear(), now.getMonth(), 0).getDate();
+  }
+  if (months < 0) {
+    years -= 1;
+    months += 12;
+  }
+  if (years > 0) return { value: String(years), unit: 'سنة', label: months ? `${years} سنة و${months} شهر` : `${years} سنة` };
+  if (months > 0) return { value: String(months), unit: 'شهر', label: `${months} شهر` };
+  return { value: String(Math.max(days, 0)), unit: 'يوم', label: `${Math.max(days, 0)} يوم` };
+}
 
-    // Section 2: Clinic & Appointment
-    clinicId: z.string().min(1, 'يرجى اختيار العيادة التخصصية المطلوبة'),
-    serviceId: z.string().min(1, 'يرجى اختيار الخدمة أو الفحص المطلوب'),
-    appointmentDate: z.string().min(1, 'يرجى اختيار تاريخ الحضور المتاح بالعيادة'),
-    notes: z.string().optional(),
-  })
-  .superRefine((data, ctx) => {
-    const ageCheck = validatePatientAge(data.ageValue, data.ageUnit);
-    if (!ageCheck.isValid) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['ageValue'],
-        message: ageCheck.error || 'عمر الطفل غير صحيح',
-      });
-    }
-  });
+const bookingSchema = z.object({
+  patientName: z.string().min(1, 'الاسم الرباعي للطفل مطلوب').refine((val) => validatePatientName(val).isValid, 'يرجى كتابة الاسم ثلاثياً أو رباعياً على الأقل كما هو مسجل في شهادة الميلاد'),
+  ageValue: z.string().optional(),
+  ageUnit: z.enum(['سنة', 'شهر', 'يوم'] as const).optional(),
+  birthDate: z.string().optional(),
+  phoneNumber: z.string().min(1, 'رقم الهاتف مطلوب لمتابعة الحجز').refine((val) => normalizeAndValidateEgyptianPhone(val).isValid, 'رقم الهاتف غير صحيح، يجب أن يتكون من 11 رقماً ويبدأ بـ 01 (010 / 011 / 012 / 015)'),
+  patientAddress: z.string().min(3, 'العنوان بالتفصيل مطلوب (المركز / المدينة / القرية / الشارع)'),
+  nationalId: z.string().optional().refine((val) => !val || val.trim() === '' || validateGuardianNationalId(val).isValid, 'الرقم القومي لولي الأمر يجب أن يتكون من 14 رقماً ويبدأ بـ 2 أو 3'),
+  clinicId: z.string().min(1, 'يرجى اختيار العيادة التخصصية المطلوبة'),
+  serviceId: z.string().min(1, 'يرجى اختيار الخدمة أو الفحص المطلوب'),
+  appointmentDate: z.string().min(1, 'يرجى اختيار تاريخ الحضور المتاح بالعيادة'),
+  notes: z.string().optional(),
+}).superRefine((data, ctx) => {
+  const hasBirthDate = Boolean(data.birthDate);
+  const hasAge = Boolean(data.ageValue && data.ageUnit);
+  if (!hasBirthDate && !hasAge) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['ageValue'], message: 'يرجى تحديد تاريخ الميلاد أو كتابة العمر' });
+    return;
+  }
+  if (hasBirthDate) {
+    if (!calculateAgeFromBirthDate(data.birthDate || '')) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['birthDate'], message: 'تاريخ الميلاد غير صحيح أو يقع في المستقبل' });
+    return;
+  }
+  const ageCheck = validatePatientAge(data.ageValue || '', data.ageUnit || 'سنة');
+  if (!ageCheck.isValid) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['ageValue'], message: ageCheck.error || 'عمر الطفل غير صحيح' });
+});
 
 type BookingFormValues = z.infer<typeof bookingSchema>;
 
@@ -150,6 +150,7 @@ function NewAppointmentForm() {
       patientName: '',
       ageValue: '',
       ageUnit: 'سنة',
+      birthDate: '',
       phoneNumber: '',
       patientAddress: '',
       nationalId: '',
@@ -165,6 +166,8 @@ function NewAppointmentForm() {
   const selectedClinicId = watch('clinicId');
   const selectedServiceId = watch('serviceId');
   const selectedDate = watch('appointmentDate');
+  const birthDate = watch('birthDate');
+  const ageValue = watch('ageValue');
 
   // Fetch real clinics from database
   useEffect(() => {
@@ -206,7 +209,7 @@ function NewAppointmentForm() {
     // Check if services are already pre-loaded on activeClinic
     if (activeClinic && activeClinic.services && activeClinic.services.length > 0) {
       setClinicServices(activeClinic.services);
-      setValue('serviceId', activeClinic.services[0].id);
+      setValue('serviceId', (activeClinic.services.find((service) => !service.isWalkInOnly) || activeClinic.services[0]).id);
       return;
     }
 
@@ -218,7 +221,7 @@ function NewAppointmentForm() {
         if (active && data.services) {
           setClinicServices(data.services);
           if (data.services.length > 0) {
-            setValue('serviceId', data.services[0].id);
+            setValue('serviceId', (data.services.find((service: ClinicService) => !service.isWalkInOnly) || data.services[0]).id);
           } else {
             setValue('serviceId', '');
           }
@@ -314,13 +317,38 @@ function NewAppointmentForm() {
     }
   }, [availableDates, selectedDate, setValue]);
 
+  // Selecting a birth date derives the age and locks the manual age controls.
+  useEffect(() => {
+    if (!birthDate) return;
+    const derived = calculateAgeFromBirthDate(birthDate);
+    if (derived) {
+      setValue('ageValue', derived.value, { shouldValidate: true });
+      setValue('ageUnit', derived.unit, { shouldValidate: true });
+    }
+  }, [birthDate, setValue]);
+
+  // Selecting a birth date derives the age and locks the manual age controls.
+  useEffect(() => {
+    if (!birthDate) return;
+    const derived = calculateAgeFromBirthDate(birthDate);
+    if (derived) {
+      setValue('ageValue', derived.value, { shouldValidate: true });
+      setValue('ageUnit', derived.unit, { shouldValidate: true });
+    }
+  }, [birthDate, setValue]);
+
   // Form Submit Handler
   const onSubmit = async (values: BookingFormValues) => {
     setServerError(null);
     setSubmitting(true);
 
     try {
-      const combinedAge = `${values.ageValue} ${values.ageUnit}`;
+      if (activeService?.isWalkInOnly) {
+        setServerError('هذه الخدمة بالحضور المباشر فقط ولا يتم الحجز الإلكتروني بها. يرجى التوجه للاستقبال في نفس اليوم.');
+        return;
+      }
+      const derivedAge = values.birthDate ? calculateAgeFromBirthDate(values.birthDate) : null;
+      const combinedAge = derivedAge?.label || `${values.ageValue} ${values.ageUnit}`;
       const resolvedServiceName = activeService?.name || 'كشف واستشارة طبية';
 
       const result = await submitBooking({
@@ -577,20 +605,38 @@ function NewAppointmentForm() {
                     )}
                   </div>
 
-                  {/* Field 2: Combined Age (Number + Unit Dropdown with strict bounds) */}
+                  {/* Field 2: Birth date OR manually entered age (mutually exclusive) */}
                   <div>
-                    <label className="block text-xs sm:text-sm font-bold text-[#163C3A] mb-1.5">
-                      العمر <span className="text-red-500">*</span>
+                    <label htmlFor="birthDate" className="block text-xs sm:text-sm font-bold text-[#163C3A] mb-1.5">
+                      تاريخ ميلاد الطفل أو العمر <span className="text-red-500">*</span>
                     </label>
+                    <input
+                      id="birthDate"
+                      type="date"
+                      max={new Date().toISOString().split('T')[0]}
+                      disabled={Boolean(ageValue)}
+                      {...register('birthDate')}
+                      className={`w-full px-4 py-3 rounded-xl border bg-white text-slate-900 text-xs sm:text-sm font-mono transition-all shadow-2xs focus:outline-hidden disabled:bg-slate-100 disabled:text-slate-400 ${
+                        errors.birthDate
+                          ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-100'
+                          : 'border-slate-200 focus:border-[#087F78] focus:ring-2 focus:ring-[#087F78]/15'
+                      }`}
+                    />
+                    <div className="flex items-center gap-2 my-2 text-[10px] text-slate-400">
+                      <span className="h-px flex-1 bg-slate-200" />
+                      <span>أو اكتب العمر</span>
+                      <span className="h-px flex-1 bg-slate-200" />
+                    </div>
                     <div className="flex items-center gap-2">
                       <div className="relative flex-1">
                         <input
                           type="number"
                           min="0"
                           max="36"
+                          disabled={Boolean(birthDate)}
                           {...register('ageValue')}
                           placeholder="الرقم (مثال: 4)"
-                          className={`w-full px-4 py-3 rounded-xl border bg-white text-slate-900 text-xs sm:text-sm placeholder:text-slate-400 font-mono transition-all shadow-2xs focus:outline-hidden ${
+                          className={`w-full px-4 py-3 rounded-xl border bg-white text-slate-900 text-xs sm:text-sm placeholder:text-slate-400 font-mono transition-all shadow-2xs focus:outline-hidden disabled:bg-slate-100 disabled:text-slate-400 ${
                             errors.ageValue
                               ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-100'
                               : 'border-slate-200 focus:border-[#087F78] focus:ring-2 focus:ring-[#087F78]/15'
@@ -599,8 +645,9 @@ function NewAppointmentForm() {
                       </div>
                       <div className="w-32">
                         <select
+                          disabled={Boolean(birthDate)}
                           {...register('ageUnit')}
-                          className="w-full px-3 py-3 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-100 text-[#163C3A] text-xs sm:text-sm font-semibold transition-all focus:border-[#087F78] focus:outline-hidden shadow-2xs cursor-pointer"
+                          className="w-full px-3 py-3 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-100 text-[#163C3A] text-xs sm:text-sm font-semibold transition-all focus:border-[#087F78] focus:outline-hidden shadow-2xs cursor-pointer disabled:bg-slate-100 disabled:text-slate-400"
                         >
                           <option value="سنة">سنة (1-18)</option>
                           <option value="شهر">شهر (1-36)</option>
@@ -614,9 +661,10 @@ function NewAppointmentForm() {
                       </p>
                     ) : (
                       <span className="block text-[10.5px] text-slate-400 mt-1">
-                        الأيام: 0 إلى 30 | الشهور: 1 إلى 36 | السنوات: 1 إلى 18
+                        عند اختيار تاريخ الميلاد يُحسب العمر تلقائيًا ويُقفل الإدخال الآخر. امسح الحقل للتبديل.
                       </span>
                     )}
+                    {errors.birthDate && <p className="text-[11px] text-red-600 mt-1 font-medium">{errors.birthDate.message}</p>}
                   </div>
 
                   {/* Field 3: Guardian Phone Number */}
@@ -817,8 +865,8 @@ function NewAppointmentForm() {
                             <option value="">لا توجد خدمات محددة حالياً لهذه العيادة</option>
                           ) : (
                             clinicServices.map((srv) => (
-                              <option key={srv.id} value={srv.id}>
-                                {srv.name}
+                              <option key={srv.id} value={srv.id} disabled={srv.isWalkInOnly}>
+                                {srv.name}{srv.isWalkInOnly ? ' — حضور مباشر (لا يُحجز إلكترونيًا)' : ''}
                               </option>
                             ))
                           )}
@@ -831,7 +879,7 @@ function NewAppointmentForm() {
                       </p>
                     )}
                     <span className="block text-[10.5px] text-slate-400 mt-1">
-                      الخدمات تتغير تلقائياً وفقاً للعيادة التخصصية المختارة
+                      الخدمات تتغير تلقائياً وفقاً للعيادة التخصصية المختارة. خدمات «الحضور المباشر» تظهر للتوضيح فقط ويسجلها الاستقبال أو المدير في نفس اليوم.
                     </span>
                   </div>
 
@@ -880,6 +928,11 @@ function NewAppointmentForm() {
                               خاص بالخدمة
                             </span>
                           </div>
+                          {activeService.isWalkInOnly && (
+                            <div className="mb-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900 font-bold">
+                              هذه الخدمة بالحضور المباشر فقط. لا يمكن إرسال حجز إلكتروني لها؛ يرجى مراجعة الاستقبال أو مدير النظام في نفس اليوم.
+                            </div>
+                          )}
 
                           {activeService.requiredDocuments && activeService.requiredDocuments.length > 0 && (
                             <div className="mb-2">

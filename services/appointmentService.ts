@@ -11,110 +11,12 @@ const isValidUuid = (id?: string | null): boolean =>
 // Pre-defined pediatric outpatient clinics from BSCH
 // Note: Marked as isHospitalConfirmed = false until verified by hospital administration
 const INITIAL_CLINICS: Clinic[] = [
-  {
-    id: 'dentistry',
-    name: 'عيادة الأسنان',
-    description: 'فحص وعلاج أسنان الأطفال، حشو وقائي، علاج العصب وتقويم الأسنان المبكر',
-    location: 'الدور الأرضي - عيادة 1',
-    workingHours: '08:30-14:00',
-    daysOfWeek: [0, 1, 2, 3, 4, 6], // Sat to Thu
-    maxDailySlots: 20,
-    slotDurationMinutes: 30,
-    instructions: 'إحضار بطاقة التأمين الصحي وشهادة ميلاد الطفل. الحضور صباحاً والتسجيل بأسبقية الحضور لشباك الاستقبال بالمستشفى. التعليمات الطبية الخاصة بالأدوية أو الصيام يحددها الطبيب المعالج فقط.',
-    isActive: true,
-    isHospitalConfirmed: false,
-  },
-  {
-    id: 'echo',
-    name: 'عيادة الإيكو',
-    description: 'فحص الموجات فوق الصوتية على قلب الأطفال والكشف المبكر عن عيوب القلب الخلقية',
-    location: 'أمام عيادة القلب بالدور الرابع',
-    workingHours: '08:30-14:00',
-    daysOfWeek: [0, 1, 2, 3, 4, 6],
-    maxDailySlots: 15,
-    slotDurationMinutes: 30,
-    instructions: 'يلزم إحضار تقرير الطبيب المعالج، وفحوصات الموجات الصوتية السابقة على القلب. الحضور صباحاً والتسجيل بأسبقية الحضور لشباك الاستقبال بالمستشفى. التعليمات الطبية الخاصة بالأدوية أو الفحص يحددها الطبيب المعالج فقط.',
-    isActive: true,
-    isHospitalConfirmed: false,
-  },
-  {
-    id: 'nutrition',
-    name: 'عيادة التغذية',
-    description: 'متابعة النمو، حساسية الطعام، سوء التغذية، وسمنة ونحافة الأطفال',
-    location: 'الدور الثالث - عيادة 3',
-    workingHours: '08:30-14:00',
-    daysOfWeek: [0, 1, 2, 3, 4, 6],
-    maxDailySlots: 20,
-    slotDurationMinutes: 30,
-    instructions: 'إحضار بطاقة التطعيمات ودفتر متابعة نمو الطفل منذ الولادة مع الفحوصات والتحاليل السابقة إن وُجدت. الحضور صباحاً والتسجيل بأسبقية الحضور لشباك الاستقبال بالمستشفى. التعليمات الطبية الخاصة بالحمية الغذائية أو التحاليل يحددها الطبيب المعالج فقط.',
-    isActive: true,
-    isHospitalConfirmed: false,
-  },
-  {
-    id: 'gi',
-    name: 'عيادة الجهاز الهضمي',
-    description: 'علاج اضطرابات الهضم، حساسية القمح، الارتجاع والتهابات المعدة والأمعاء',
-    location: 'الدور الثاني - عيادة 6',
-    workingHours: '08:30-14:00',
-    daysOfWeek: [0, 1, 2, 3, 4, 6],
-    maxDailySlots: 20,
-    slotDurationMinutes: 30,
-    instructions: 'إحضار التحاليل المعملية السابقة وأشعة السونار إن وُجدت. الحضور صباحاً والتسجيل بأسبقية الحضور لشباك الاستقبال بالمستشفى لإنهاء التسجيل. التعليمات الطبية الخاصة بالصيام أو الأدوية يحددها الطبيب المعالج فقط.',
-    isActive: true,
-    isHospitalConfirmed: false,
-  },
-  {
-    id: 'audiology',
-    name: 'عيادة السمعيات',
-    description: 'قياس السمع لحديثي الولادة والأطفال، فحص ضغط الأذن والتأهيل السمعي',
-    location: 'الدور الأرضي - عيادة 4',
-    workingHours: '08:30-14:00',
-    daysOfWeek: [0, 1, 2, 3, 4, 6],
-    maxDailySlots: 15,
-    slotDurationMinutes: 30,
-    instructions: 'إحضار بطاقة التأمين الصحي وشهادة ميلاد الطفل وأي فحوصات سمعية سابقة. الحضور صباحاً والتسجيل بأسبقية الحضور لشباك الاستقبال بالمستشفى. التعليمات الخاصة بالتحضير للفحص يحددها الطبيب المعالج فقط.',
-    isActive: true,
-    isHospitalConfirmed: false,
-  },
-  {
-    id: 'neuro',
-    name: 'عيادة النفسية والعصبية',
-    description: 'متابعة التشنجات والصرع، تأخر التطور الحركي، فرط الحركة وتشتت الانتباه',
-    location: 'الدور الرابع - عيادة 2',
-    workingHours: '08:30-14:00',
-    daysOfWeek: [0, 1, 2, 3, 4, 6],
-    maxDailySlots: 15,
-    slotDurationMinutes: 30,
-    instructions: 'إحضار أصل رسم المخ الكهربائي أو الأشعة السابقة إن وُجدت. الحضور صباحاً والتسجيل بأسبقية الحضور لشباك الاستقبال بالمستشفى. التعليمات الطبية الخاصة بالأدوية يحددها الطبيب المعالج فقط.',
-    isActive: true,
-    isHospitalConfirmed: false,
-  },
-  {
-    id: 'cardio',
-    name: 'عيادة قلب الأطفال',
-    description: 'تشخيص ومتابعة أمراض صمامات القلب والعيوب الخلقية وضغط الدم',
-    location: 'الدور الرابع - عيادة 1',
-    workingHours: '08:30-14:00',
-    daysOfWeek: [0, 1, 2, 3, 4, 6],
-    maxDailySlots: 18,
-    slotDurationMinutes: 30,
-    instructions: 'يرجى مراجعة غرفة العلامات الحيوية لقياس النبض والضغط أولاً، وإحضار الفحوصات والتقارير السابقة. الحضور صباحاً والتسجيل بأسبقية الحضور لشباك الاستقبال بالمستشفى. التعليمات الطبية الخاصة بالأدوية يحددها الطبيب المعالج فقط.',
-    isActive: true,
-    isHospitalConfirmed: false,
-  },
-  {
-    id: 'surgery',
-    name: 'عيادة جراحة الأطفال',
-    description: 'مناظرة حالات الفتق، الخصية المعلقة، التشوهات الخلقية، وجراحات البطن',
-    location: 'الدور الثاني - عيادة 2',
-    workingHours: '08:30-14:00',
-    daysOfWeek: [0, 1, 2, 3, 4, 6],
-    maxDailySlots: 20,
-    slotDurationMinutes: 30,
-    instructions: 'إحضار التحاليل المعملية وتقارير أشعة السونار الخاصة بالحالة إن وُجدت. الحضور صباحاً والتسجيل بأسبقية الحضور لشباك الاستقبال بالمستشفى. التعليمات الطبية الخاصة بالصيام أو التحضير الجراحي يحددها الطبيب المعالج فقط.',
-    isActive: true,
-    isHospitalConfirmed: false,
-  },
+  { id: 'gi', name: 'عيادة الجهاز الهضمي', description: 'كشف ومتابعة حالات الجهاز الهضمي والكبد للأطفال.', location: 'مبنى العيادات الخارجية', workingHours: '08:30-14:00', daysOfWeek: [2, 6], maxDailySlots: 75, slotDurationMinutes: 5, requiredDocuments: ['صورة بطاقة الأب والأم', 'شهادة ميلاد كمبيوتر', 'تقارير الطفل'], instructions: '', isActive: true, isHospitalConfirmed: true },
+  { id: 'nutrition', name: 'عيادة التغذية', description: 'متابعة التغذية والنمو وحالات سوء التغذية والنحافة والسمنة للأطفال.', location: 'مبنى العيادات الخارجية', workingHours: '08:30-14:00', daysOfWeek: [0, 3, 4], maxDailySlots: 50, slotDurationMinutes: 5, requiredDocuments: ['صورة بطاقة الأب والأم', 'شهادة ميلاد كمبيوتر', 'تقارير الطفل'], instructions: '', isActive: true, isHospitalConfirmed: true },
+  { id: 'neuro', name: 'عيادة النفسية والعصبية', description: 'تقييم ومتابعة الحالات النفسية والعصبية وتأخر التطور والكلام.', location: 'مبنى العيادات الخارجية', workingHours: '08:30-14:00', daysOfWeek: [6], maxDailySlots: 15, slotDurationMinutes: 10, requiredDocuments: [], instructions: '', isActive: true, isHospitalConfirmed: true },
+  { id: 'dentistry', name: 'عيادة الأسنان', description: 'خدمات خلع وحشو أسنان الأطفال.', location: 'مبنى العيادات الخارجية', workingHours: '08:30-14:00', daysOfWeek: [0, 1, 2, 3, 4, 6], maxDailySlots: 4, slotDurationMinutes: 15, requiredDocuments: ['صورة بطاقة الأب أو الأم'], instructions: '', isActive: true, isHospitalConfirmed: true },
+  { id: 'echo', name: 'عيادة الإيكو', description: 'فحص الإيكو للأطفال حسب تحويل وتقييم عيادة القلب.', location: 'أمام عيادة القلب بالدور الرابع', workingHours: '08:30-14:00', daysOfWeek: [0, 1, 2, 3, 4, 6], maxDailySlots: 5, slotDurationMinutes: 20, requiredDocuments: [], instructions: 'الحضور الساعة 8:30 صباحًا أمام عيادة القلب بالدور الرابع.\n\nللأطفال من 6 شهور حتى 3 سنوات: قد يُطلب تجهيز الطفل بمادة كلورال هيدرات تحت إشراف طبيب عيادة القلب حسب الحالة.\n\nيجب أن يكون الطفل خاليًا من أعراض البرد.\n\nإيقاظ الطفل مبكرًا وعدم السماح له بالنوم في الطريق حتى يمكنه النوم أثناء الفحص عند الحاجة.', isActive: true, isHospitalConfirmed: true },
+  { id: 'audiology', name: 'عيادة السمعيات', description: 'خدمات رسم السمع الإلكتروني وفحوصات ضغط الأذن وحالات مبادرة السمع.', location: 'مبنى العيادات الخارجية', workingHours: '08:30-14:00', daysOfWeek: [0, 1, 2, 3, 4, 6], maxDailySlots: 20, slotDurationMinutes: 15, requiredDocuments: [], instructions: 'الحضور للمستشفى مبكرًا وبحد أقصى الساعة 8:30 صباحًا.\n\nيجب التأكد من عدم وجود كحة أو رشح/نزلة برد أو ارتفاع درجة الحرارة.', isActive: true, isHospitalConfirmed: true },
 ];
 
 function getTodayDateString(): string {
@@ -122,96 +24,20 @@ function getTodayDateString(): string {
 }
 
 const INITIAL_SERVICES: ClinicService[] = [
-  {
-    id: 'srv_dent_exam',
-    clinicId: 'dentistry',
-    name: 'كشف وتشخيص أسنان الأطفال',
-    requiredDocuments: ['أصل شهادة ميلاد الطفل أو بطاقة التأمين الصحي', 'أي أشعة سينية أو بانوراما سابقة للأسنان إن وجدت'],
-    instructions: 'DRAFT — requires approval from the hospital\'s physicians. يرجى تنظيف أسنان وفم الطفل بالفرشاة والمعجون جيداً قبل الحضور. الحضور صباحاً والتسجيل بأسبقية الحضور لشباك الاستقبال بالمستشفى. التعليمات الخاصة بالصيام أو الأدوية تُحدد من الطبيب المعالج، يرجى الاتصال بالمستشفى للتأكد قبل الحضور.',
-    isActive: true,
-    displayOrder: 1,
-  },
-  {
-    id: 'srv_dent_pulp',
-    clinicId: 'dentistry',
-    name: 'علاج العصب والحشو الوقائي للأطفال',
-    requiredDocuments: ['شهادة ميلاد الطفل', 'الأشعة السابقة وفحوصات الأسنان'],
-    instructions: 'DRAFT — requires approval from the hospital\'s physicians. الحضور صباحاً والتسجيل بأسبقية الحضور لشباك الاستقبال بالمستشفى لإنهاء تسجيل التذكرة. التعليمات الخاصة بالصيام أو الأدوية تُحدد من الطبيب المعالج، يرجى الاتصال بالمستشفى للتأكد قبل الحضور.',
-    isActive: true,
-    displayOrder: 2,
-  },
-  {
-    id: 'srv_echo_standard',
-    clinicId: 'echo',
-    name: 'فحص موجات فوق صوتية على قلب الأطفال (إيكو)',
-    requiredDocuments: ['أصل شهادة ميلاد الطفل', 'تقرير الطبيب المعالج المحول للفحص', 'أي فحوصات أو تقارير إيكو سابقة'],
-    instructions: 'DRAFT — requires approval from the hospital\'s physicians. ارتداء ملابس خفيفة يسهل فتحها من منطقة الصدر لتيسير التصوير. الحضور صباحاً والتسجيل بأسبقية الحضور لشباك الاستقبال بالمستشفى مع الحرص على هدوء الطفل. التعليمات الخاصة بالصيام أو الأدوية تُحدد من الطبيب المعالج، يرجى الاتصال بالمستشفى للتأكد قبل الحضور.',
-    isActive: true,
-    displayOrder: 1,
-  },
-  {
-    id: 'srv_cardio_exam',
-    clinicId: 'cardio',
-    name: 'مناظرة وكشف قلب الأطفال والعيوب الخلقية',
-    requiredDocuments: ['أصل شهادة ميلاد الطفل', 'رسم قلب (ECG) حديث إن وجد', 'تقارير الإيكو والفحوصات القلبية السابقة'],
-    instructions: 'DRAFT — requires approval from the hospital\'s physicians. قياس العلامات الحيوية بغرفة الفحص الأولي أولاً. الحضور صباحاً والتسجيل بأسبقية الحضور لشباك الاستقبال بالمستشفى. التعليمات الخاصة بالصيام أو الأدوية تُحدد من الطبيب المعالج، يرجى الاتصال بالمستشفى للتأكد قبل الحضور.',
-    isActive: true,
-    displayOrder: 1,
-  },
-  {
-    id: 'srv_surg_consult',
-    clinicId: 'surgery',
-    name: 'مناظرة وتقييم جراحة الأطفال العامة',
-    requiredDocuments: ['أصل شهادة ميلاد الطفل ودفتر التطعيمات', 'فحوصات السونار والتحاليل المعملية السابقة'],
-    instructions: 'DRAFT — requires approval from the hospital\'s physicians. ارتداء ملابس فضفاضة لتسهيل الفحص السريري. الحضور صباحاً والتسجيل بأسبقية الحضور لشباك الاستقبال بالمستشفى. التعليمات الخاصة بالصيام أو الأدوية تُحدد من الطبيب المعالج، يرجى الاتصال بالمستشفى للتأكد قبل الحضور.',
-    isActive: true,
-    displayOrder: 1,
-  },
-  {
-    id: 'srv_surg_hernia',
-    clinicId: 'surgery',
-    name: 'متابعة حالات الفتق والخصية المعلقة وجراحات البطن',
-    requiredDocuments: ['شهادة ميلاد الطفل', 'تقارير السونار والعمليات الجراحية السابقة إن وجدت'],
-    instructions: 'DRAFT — requires approval from the hospital\'s physicians. الحضور صباحاً والتسجيل بأسبقية الحضور لشباك الاستقبال بالمستشفى. التعليمات الخاصة بالصيام أو الأدوية تُحدد من الطبيب المعالج، يرجى الاتصال بالمستشفى للتأكد قبل الحضور.',
-    isActive: true,
-    displayOrder: 2,
-  },
-  {
-    id: 'srv_gi_consult',
-    clinicId: 'gi',
-    name: 'كشف أمراض الجهاز الهضمي والكبد وسوء الامتصاص',
-    requiredDocuments: ['أصل شهادة ميلاد الطفل', 'تحاليل الدم ووظائف الكبد السابقة', 'تقارير سونار البطن إن وجدت'],
-    instructions: 'DRAFT — requires approval from the hospital\'s physicians. الحضور صباحاً والتسجيل بأسبقية الحضور لشباك الاستقبال بالمستشفى. التعليمات الخاصة بالصيام أو الأدوية تُحدد من الطبيب المعالج، يرجى الاتصال بالمستشفى للتأكد قبل الحضور.',
-    isActive: true,
-    displayOrder: 1,
-  },
-  {
-    id: 'srv_neuro_consult',
-    clinicId: 'neuro',
-    name: 'كشف المخ والأعصاب ومتابعة التشنجات والصرع',
-    requiredDocuments: ['أصل شهادة ميلاد الطفل ودفتر التطعيمات', 'أصل رسم المخ (EEG) وصور الرنين المغناطيسي (MRI) إن وجدت'],
-    instructions: 'DRAFT — requires approval from the hospital\'s physicians. إحضار أي مقاطع فيديو موثقة للحركات غير الطبيعية بالهاتف. الحضور صباحاً والتسجيل بأسبقية الحضور لشباك الاستقبال بالمستشفى. التعليمات الخاصة بالصيام أو الأدوية تُحدد من الطبيب المعالج، يرجى الاتصال بالمستشفى للتأكد قبل الحضور.',
-    isActive: true,
-    displayOrder: 1,
-  },
-  {
-    id: 'srv_audio_abr',
-    clinicId: 'audiology',
-    name: 'فحص وقياس استجابة السمع بجذع المخ (ABR)',
-    requiredDocuments: ['أصل شهادة ميلاد الطفل', 'نتائج فحص المسح السمعي لحديثي الولادة'],
-    instructions: 'DRAFT — requires approval from the hospital\'s physicians. التأكد من نظافة أذن الطفل التامة قبل الفحص. في قياس ABR يفضل أن يكون الرضيع في نوم عميق. الحضور صباحاً والتسجيل بأسبقية الحضور لشباك الاستقبال بالمستشفى. التعليمات الخاصة بالصيام أو الأدوية تُحدد من الطبيب المعالج، يرجى الاتصال بالمستشفى للتأكد قبل الحضور.',
-    isActive: true,
-    displayOrder: 1,
-  },
-  {
-    id: 'srv_nutr_assess',
-    clinicId: 'nutrition',
-    name: 'تقييم التغذية العلاجية ومتابعة النمو وحساسية الطعام',
-    requiredDocuments: ['شهادة ميلاد الطفل ودفتر التطعيمات الموثق به الوزن والطول منذ الولادة', 'تحاليل صورة الدم الشاملة وفيتامين د إن وجدت'],
-    instructions: 'DRAFT — requires approval from the hospital\'s physicians. الحضور صباحاً والتسجيل بأسبقية الحضور لشباك الاستقبال بالمستشفى لتسجيل القياسات الحيوية. التعليمات الخاصة بالصيام أو الأدوية تُحدد من الطبيب المعالج، يرجى الاتصال بالمستشفى للتأكد قبل الحضور.',
-    isActive: true,
-    displayOrder: 1,
-  },
+  { id: 'gi_first_visit', clinicId: 'gi', name: 'كشف أول مرة', requiredDocuments: ['صورة بطاقة الأب والأم', 'شهادة ميلاد كمبيوتر', 'تقارير الطفل'], instructions: 'يرجى إحضار المستندات والتقارير المذكورة عند الحضور.', maxDailyCapacity: 75, isWalkInOnly: false, isActive: true, displayOrder: 1 },
+  { id: 'gi_follow_up', clinicId: 'gi', name: 'متابعة', requiredDocuments: ['صورة بطاقة الأب والأم', 'شهادة ميلاد كمبيوتر', 'تقارير الطفل'], instructions: 'يرجى إحضار المستندات والتقارير المذكورة عند الحضور.', maxDailyCapacity: 75, isWalkInOnly: false, isActive: true, displayOrder: 2 },
+  { id: 'nutrition_first_visit', clinicId: 'nutrition', name: 'كشف أول مرة', requiredDocuments: ['صورة بطاقة الأب والأم', 'شهادة ميلاد كمبيوتر', 'تقارير الطفل'], instructions: 'يرجى إحضار المستندات والتقارير المذكورة عند الحضور.', maxDailyCapacity: 50, isWalkInOnly: false, isActive: true, displayOrder: 1 },
+  { id: 'nutrition_follow_up', clinicId: 'nutrition', name: 'متابعة', requiredDocuments: ['صورة بطاقة الأب والأم', 'شهادة ميلاد كمبيوتر', 'تقارير الطفل'], instructions: 'يرجى إحضار المستندات والتقارير المذكورة عند الحضور.', maxDailyCapacity: 50, isWalkInOnly: false, isActive: true, displayOrder: 2 },
+  { id: 'neuro_first_visit', clinicId: 'neuro', name: 'كشف أول مرة', requiredDocuments: [], instructions: 'لا توجد أوراق محددة حاليًا. الحضور في الموعد المحدد.', maxDailyCapacity: 15, isWalkInOnly: false, isActive: true, displayOrder: 1 },
+  { id: 'neuro_follow_up', clinicId: 'neuro', name: 'متابعة', requiredDocuments: [], instructions: 'لا توجد أوراق محددة حاليًا. الحضور في الموعد المحدد.', maxDailyCapacity: 15, isWalkInOnly: false, isActive: true, displayOrder: 2 },
+  { id: 'dentistry_extraction', clinicId: 'dentistry', name: 'خلع', requiredDocuments: ['صورة بطاقة الأب أو الأم'], instructions: 'يرجى إحضار صورة بطاقة الأب أو الأم.', maxDailyCapacity: 4, isWalkInOnly: false, isActive: true, displayOrder: 1 },
+  { id: 'dentistry_filling', clinicId: 'dentistry', name: 'حشو', requiredDocuments: ['صورة بطاقة الأب أو الأم'], instructions: 'يرجى إحضار صورة بطاقة الأب أو الأم.', maxDailyCapacity: 4, isWalkInOnly: false, isActive: true, displayOrder: 2 },
+  { id: 'echo_first_visit', clinicId: 'echo', name: 'كشف أول مرة', requiredDocuments: [], instructions: 'الحضور الساعة 8:30 صباحًا أمام عيادة القلب بالدور الرابع.\n\nللأطفال من 6 شهور حتى 3 سنوات: قد يُطلب تجهيز الطفل بمادة كلورال هيدرات تحت إشراف طبيب عيادة القلب حسب الحالة.\n\nيجب أن يكون الطفل خاليًا من أعراض البرد.\n\nإيقاظ الطفل مبكرًا وعدم السماح له بالنوم في الطريق حتى يمكنه النوم أثناء الفحص عند الحاجة.', maxDailyCapacity: 5, isWalkInOnly: false, isActive: true, displayOrder: 1 },
+  { id: 'echo_follow_up', clinicId: 'echo', name: 'متابعة', requiredDocuments: [], instructions: 'الحضور الساعة 8:30 صباحًا أمام عيادة القلب بالدور الرابع.\n\nللأطفال من 6 شهور حتى 3 سنوات: قد يُطلب تجهيز الطفل بمادة كلورال هيدرات تحت إشراف طبيب عيادة القلب حسب الحالة.\n\nيجب أن يكون الطفل خاليًا من أعراض البرد.\n\nإيقاظ الطفل مبكرًا وعدم السماح له بالنوم في الطريق حتى يمكنه النوم أثناء الفحص عند الحاجة.', maxDailyCapacity: 5, isWalkInOnly: false, isActive: true, displayOrder: 2 },
+  { id: 'audiology_abr', clinicId: 'audiology', name: 'رسم سمع كمبيوتر عن طريق جذع المخ — 3 حالات', requiredDocuments: [], instructions: 'العمر أكبر من 3 شهور وأقل من 5 سنوات، مع استثناء حالات التأخر العقلي أو تأخر الكلام. يجب التأكد من عدم وجود كحة أو رشح/نزلة برد أو ارتفاع درجة الحرارة. تعليمات النوم والتحضير والكلورال هيدرات تظهر في التذكرة.', maxDailyCapacity: 3, isWalkInOnly: false, isActive: true, displayOrder: 1 },
+  { id: 'audiology_tone_test', clinicId: 'audiology', name: 'رسم سمع للسن 5 سنوات فأكثر — 5 حالات', requiredDocuments: [], instructions: 'يشترط أن يكون العمر 5 سنوات فأكثر، مع التأكد من عدم وجود أعراض برد أو ارتفاع درجة الحرارة. الحضور بحد أقصى الساعة 8:30 صباحًا.', maxDailyCapacity: 5, isWalkInOnly: false, isActive: true, displayOrder: 2 },
+  { id: 'audiology_ear_pressure', clinicId: 'audiology', name: 'حالات ضغط الأذن — حضور مباشر', requiredDocuments: [], instructions: 'حضور مباشر فقط — لا يتم الحجز الإلكتروني. يسجلها موظف الاستقبال أو مدير النظام في نفس اليوم.', isWalkInOnly: true, isActive: true, displayOrder: 3 },
+  { id: 'audiology_newborn_referral', clinicId: 'audiology', name: 'حالات محولة من الوحدات الصحية للمواليد ضمن مبادرة السمع — حضور مباشر', requiredDocuments: [], instructions: 'حضور مباشر فقط — لا يتم الحجز الإلكتروني. يسجلها موظف الاستقبال أو مدير النظام في نفس اليوم.', isWalkInOnly: true, isActive: true, displayOrder: 4 },
 ];
 
 const INITIAL_APPOINTMENTS: Appointment[] = [
@@ -386,6 +212,7 @@ class AppointmentServiceStore {
             requiredDocuments: s.required_documents || [],
             instructions: s.instructions || '',
             maxDailyCapacity: s.max_daily_capacity !== null && s.max_daily_capacity !== undefined ? Number(s.max_daily_capacity) : undefined,
+            isWalkInOnly: Boolean(s.is_walk_in_only),
             isActive: s.is_active,
             displayOrder: s.display_order,
             createdAt: s.created_at,
@@ -427,6 +254,7 @@ class AppointmentServiceStore {
       ],
       instructions: input.instructions?.trim() || 'الحضور صباحاً والتسجيل بأسبقية الحضور لشباك الاستقبال بالمستشفى.',
       maxDailyCapacity: input.maxDailyCapacity !== undefined && input.maxDailyCapacity !== null ? Number(input.maxDailyCapacity) : undefined,
+      isWalkInOnly: input.isWalkInOnly ?? false,
       isActive: input.isActive ?? true,
       displayOrder: input.displayOrder ?? (this.services.length + 1),
       createdAt: new Date().toISOString(),
@@ -443,6 +271,7 @@ class AppointmentServiceStore {
           required_documents: newService.requiredDocuments,
           instructions: newService.instructions,
           max_daily_capacity: newService.maxDailyCapacity ?? null,
+          is_walk_in_only: newService.isWalkInOnly ?? false,
           is_active: newService.isActive,
           display_order: newService.displayOrder,
         });
@@ -484,6 +313,7 @@ class AppointmentServiceStore {
             required_documents: updates.requiredDocuments ?? service.requiredDocuments,
             instructions: updates.instructions ?? service.instructions,
             max_daily_capacity: updates.maxDailyCapacity !== undefined ? (updates.maxDailyCapacity ? Number(updates.maxDailyCapacity) : null) : (service.maxDailyCapacity ?? null),
+            is_walk_in_only: updates.isWalkInOnly ?? service.isWalkInOnly ?? false,
             is_active: updates.isActive ?? service.isActive,
             display_order: updates.displayOrder ?? service.displayOrder,
             updated_at: new Date().toISOString(),
@@ -504,6 +334,7 @@ class AppointmentServiceStore {
       service.maxDailyCapacity = updates.maxDailyCapacity ? Number(updates.maxDailyCapacity) : undefined;
     }
     if (updates.isActive !== undefined) service.isActive = updates.isActive;
+    if (updates.isWalkInOnly !== undefined) service.isWalkInOnly = updates.isWalkInOnly;
     if (updates.displayOrder !== undefined) service.displayOrder = updates.displayOrder;
     service.updatedAt = new Date().toISOString();
 
@@ -1161,6 +992,17 @@ class AppointmentServiceStore {
       matchedService = clinicServices.find((s) => s.isActive) || clinicServices[0];
     }
     const resolvedServiceName = input.serviceName || matchedService?.name || 'كشف واستشارة طبية';
+
+    // Direct-attendance services are visible to patients for guidance only.
+    // Only a receptionist/admin may book them, and only for the current day.
+    if (matchedService?.isWalkInOnly) {
+      if (!input.isWalkIn || !input.staffUserId) {
+        return { success: false, error: 'هذه الخدمة بالحضور المباشر فقط ولا يتم الحجز الإلكتروني بها.' };
+      }
+      if (input.appointmentDate !== todayCairo) {
+        return { success: false, error: 'خدمة الحضور المباشر تُسجل في نفس اليوم فقط.' };
+      }
+    }
 
     // Check per-service capacity if defined
     if (matchedService?.maxDailyCapacity) {
