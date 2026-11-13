@@ -3,9 +3,10 @@
 -- Migration: 20261113000000
 --
 -- Client-reported fixes (defense in depth: DB constraints + RPC + app layer):
---   1. One active booking per (phone + child + day) across ALL clinics, with
---      Arabic-aware name normalization (أحمد == احمد, فاطمة == فاطمه, ...).
---      Message: "يوجد حجز بنفس الرقم لنفس الطفل في نفس اليوم"
+--   1. One active booking per (phone + date of birth + day) across ALL clinics.
+--      Rows without a DOB (legacy) fall back to Arabic-aware name normalization
+--      (أحمد == احمد, فاطمة == فاطمه, ...). Siblings with distinct DOBs stay allowed.
+--      Message: "يوجد حجز بنفس الرقم لنفس الميلاد"
 --   2. Bookings require a REAL active service belonging to the chosen clinic.
 --      No silent substitution of default/hardcoded services.
 --   3. Clinic transfer requires selecting a destination service; the stored
@@ -135,75 +136,77 @@ ALTER TABLE public.appointments
   CHECK (date_of_birth IS NULL OR date_of_birth >= DATE '1900-01-01');
 
 -- ------------------------------------------------------------------------
--- 4. Cross-clinic duplicate guard: one active booking per phone+child+day
---    (subsumes the previous per-clinic index; siblings with distinct names
---    on the same guardian phone remain allowed)
+-- 4. Cross-clinic duplicate guard: one active booking per phone+DOB+day.
+--    Legacy rows without a DOB fall back to phone+normalized-name+day.
+--    Siblings sharing a guardian phone but with distinct DOBs remain allowed.
 -- ------------------------------------------------------------------------
 
 DO $$
 DECLARE
   v_conflict_groups INTEGER;
-  v_sample_refs TEXT;
 BEGIN
   SELECT COUNT(*) INTO v_conflict_groups
   FROM (
     SELECT 1
     FROM public.appointments
-    WHERE status != 'CANCELLED'
+    WHERE status != 'CANCELLED' AND date_of_birth IS NOT NULL
+    GROUP BY phone_number, date_of_birth, appointment_date
+    HAVING COUNT(*) > 1
+    UNION ALL
+    SELECT 1
+    FROM public.appointments
+    WHERE status != 'CANCELLED' AND date_of_birth IS NULL
     GROUP BY phone_number, public.normalize_patient_name(patient_name), appointment_date
     HAVING COUNT(*) > 1
   ) duplicates;
 
   IF v_conflict_groups > 0 THEN
-    SELECT string_agg(reference_number, ', ') INTO v_sample_refs
-    FROM (
-      SELECT a.reference_number
-      FROM public.appointments a
-      JOIN (
-        SELECT phone_number, public.normalize_patient_name(patient_name) AS nname, appointment_date
-        FROM public.appointments
-        WHERE status != 'CANCELLED'
-        GROUP BY 1, 2, 3
-        HAVING COUNT(*) > 1
-      ) d
-        ON a.phone_number = d.phone_number
-       AND public.normalize_patient_name(a.patient_name) = d.nname
-       AND a.appointment_date = d.appointment_date
-      WHERE a.status != 'CANCELLED'
-      ORDER BY a.appointment_date, a.reference_number
-      LIMIT 10
-    ) sample;
-
     RAISE EXCEPTION
-      'BSCH migration blocked: % group(s) of existing active appointments violate the new one-booking-per-child-per-day rule (same phone + same child + same day, across clinics). Cancel the duplicate bookings through the official cancellation flow, then re-run this migration. Sample reference numbers: %',
-      v_conflict_groups, v_sample_refs;
+      'BSCH migration blocked: % group(s) of existing active appointments violate the one-booking-per-child-per-day rule (same phone + same date of birth, or same phone + same child for legacy rows, + same day, across clinics). Cancel the duplicate bookings through the official cancellation flow, then re-run this migration.',
+      v_conflict_groups;
   END IF;
 END;
 $$;
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_apt_per_phone_patient_day
+-- DOB-authoritative guard for modern rows.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_apt_per_phone_dob_day
+  ON public.appointments (
+    phone_number,
+    date_of_birth,
+    appointment_date
+  )
+  WHERE (status != 'CANCELLED' AND date_of_birth IS NOT NULL);
+
+-- Name-based fallback guard for legacy rows that predate the DOB column.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_apt_per_phone_name_day
   ON public.appointments (
     phone_number,
     public.normalize_patient_name(patient_name),
     appointment_date
   )
-  WHERE (status != 'CANCELLED');
+  WHERE (status != 'CANCELLED' AND date_of_birth IS NULL);
 
--- Safe swap: drop the superseded per-clinic index only after the new index
--- is confirmed valid (same pattern as migration 20261101020000).
+-- Safe swap: drop the superseded per-clinic index only after BOTH new indexes
+-- are confirmed valid (same pattern as migration 20261101020000).
 DO $$
 DECLARE
-  v_index_valid BOOLEAN;
+  v_dob_valid BOOLEAN;
+  v_name_valid BOOLEAN;
 BEGIN
-  SELECT i.indisvalid INTO v_index_valid
+  SELECT i.indisvalid INTO v_dob_valid
   FROM pg_class c
   JOIN pg_index i ON i.indexrelid = c.oid
-  WHERE c.relname = 'idx_unique_active_apt_per_phone_patient_day';
+  WHERE c.relname = 'idx_unique_active_apt_per_phone_dob_day';
 
-  IF v_index_valid THEN
+  SELECT i.indisvalid INTO v_name_valid
+  FROM pg_class c
+  JOIN pg_index i ON i.indexrelid = c.oid
+  WHERE c.relname = 'idx_unique_active_apt_per_phone_name_day';
+
+  IF v_dob_valid AND v_name_valid THEN
     DROP INDEX IF EXISTS public.idx_unique_active_apt_per_phone_patient_clinic_day;
   ELSE
-    RAISE WARNING 'Safety check: idx_unique_active_apt_per_phone_patient_day is not valid. Preserving the previous per-clinic index.';
+    RAISE WARNING 'Safety check: one of the new duplicate-guard indexes is not valid. Preserving the previous per-clinic index.';
   END IF;
 END;
 $$;
@@ -338,16 +341,22 @@ BEGIN
     v_effective_capacity := v_clinic.max_daily_slots;
   END IF;
 
-  -- 5. Duplicate reservation check: ONE active booking per phone + child + day
-  --    across ALL clinics. Siblings (distinct normalized names) stay allowed.
+  -- 5. Duplicate reservation check: ONE active booking per phone + DOB + day
+  --    across ALL clinics. When either side lacks a DOB (legacy), fall back to
+  --    the normalized child name. Siblings with distinct DOBs stay allowed.
   IF EXISTS (
-    SELECT 1 FROM public.appointments
-    WHERE phone_number = v_clean_phone
-      AND appointment_date = p_appointment_date
-      AND public.normalize_patient_name(patient_name) = v_normalized_name
-      AND status != 'CANCELLED'
+    SELECT 1 FROM public.appointments a
+    WHERE a.phone_number = v_clean_phone
+      AND a.appointment_date = p_appointment_date
+      AND a.status != 'CANCELLED'
+      AND (
+        (p_date_of_birth IS NOT NULL AND a.date_of_birth IS NOT NULL
+          AND a.date_of_birth = p_date_of_birth)
+        OR ((p_date_of_birth IS NULL OR a.date_of_birth IS NULL)
+          AND public.normalize_patient_name(a.patient_name) = v_normalized_name)
+      )
   ) THEN
-    RETURN jsonb_build_object('success', false, 'error', 'يوجد حجز بنفس الرقم لنفس الطفل في نفس اليوم. لا يمكن تسجيل أكثر من حجز نشط لنفس الطفل بنفس رقم الهاتف خلال نفس اليوم في أي عيادة.');
+    RETURN jsonb_build_object('success', false, 'error', 'يوجد حجز بنفس الرقم لنفس الميلاد.');
   END IF;
 
   -- 6. Clinic daily capacity check
@@ -509,10 +518,11 @@ BEGIN
         END IF;
         v_next_val := nextval('public.seq_appointment_reference_number');
         v_ref := 'BSCH-' || CASE WHEN v_next_val < 10000 THEN lpad(v_next_val::text, 4, '0') ELSE v_next_val::text END;
-      ELSIF v_constraint_name = 'idx_unique_active_apt_per_phone_patient_day'
+      ELSIF v_constraint_name = 'idx_unique_active_apt_per_phone_dob_day'
+         OR v_constraint_name = 'idx_unique_active_apt_per_phone_name_day'
          OR v_constraint_name = 'idx_unique_active_apt_per_phone_patient_clinic_day'
          OR v_constraint_name = 'idx_unique_active_apt_per_phone_clinic_day' THEN
-        RETURN jsonb_build_object('success', false, 'error', 'يوجد حجز بنفس الرقم لنفس الطفل في نفس اليوم. لا يمكن تسجيل أكثر من حجز نشط لنفس الطفل بنفس رقم الهاتف خلال نفس اليوم في أي عيادة.');
+        RETURN jsonb_build_object('success', false, 'error', 'يوجد حجز بنفس الرقم لنفس الميلاد.');
       ELSE
         RETURN jsonb_build_object('success', false, 'error', 'يوجد تعارض مع حجز مسجل مسبقاً (' || COALESCE(v_constraint_name, 'unique violation') || ').');
       END IF;
@@ -722,6 +732,24 @@ BEGIN
   v_transfer_note := format('تم التحويل من عيادة [%s] إلى عيادة [%s] - خدمة [%s] برقم دور جديد (#%s). السبب: %s',
     v_apt.clinic_name, v_target_clinic.name, v_target_service.name, v_new_queue_number, COALESCE(p_reason, 'تحويل طبي داخلي'));
 
+  -- 5b. Cross-clinic duplicate guard: another active booking for the same
+  --     phone + DOB (or legacy normalized name) + day must block the transfer.
+  IF EXISTS (
+    SELECT 1 FROM public.appointments a
+    WHERE a.id != v_apt.id
+      AND a.phone_number = v_apt.phone_number
+      AND a.appointment_date = v_apt.appointment_date
+      AND a.status != 'CANCELLED'
+      AND (
+        (v_apt.date_of_birth IS NOT NULL AND a.date_of_birth IS NOT NULL
+          AND a.date_of_birth = v_apt.date_of_birth)
+        OR ((v_apt.date_of_birth IS NULL OR a.date_of_birth IS NULL)
+          AND public.normalize_patient_name(a.patient_name) = public.normalize_patient_name(v_apt.patient_name))
+      )
+  ) THEN
+    RETURN jsonb_build_object('success', false, 'error', 'يوجد حجز بنفس الرقم لنفس الميلاد. لا يمكن التحويل لوجود حجز نشط آخر بنفس الرقم والميلاد في هذا اليوم.');
+  END IF;
+
   -- 6. Atomic update; the cross-clinic unique index can reject legacy
   --    same-child-same-day data with a friendly message instead of a 500.
   BEGIN
@@ -737,7 +765,7 @@ BEGIN
 
     GET DIAGNOSTICS v_rows_updated = ROW_COUNT;
   EXCEPTION WHEN unique_violation THEN
-    RETURN jsonb_build_object('success', false, 'error', 'يوجد حجز بنفس الرقم لنفس الطفل في نفس اليوم. لا يمكن التحويل لوجود حجز نشط آخر لنفس الطفل بنفس الرقم في هذا اليوم.');
+    RETURN jsonb_build_object('success', false, 'error', 'يوجد حجز بنفس الرقم لنفس الميلاد. لا يمكن التحويل لوجود حجز نشط آخر بنفس الرقم والميلاد في هذا اليوم.');
   END;
 
   IF v_rows_updated != 1 THEN

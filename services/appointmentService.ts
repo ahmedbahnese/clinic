@@ -1103,6 +1103,29 @@ class AppointmentServiceStore {
     });
   }
 
+  // One active booking per (phone + DOB + day) across all clinics. When either
+  // side lacks a DOB (legacy rows), fall back to the normalized child name so
+  // siblings with distinct DOBs remain allowed while true duplicates are blocked.
+  private isSameChildDuplicate(
+    existing: Appointment,
+    phoneNumber: string,
+    appointmentDate: string,
+    patientName: string,
+    dateOfBirth?: string
+  ): boolean {
+    if (
+      existing.phoneNumber !== phoneNumber ||
+      existing.appointmentDate !== appointmentDate ||
+      existing.status === 'CANCELLED'
+    ) {
+      return false;
+    }
+    if (dateOfBirth && existing.dateOfBirth) {
+      return existing.dateOfBirth === dateOfBirth;
+    }
+    return normalizePatientName(existing.patientName) === normalizePatientName(patientName);
+  }
+
   public async createAppointment(input: CreateAppointmentInput): Promise<{
     success: boolean;
     appointment?: Appointment;
@@ -1285,8 +1308,8 @@ class AppointmentServiceStore {
           const msg = error.message || '';
           return {
             success: false,
-            error: msg.includes('duplicate') || msg.includes('مسبق') || msg.includes('بنفس الرقم')
-              ? 'يوجد حجز بنفس الرقم لنفس الطفل في نفس اليوم. لا يمكن تسجيل أكثر من حجز نشط لنفس الطفل بنفس رقم الهاتف خلال نفس اليوم في أي عيادة.'
+            error: msg.includes('duplicate') || msg.includes('مسبق') || msg.includes('بنفس الرقم') || msg.includes('بنفس الميلاد')
+              ? 'يوجد حجز بنفس الرقم لنفس الميلاد.'
               : 'فشل في تسجيل الحجز في قاعدة البيانات المركزية، يرجى المحاولة لاحقاً.',
           };
         }
@@ -1396,20 +1419,22 @@ class AppointmentServiceStore {
     }
 
     // Local memory transaction check fallback. The duplicate rule spans ALL
-    // clinics: one active booking per (phone + normalized child name + day).
-    // Siblings sharing a guardian phone but with different names are allowed.
-    const normalizedInputName = normalizePatientName(input.patientName);
-    const existing = this.appointments.find(
-      (a) =>
-        a.phoneNumber === phoneCheck.normalized &&
-        a.appointmentDate === input.appointmentDate &&
-        normalizePatientName(a.patientName) === normalizedInputName &&
-        a.status !== 'CANCELLED'
+    // clinics: one active booking per (phone + DOB + day), falling back to the
+    // normalized child name for legacy rows without a DOB. Siblings sharing a
+    // guardian phone but with distinct DOBs are allowed.
+    const existing = this.appointments.find((a) =>
+      this.isSameChildDuplicate(
+        a,
+        phoneCheck.normalized,
+        input.appointmentDate,
+        input.patientName,
+        input.dateOfBirth
+      )
     );
     if (existing) {
       return {
         success: false,
-        error: `يوجد حجز مسبق بالفعل بنفس الرقم لنفس الطفل في نفس اليوم (${existing.clinicName}) برقم مرجعي (${existing.referenceNumber}). لا يمكن تسجيل أكثر من حجز نشط لنفس الطفل بنفس رقم الهاتف خلال نفس اليوم في أي عيادة.`,
+        error: `يوجد حجز بنفس الرقم لنفس الميلاد (${existing.clinicName}) برقم مرجعي (${existing.referenceNumber}). لا يمكن تسجيل أكثر من حجز نشط بنفس الرقم والميلاد خلال نفس اليوم في أي عيادة.`,
       };
     }
 
@@ -2274,20 +2299,16 @@ class AppointmentServiceStore {
     }
 
     // Cross-clinic duplicate guard: the child must not already hold another
-    // active booking (same phone + normalized name + day) in any clinic.
-    const normalizedAptName = normalizePatientName(apt.patientName);
+    // active booking (same phone + DOB, or legacy name, + day) in any clinic.
     const duplicateElsewhere = this.appointments.find(
       (a) =>
         a.id !== apt.id &&
-        a.phoneNumber === apt.phoneNumber &&
-        a.appointmentDate === apt.appointmentDate &&
-        normalizePatientName(a.patientName) === normalizedAptName &&
-        a.status !== 'CANCELLED'
+        this.isSameChildDuplicate(a, apt.phoneNumber, apt.appointmentDate, apt.patientName, apt.dateOfBirth)
     );
     if (duplicateElsewhere) {
       return {
         success: false,
-        error: `يوجد حجز بنفس الرقم لنفس الطفل في نفس اليوم (${duplicateElsewhere.clinicName}) برقم مرجعي (${duplicateElsewhere.referenceNumber}). لا يمكن تحويل الحجز مع وجود حجز نشط آخر لنفس الطفل خلال نفس اليوم.`,
+        error: `يوجد حجز بنفس الرقم لنفس الميلاد (${duplicateElsewhere.clinicName}) برقم مرجعي (${duplicateElsewhere.referenceNumber}). لا يمكن تحويل الحجز مع وجود حجز نشط آخر بنفس الرقم والميلاد خلال نفس اليوم.`,
       };
     }
 

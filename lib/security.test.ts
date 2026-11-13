@@ -163,7 +163,7 @@ test('Security 6: Duplicate active reservation in same clinic on same date is bl
     appointmentDate: date,
   });
   assert.equal(second.success, false);
-  assert.match(second.error || '', /يوجد حجز مسبق بالفعل/, 'Duplicate booking for same patient on same date must be rejected');
+  assert.match(second.error || '', /يوجد حجز بنفس الرقم لنفس الميلاد/, 'Duplicate booking for same patient on same date must be rejected');
 
   // Third booking for a sibling with a different name sharing the same phone must SUCCEED
   const sibling = await appointmentStore.createAppointment({
@@ -1821,27 +1821,29 @@ test('Security 64: Booking Integrity Migration - cross-clinic duplicate index, D
   assert.ok(content.includes('chk_appointments_dob_not_after_visit'), 'DOB must not be after visit date');
   assert.ok(content.includes('chk_appointments_dob_plausible'), 'DOB plausibility check must exist');
 
-  // 3. Cross-clinic partial unique index (phone + normalized name + day, active only)
-  const newIndexIdx = content.indexOf('CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_apt_per_phone_patient_day');
-  assert.ok(newIndexIdx !== -1, 'Cross-clinic unique index must be created');
-  assert.ok(content.includes('public.normalize_patient_name(patient_name)'), 'Index must use normalized patient name');
-  assert.ok(/WHERE\s*\(status\s*!=\s*'CANCELLED'\)/.test(content), 'Index must be partial on active bookings');
+  // 3. Cross-clinic partial unique indexes: DOB-authoritative + legacy name fallback
+  const dobIndexIdx = content.indexOf('CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_apt_per_phone_dob_day');
+  const nameIndexIdx = content.indexOf('CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_apt_per_phone_name_day');
+  assert.ok(dobIndexIdx !== -1, 'DOB-based cross-clinic unique index must be created');
+  assert.ok(nameIndexIdx !== -1, 'Legacy name-based cross-clinic unique index must be created');
+  assert.ok(content.includes('public.normalize_patient_name(patient_name)'), 'Legacy index must use normalized patient name');
+  assert.ok(/WHERE\s*\(status\s*!=\s*'CANCELLED'/.test(content), 'Indexes must be partial on active bookings');
 
   // 4. Fail-closed precheck for legacy duplicates BEFORE index creation (no silent data loss)
   const precheckIdx = content.indexOf('RAISE EXCEPTION');
-  assert.ok(precheckIdx !== -1 && precheckIdx < newIndexIdx, 'Legacy duplicate precheck must abort before creating the index');
+  assert.ok(precheckIdx !== -1 && precheckIdx < dobIndexIdx, 'Legacy duplicate precheck must abort before creating the indexes');
 
-  // 5. Safe index swap: old per-clinic index dropped only after new index is validated
+  // 5. Safe index swap: old per-clinic index dropped only after new indexes are validated
   const dropOldIdx = content.indexOf('DROP INDEX IF EXISTS public.idx_unique_active_apt_per_phone_patient_clinic_day');
   assert.ok(dropOldIdx !== -1, 'Old per-clinic index must be dropped');
-  assert.ok(newIndexIdx < dropOldIdx, 'New index must be created before the old one is dropped');
+  assert.ok(dobIndexIdx < dropOldIdx && nameIndexIdx < dropOldIdx, 'New indexes must be created before the old one is dropped');
   assert.ok(content.includes('indisvalid'), 'Swap must verify new index validity');
 
   // 6. Booking RPC: new 12-param signature with DOB, old 11-param dropped
   assert.ok(content.includes('DROP FUNCTION IF EXISTS public.book_appointment_atomic(TEXT, TEXT, TEXT, TEXT, TEXT, DATE, TEXT, TEXT, TEXT, TEXT, UUID)'), 'Old booking RPC overload must be dropped');
   assert.ok(content.includes('p_date_of_birth DATE DEFAULT NULL'), 'Booking RPC must accept date of birth');
   assert.ok(content.includes('يجب اختيار خدمة فعلية تابعة للعيادة'), 'Booking RPC must require a real clinic service');
-  assert.ok(content.includes('بنفس الرقم لنفس الطفل في نفس اليوم'), 'Booking RPC must surface the cross-clinic duplicate note');
+  assert.ok(content.includes('بنفس الرقم لنفس الميلاد'), 'Booking RPC must surface the cross-clinic duplicate note');
 
   // 7. Transfer RPC: new 5-param signature with mandatory target service, old 4-param dropped
   assert.ok(content.includes('DROP FUNCTION IF EXISTS public.transfer_appointment_clinic_atomic(TEXT, TEXT, UUID, TEXT)'), 'Old transfer RPC overload must be dropped');
@@ -1878,8 +1880,13 @@ test('Security 66: Store never substitutes demo services when the central databa
   assert.match(store, /يجب اختيار خدمة فعلية تابعة للعيادة قبل تسجيل الحجز/, 'createAppointment must require a real service in DB mode');
   // Service name must come from the matched record, not client free text
   assert.match(store, /const resolvedServiceName = matchedService\?\.name \|\| input\.serviceName\?\.trim\(\) \|\| 'كشف واستشارة طبية'/, 'Resolved service name must prefer the real clinic service record');
-  // Mock duplicate guard must span all clinics (no clinicId condition) and use normalization
-  assert.match(store, /normalizePatientName\(a\.patientName\) === normalizedInputName/, 'Mock duplicate check must normalize names across clinics');
+  // Mock duplicate guard must span all clinics (no clinicId condition), be DOB-aware,
+  // and fall back to normalized names for legacy rows without a DOB.
+  assert.match(store, /private isSameChildDuplicate\(/, 'Store must centralize the DOB-aware duplicate predicate');
+  assert.match(store, /normalizePatientName\(existing\.patientName\) === normalizePatientName\(patientName\)/, 'Duplicate predicate must normalize names for legacy rows');
+  assert.match(store, /existing\.dateOfBirth === dateOfBirth/, 'Duplicate predicate must compare DOB when present on both sides');
+  assert.match(store, /this\.isSameChildDuplicate\(\s*a,\s*phoneCheck\.normalized/, 'createAppointment mock guard must use the shared predicate');
+  assert.match(store, /this\.isSameChildDuplicate\(a, apt\.phoneNumber, apt\.appointmentDate, apt\.patientName, apt\.dateOfBirth\)/, 'transferClinic mock guard must use the shared predicate');
 });
 
 

@@ -374,7 +374,7 @@ test('Sibling bookings: Same guardian phone can book different children on the s
     appointmentDate: testDate,
   });
   assert.equal(duplicateChild1.success, false, 'Exact same child duplicate on same date must be rejected');
-  assert.match(duplicateChild1.error || '', /يوجد حجز مسبق بالفعل/);
+  assert.match(duplicateChild1.error || '', /يوجد حجز بنفس الرقم لنفس الميلاد/);
 });
 
 test('normalizePatientName collapses whitespace, lowercases, and unifies Arabic letter variants matching SQL index', () => {
@@ -504,7 +504,7 @@ test('Cross-clinic duplicate booking for same phone + child + day is blocked in 
     appointmentDate: date,
   });
   assert.equal(crossClinic.success, false, 'Cross-clinic duplicate for same child/day must be rejected');
-  assert.match(crossClinic.error || '', /بنفس الرقم لنفس الطفل في نفس اليوم/);
+  assert.match(crossClinic.error || '', /بنفس الرقم لنفس الميلاد/);
 
   // Arabic letter-variant (ة -> ه) of the same name must also be blocked
   const variant = await appointmentStore.createAppointment({
@@ -523,5 +523,44 @@ test('Cross-clinic duplicate booking for same phone + child + day is blocked in 
     appointmentDate: date,
   });
   assert.equal(sibling.success, true, 'Different child sharing guardian phone must be permitted');
+});
+
+test('DOB duplicate rule: same phone + same DOB + day blocked across clinics; distinct DOB allowed', async () => {
+  const { appointmentStore } = await import('../services/appointmentService.ts');
+  const phone = '01055443322';
+  const date = '2026-11-25'; // Wednesday (open)
+  const dob = '2024-03-10';
+
+  // First child with a DOB
+  const first = await appointmentStore.createAppointment({
+    clinicId: 'dentistry',
+    patientName: 'آدم محمود إبراهيم',
+    phoneNumber: phone,
+    appointmentDate: date,
+    dateOfBirth: dob,
+  });
+  assert.equal(first.success, true);
+
+  // Same phone + same DOB + same day in another clinic, even with a DIFFERENT
+  // name (e.g. twin / data-entry variant), must be blocked with the client note.
+  const sameDob = await appointmentStore.createAppointment({
+    clinicId: 'echo',
+    patientName: 'اسم مختلف تماماً',
+    phoneNumber: phone,
+    appointmentDate: date,
+    dateOfBirth: dob,
+  });
+  assert.equal(sameDob.success, false, 'Same phone + same DOB + day must be rejected across clinics');
+  assert.match(sameDob.error || '', /يوجد حجز بنفس الرقم لنفس الميلاد/);
+
+  // A sibling with a DISTINCT DOB on the same phone/day must be allowed.
+  const sibling = await appointmentStore.createAppointment({
+    clinicId: 'echo',
+    patientName: 'لين محمود إبراهيم',
+    phoneNumber: phone,
+    appointmentDate: date,
+    dateOfBirth: '2022-07-01',
+  });
+  assert.equal(sibling.success, true, 'Sibling with distinct DOB sharing guardian phone must be permitted');
 });
 
