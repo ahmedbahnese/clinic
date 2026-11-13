@@ -1,7 +1,9 @@
 import React from 'react';
 import type { Metadata } from 'next';
+import type { NoticeBarDisplayConfig } from '@/types/cms';
 import { cmsService } from '@/services/cmsService';
 import { NoticeBar } from '@/components/NoticeBar';
+import AnnouncementCarousel from '@/components/AnnouncementCarousel';
 import { SiteHeader } from '@/components/SiteHeader';
 import { HeroBanner } from '@/components/HeroBanner';
 import { TrustStatsBar } from '@/components/TrustStatsBar';
@@ -45,16 +47,21 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function HomePage() {
   const cmsContent = await cmsService.getPublishedContent();
   const { settings, sections, navigation, clinics } = cmsContent;
-
   const getSection = (id: string) => sections.find((s) => s.id === id);
+  const renderAnnouncementAt = (target: NoticeBarDisplayConfig['placement']) => {
+    if (!target) return null;
+    return <AnnouncementCarousel config={settings.notice_bar} slot={target} />;
+  };
 
   return (
     <div
       dir="rtl"
       className="flex flex-col min-h-screen bg-[#F6F9FB] selection:bg-[#087F78] selection:text-white font-sans antialiased"
     >
-      {/* 1. Dismissible Urgent Announcement Notice Bar */}
+      {/* Urgent notice is intentionally separate from the announcement carousel. */}
       <NoticeBar config={settings.notice_bar} />
+      {renderAnnouncementAt('top')}
+      {renderAnnouncementAt('floating')}
 
       {/* 2. Main Sticky Hospital Header Navigation */}
       <SiteHeader
@@ -62,22 +69,27 @@ export default async function HomePage() {
         navigationItems={navigation}
         hospitalUrl={settings.hospital_website_url || getSection('hospital_banner')?.content?.btn_url || settings.canonical_url || 'https://albahira.elyoser.cloud'}
       />
+      {renderAnnouncementAt('below_header')}
 
       <main className="flex-1 w-full max-w-[1100px] mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {/* 3. Deep Teal Radial Hero Banner with Glassmorphism & Feature Highlights */}
         <HeroBanner section={getSection('hero')} />
+        {renderAnnouncementAt('after_hero')}
 
         {/* 4. 4-Column Key Metrics & Trust Stats Bar (2x2 Mobile, 1x4 Desktop) */}
         <TrustStatsBar section={getSection('trust_stats')} />
 
         {/* 5. Two Primary Patient Action Cards */}
         <PrimaryActionCards section={getSection('primary_actions')} />
+        {renderAnnouncementAt('after_primary_actions')}
 
         {/* 6. Comprehensive 8-Clinic Responsive Showcase with Direct Booking Links */}
         <ClinicsShowcase clinics={clinics} />
+        {renderAnnouncementAt('after_clinics')}
 
         {/* 7. 3-Step "How It Works" Patient Journey */}
         <HowItWorks section={getSection('how_it_works')} />
+        {renderAnnouncementAt('after_how_it_works')}
 
         {/* 8. Official Hospital Portal Link Banner */}
         <HospitalBanner section={getSection('hospital_banner')} />
@@ -92,6 +104,7 @@ export default async function HomePage() {
       </main>
 
       {/* 11. Hospital Footer */}
+      {renderAnnouncementAt('before_footer')}
       <SiteFooter settings={settings} />
     </div>
   );

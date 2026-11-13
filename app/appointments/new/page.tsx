@@ -331,6 +331,10 @@ function NewAppointmentForm() {
     setSubmitting(true);
 
     try {
+      if (activeService?.isWalkInOnly) {
+        setServerError('هذه الخدمة بالحضور المباشر فقط ولا يتم الحجز الإلكتروني بها. يرجى التوجه للاستقبال في نفس اليوم.');
+        return;
+      }
       const dobAge = calculateAgeFromDob(values.dateOfBirth, values.appointmentDate || getTodayCairoDateString());
       const resolvedServiceName = activeService?.name || '';
 

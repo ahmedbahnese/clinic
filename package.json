@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "node --test lib/rules.test.ts lib/security.test.ts lib/persistence.test.ts lib/otp.test.ts",
+    "test": "node --test lib/rules.test.ts lib/security.test.ts lib/persistence.test.ts lib/otp.test.ts lib/announcementVisibility.test.ts",
     "test:integration": "node --test tests/integration/supabase-rls.test.ts",
     "clean": "node -e \"try { require('fs').rmSync('.next', { recursive: true, force: true }); } catch {}\""
   },
@@ -21,6 +21,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "html-to-image": "^1.11.13",
+    "jspdf": "^4.2.1",
     "lucide-react": "^0.553.0",
     "motion": "^12.23.24",
     "next": "^15.4.9",

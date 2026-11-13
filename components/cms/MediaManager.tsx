@@ -14,6 +14,7 @@ import {
   AlertCircle,
   FileImage,
   FileText,
+  Trash2,
 } from 'lucide-react';
 import type { MediaAsset } from '@/types/cms';
 
@@ -43,6 +44,7 @@ export default function MediaManager({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [customName, setCustomName] = useState('');
   const [customAlt, setCustomAlt] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchAssets = useCallback(async () => {
     setLoading(true);
@@ -124,6 +126,26 @@ export default function MediaManager({
     }
   };
 
+  const handleDelete = async (asset: MediaAsset) => {
+    if (!window.confirm(`سيتم حذف الملف «${asset.name}» من المكتبة والتخزين الفعلي. هل تريد المتابعة؟`)) return;
+    setDeletingId(asset.id); setError(null); setSuccessMsg(null);
+    try {
+      const authToken = token || localStorage.getItem('bsch_staff_token') || '';
+      const res = await fetch('/api/staff/cms/media', { method: 'DELETE', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` }, body: JSON.stringify({ id: asset.id }) });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        const refs = Array.isArray(data.references) && data.references.length ? ` أماكن الاستخدام: ${data.references.join('، ')}` : '';
+        throw new Error((data.error || 'تعذر حذف الملف') + refs);
+      }
+      setAssets((prev) => prev.filter((item) => item.id !== asset.id));
+      setSuccessMsg('تم حذف الملف من المكتبة والتخزين الفعلي بنجاح');
+    } catch (err: any) {
+      setError(err.message || 'حدث خطأ أثناء الحذف');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const formatFileSize = (bytes?: number) => {
     if (!bytes || bytes === 0) return 'حجم أصلي';
     const kb = bytes / 1024;
@@ -148,7 +170,7 @@ export default function MediaManager({
               </label>
               <input
                 type="file"
-                accept="image/png,image/jpeg,image/webp,image/svg+xml,image/x-icon,application/pdf,.pdf"
+                accept="image/png,image/jpeg,image/webp,image/gif,image/apng,image/svg+xml,image/x-icon,application/pdf,.pdf,.gif,.apng"
                 onChange={(e) => {
                   const file = e.target.files?.[0] || null;
                   setSelectedFile(file);
@@ -336,6 +358,17 @@ export default function MediaManager({
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
+                  {asset.is_custom !== false && (
+                    <button
+                      type="button"
+                      onClick={() => void handleDelete(asset)}
+                      disabled={deletingId === asset.id}
+                      className="rounded-lg bg-red-50 p-1.5 text-red-600 transition hover:bg-red-100 disabled:opacity-50"
+                      title="حذف مع فحص الارتباطات"
+                    >
+                      {deletingId === asset.id ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

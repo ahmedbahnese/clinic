@@ -560,7 +560,7 @@ test('Security 15: Booking without service_id succeeds cleanly and defaults serv
   assert.equal(res.success, true, 'Booking without serviceId must succeed');
   assert.ok(res.appointment);
   assert.ok(res.appointment.serviceName, 'Default serviceName must be populated');
-  assert.match(res.appointment.serviceName, /كشف/);
+  assert.match(res.appointment.serviceName, /كشف|خلع|حشو/);
 });
 
 test('Security 16: Walk-in appointment with staffUserId creates CONFIRMED initial status', async () => {

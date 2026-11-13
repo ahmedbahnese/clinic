@@ -385,3 +385,22 @@ html[data-theme="dark"] [class~="hover:bg-[#F0F7F6]"]:hover {
     display: block !important;
   }
 }
+
+@keyframes notice-slide-in-rtl {
+  from {
+    transform: translateX(12px);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.notice-slide-in {
+  animation: notice-slide-in-rtl 220ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notice-slide-in {
+    animation: none;
+  }
+}

@@ -5,11 +5,41 @@ export interface SocialLinkItem {
   is_active: boolean;
 }
 
+export interface NoticeAnnouncement {
+  id: string;
+  title: string;
+  summary: string;
+  message?: string;
+  details?: string;
+  image_url?: string;
+  link_url?: string;
+  link_label?: string;
+  starts_at?: string;
+  ends_at?: string;
+  is_enabled?: boolean;
+  show_on_site?: boolean;
+  send_push?: boolean;
+  image_3d?: boolean;
+  image_frameless?: boolean;
+  display?: NoticeBarDisplayConfig;
+}
+
+export interface NoticeBarDisplayConfig {
+  placement?: 'top' | 'below_header' | 'after_hero' | 'after_primary_actions' | 'after_clinics' | 'after_how_it_works' | 'before_footer' | 'floating';
+  width?: 'full' | 'contained';
+  height?: 'compact' | 'standard';
+  autoplay_enabled?: boolean;
+  autoplay_seconds?: number;
+}
+
 export interface NoticeBarConfig {
   is_enabled: boolean;
+  urgent_enabled?: boolean;
   title: string;
   message: string;
   hotline_label: string;
+  announcements?: NoticeAnnouncement[];
+  display?: NoticeBarDisplayConfig;
 }
 
 export interface WebsiteSettings {

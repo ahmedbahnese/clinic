@@ -28,6 +28,8 @@ const ALLOWED_MIME_TYPES = [
   'image/jpeg',
   'image/jpg',
   'image/webp',
+  'image/gif',
+  'image/apng',
   'image/svg+xml',
   'image/x-icon',
   'image/vnd.microsoft.icon',
@@ -38,6 +40,8 @@ const EXTENSION_BY_MIME: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/jpg': 'jpg',
   'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/apng': 'apng',
   'image/svg+xml': 'svg',
   'image/x-icon': 'ico',
   'image/vnd.microsoft.icon': 'ico',
@@ -141,7 +145,7 @@ export async function POST(req: NextRequest) {
 
     if (!ALLOWED_MIME_TYPES.includes(file.type)) {
       return NextResponse.json(
-        { error: 'صيغة الملف غير مدعومة. الصيغ المسموحة: PNG, JPEG, WebP, SVG, ICO, PDF' },
+        { error: 'صيغة الملف غير مدعومة. الصيغ المسموحة: PNG, JPEG, WebP, GIF, APNG, SVG, ICO, PDF' },
         { status: 400 }
       );
     }
@@ -234,5 +238,61 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('Error handling media upload:', error);
     return NextResponse.json({ error: 'حدث خطأ في الخادم أثناء رفع الملف' }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const authHeader = req.headers.get('authorization') || '';
+    const token = authHeader.replace('Bearer ', '').trim();
+    const staffUser = await AuthService.verifySession(token);
+    if (!staffUser || staffUser.role !== 'ADMIN') {
+      return NextResponse.json({ error: 'غير مصرح بحذف الوسائط. صلاحية مدير النظام مطلوبة.' }, { status: 403 });
+    }
+    const body = await req.json().catch(() => ({}));
+    const assetId = String(body.id || '').trim();
+    if (!assetId) return NextResponse.json({ error: 'معرّف الوسيط مطلوب' }, { status: 400 });
+    if (!isSupabaseConfigured()) return NextResponse.json({ error: 'خدمة التخزين المركزية غير متصلة، لم يتم حذف الملف.' }, { status: 503 });
+
+    const supabase: any = getSupabaseClient(token);
+    const { data: asset, error: assetError } = await supabase.from('media_assets').select('*').eq('id', assetId).maybeSingle();
+    if (assetError) throw assetError;
+    if (!asset) return NextResponse.json({ error: 'الوسيط غير موجود أو لا يمكن حذفه.' }, { status: 404 });
+    if (asset.is_custom === false) return NextResponse.json({ error: 'الوسائط الأساسية للنظام لا يمكن حذفها.' }, { status: 409 });
+
+    const { data: settings } = await supabase.from('website_settings').select('header_logo_url,footer_logo_url,favicon_url,og_image_url,notice_bar').eq('id', 'default').maybeSingle();
+    const { data: sections } = await supabase.from('homepage_sections').select('id,content').limit(100);
+    const references: string[] = [];
+    if (settings) {
+      if (settings.header_logo_url === asset.url) references.push('شعار الرأس');
+      if (settings.footer_logo_url === asset.url) references.push('شعار التذييل');
+      if (settings.favicon_url === asset.url) references.push('أيقونة المتصفح');
+      if (settings.og_image_url === asset.url) references.push('صورة المشاركة العامة');
+      if (Array.isArray(settings.notice_bar?.announcements) && settings.notice_bar.announcements.some((x: any) => x.image_url === asset.url)) references.push('إعلان أو تنبيه');
+    }
+    for (const section of sections || []) {
+      if (JSON.stringify(section.content || {}).includes(asset.url)) references.push(`قسم الصفحة الرئيسية: ${section.id}`);
+    }
+    if (references.length > 0) return NextResponse.json({ error: 'لا يمكن حذف الصورة لأنها مستخدمة في النظام.', references: [...new Set(references)] }, { status: 409 });
+
+    if (asset.storage_path && asset.bucket_id) {
+      const { error: storageError } = await supabase.storage.from(asset.bucket_id).remove([asset.storage_path]);
+      if (storageError) return NextResponse.json({ error: 'تعذر حذف الملف الفعلي من التخزين، ولم يتم حذف السجل.', details: storageError.message }, { status: 502 });
+    } else if (typeof asset.url === 'string' && asset.url.startsWith('/uploads/cms/')) {
+      const localFile = path.join(process.cwd(), 'public', asset.url.replace(/^\//, ''));
+      try {
+        await fs.unlink(localFile);
+      } catch (localError: any) {
+        return NextResponse.json({ error: 'تعذر حذف الملف المحلي الفعلي، ولم يتم حذف السجل.', details: localError?.message }, { status: 502 });
+      }
+    } else {
+      return NextResponse.json({ error: 'هذا الوسيط مرتبط برابط خارجي ولا يملك النظام ملفًا فعليًا يمكن حذفه بأمان.' }, { status: 409 });
+    }
+    const { error: deleteError } = await supabase.from('media_assets').delete().eq('id', assetId);
+    if (deleteError) throw deleteError;
+    return NextResponse.json({ success: true, message: 'تم حذف الوسيط والملف الفعلي من التخزين.' });
+  } catch (error: any) {
+    console.error('Error deleting media asset:', error);
+    return NextResponse.json({ error: 'حدث خطأ في الخادم أثناء حذف الوسيط' }, { status: 500 });
   }
 }

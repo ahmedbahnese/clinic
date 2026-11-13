@@ -52,6 +52,7 @@ export const DEFAULT_WEBSITE_SETTINGS: WebsiteSettings = {
   ],
   notice_bar: {
     is_enabled: true,
+    urgent_enabled: true,
     title: 'تنظيم العيادات الخارجية:',
     message: 'الحجز الإلكتروني متاح بنظام تذاكر الدور وأسبقية الحضور اليومي بالعيادات التخصصية.',
     hotline_label: 'مستشفى الأطفال التخصصي — دمسنا',
@@ -818,4 +819,3 @@ export const cmsService = globalForCms.cmsServiceInstance ?? new CmsService();
 if (process.env.NODE_ENV !== 'production') {
   globalForCms.cmsServiceInstance = cmsService;
 }
-
