@@ -40,9 +40,11 @@ import { submitBooking } from './actions';
 import {
   normalizeAndValidateEgyptianPhone,
   validatePatientName,
-  validatePatientAge,
+  validateDateOfBirth,
+  calculateAgeFromDob,
   validateGuardianNationalId,
   formatArabicDate,
+  getTodayCairoDateString,
 } from '@/lib/rules';
 import type { Clinic, ClinicService, ClinicScheduleException, Appointment } from '@/types';
 
@@ -60,8 +62,7 @@ const bookingSchema = z
         (val) => validatePatientName(val).isValid,
         'يرجى كتابة الاسم ثلاثياً أو رباعياً على الأقل كما هو مسجل في شهادة الميلاد'
       ),
-    ageValue: z.string().min(1, 'يرجى كتابة عمر الطفل'),
-    ageUnit: z.enum(['سنة', 'شهر', 'يوم'] as const),
+    dateOfBirth: z.string().min(1, 'يرجى اختيار تاريخ ميلاد الطفل من التقويم'),
     phoneNumber: z
       .string()
       .min(1, 'رقم الهاتف مطلوب لمتابعة الحجز')
@@ -87,12 +88,12 @@ const bookingSchema = z
     notes: z.string().optional(),
   })
   .superRefine((data, ctx) => {
-    const ageCheck = validatePatientAge(data.ageValue, data.ageUnit);
-    if (!ageCheck.isValid) {
+    const dobCheck = validateDateOfBirth(data.dateOfBirth, data.appointmentDate || undefined);
+    if (!dobCheck.isValid) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['ageValue'],
-        message: ageCheck.error || 'عمر الطفل غير صحيح',
+        path: ['dateOfBirth'],
+        message: dobCheck.error || 'تاريخ ميلاد الطفل غير صحيح',
       });
     }
   });
@@ -148,8 +149,7 @@ function NewAppointmentForm() {
     resolver: zodResolver(bookingSchema),
     defaultValues: {
       patientName: '',
-      ageValue: '',
-      ageUnit: 'سنة',
+      dateOfBirth: '',
       phoneNumber: '',
       patientAddress: '',
       nationalId: '',
@@ -165,6 +165,13 @@ function NewAppointmentForm() {
   const selectedClinicId = watch('clinicId');
   const selectedServiceId = watch('serviceId');
   const selectedDate = watch('appointmentDate');
+  const selectedDob = watch('dateOfBirth');
+
+  // Live, calendar-accurate age derived from the date of birth at the visit date.
+  const liveAge = useMemo(() => {
+    if (!selectedDob) return null;
+    return calculateAgeFromDob(selectedDob, selectedDate || getTodayCairoDateString());
+  }, [selectedDob, selectedDate]);
 
   // Fetch real clinics from database
   useEffect(() => {
@@ -211,6 +218,10 @@ function NewAppointmentForm() {
     }
 
     setLoadingServices(true);
+    // Clear any previous clinic's services so a failed fetch never shows stale
+    // services belonging to a different clinic.
+    setClinicServices([]);
+    setValue('serviceId', '');
     async function fetchServices() {
       try {
         const res = await fetch(`/api/clinics/${selectedClinicId}/services`);
@@ -320,8 +331,8 @@ function NewAppointmentForm() {
     setSubmitting(true);
 
     try {
-      const combinedAge = `${values.ageValue} ${values.ageUnit}`;
-      const resolvedServiceName = activeService?.name || 'كشف واستشارة طبية';
+      const dobAge = calculateAgeFromDob(values.dateOfBirth, values.appointmentDate || getTodayCairoDateString());
+      const resolvedServiceName = activeService?.name || '';
 
       const result = await submitBooking({
         clinicId: values.clinicId,
@@ -329,7 +340,8 @@ function NewAppointmentForm() {
         serviceName: resolvedServiceName,
         patientName: values.patientName,
         phoneNumber: values.phoneNumber,
-        patientAge: combinedAge,
+        patientAge: dobAge?.formatted,
+        dateOfBirth: values.dateOfBirth,
         patientAddress: values.patientAddress,
         nationalId: values.nationalId,
         appointmentDate: values.appointmentDate,
@@ -577,44 +589,44 @@ function NewAppointmentForm() {
                     )}
                   </div>
 
-                  {/* Field 2: Combined Age (Number + Unit Dropdown with strict bounds) */}
+                  {/* Field 2: Date of Birth (calendar) with auto-calculated age */}
                   <div>
-                    <label className="block text-xs sm:text-sm font-bold text-[#163C3A] mb-1.5">
-                      العمر <span className="text-red-500">*</span>
+                    <label
+                      htmlFor="dateOfBirth"
+                      className="block text-xs sm:text-sm font-bold text-[#163C3A] mb-1.5"
+                    >
+                      تاريخ ميلاد الطفل <span className="text-red-500">*</span>
                     </label>
-                    <div className="flex items-center gap-2">
-                      <div className="relative flex-1">
-                        <input
-                          type="number"
-                          min="0"
-                          max="36"
-                          {...register('ageValue')}
-                          placeholder="الرقم (مثال: 4)"
-                          className={`w-full px-4 py-3 rounded-xl border bg-white text-slate-900 text-xs sm:text-sm placeholder:text-slate-400 font-mono transition-all shadow-2xs focus:outline-hidden ${
-                            errors.ageValue
-                              ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-100'
-                              : 'border-slate-200 focus:border-[#087F78] focus:ring-2 focus:ring-[#087F78]/15'
-                          }`}
-                        />
-                      </div>
-                      <div className="w-32">
-                        <select
-                          {...register('ageUnit')}
-                          className="w-full px-3 py-3 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-100 text-[#163C3A] text-xs sm:text-sm font-semibold transition-all focus:border-[#087F78] focus:outline-hidden shadow-2xs cursor-pointer"
-                        >
-                          <option value="سنة">سنة (1-18)</option>
-                          <option value="شهر">شهر (1-36)</option>
-                          <option value="يوم">يوم (0-30)</option>
-                        </select>
-                      </div>
+                    <div className="relative">
+                      <input
+                        id="dateOfBirth"
+                        type="date"
+                        dir="ltr"
+                        max={getTodayCairoDateString()}
+                        min="1900-01-01"
+                        {...register('dateOfBirth')}
+                        className={`w-full px-4 py-3 rounded-xl border bg-white text-slate-900 text-xs sm:text-sm font-mono text-right transition-all shadow-2xs focus:outline-hidden ${
+                          errors.dateOfBirth
+                            ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-100'
+                            : 'border-slate-200 focus:border-[#087F78] focus:ring-2 focus:ring-[#087F78]/15'
+                        }`}
+                      />
+                      <Calendar className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400 pointer-events-none" />
                     </div>
-                    {errors.ageValue ? (
+                    {errors.dateOfBirth ? (
                       <p className="text-[11px] text-red-600 mt-1 font-medium">
-                        {errors.ageValue.message}
+                        {errors.dateOfBirth.message}
                       </p>
+                    ) : liveAge ? (
+                      <div className="mt-2 flex items-center gap-2 rounded-lg bg-[#087F78]/10 border border-[#087F78]/20 px-3 py-2">
+                        <Sparkles className="w-3.5 h-3.5 text-[#087F78] shrink-0" />
+                        <span className="text-[11px] sm:text-xs font-bold text-[#163C3A]">
+                          عمر الطفل عند الكشف: <span className="text-[#087F78]">{liveAge.formatted}</span>
+                        </span>
+                      </div>
                     ) : (
                       <span className="block text-[10.5px] text-slate-400 mt-1">
-                        الأيام: 0 إلى 30 | الشهور: 1 إلى 36 | السنوات: 1 إلى 18
+                        اختر تاريخ الميلاد من التقويم وسيُحسب العمر تلقائياً (سنوات / شهور / أيام) عند تاريخ الكشف
                       </span>
                     )}
                   </div>

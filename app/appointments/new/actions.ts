@@ -2,7 +2,7 @@
 
 import { headers } from 'next/headers';
 import { appointmentStore } from '@/services/appointmentService';
-import { normalizeAndValidateEgyptianPhone, validatePatientName, validateGuardianNationalId } from '@/lib/rules';
+import { normalizeAndValidateEgyptianPhone, validatePatientName, validateGuardianNationalId, validateDateOfBirth } from '@/lib/rules';
 import { checkIpRateLimit } from '@/lib/otp';
 import { verifyTurnstileToken } from '@/lib/turnstile';
 import type { Appointment } from '@/types';
@@ -14,6 +14,7 @@ export interface BookingFormData {
   patientName: string;
   phoneNumber: string;
   patientAge?: string;
+  dateOfBirth?: string;
   patientAddress: string;
   nationalId?: string;
   serviceType?: string;
@@ -147,26 +148,48 @@ export async function submitBooking(data: BookingFormData): Promise<{
       }
     }
 
-    // 9. Server validation of service-clinic match
-    if (data.serviceId) {
-      const clinicServices = await appointmentStore.getClinicServices(data.clinicId);
-      const matched = clinicServices.find((s) => s.id === data.serviceId && s.isActive);
-      if (!matched) {
-        return {
-          success: false,
-          error: 'الخدمة المختارة غير متاحة في هذه العيادة أو تم إيقافها',
-        };
-      }
+    // 9. A real, active service belonging to the selected clinic is mandatory.
+    if (!data.serviceId || !data.serviceId.trim()) {
+      return {
+        success: false,
+        error: 'يرجى اختيار الخدمة المطلوبة من خدمات العيادة قبل تأكيد الحجز',
+      };
+    }
+    let clinicServices;
+    try {
+      clinicServices = await appointmentStore.getClinicServices(data.clinicId);
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err?.message || 'تعذر الاتصال بقاعدة البيانات لجلب خدمات العيادة. يرجى المحاولة لاحقاً.',
+      };
+    }
+    const matched = clinicServices.find((s) => s.id === data.serviceId && s.isActive);
+    if (!matched) {
+      return {
+        success: false,
+        error: 'الخدمة المختارة غير متاحة في هذه العيادة أو تم إيقافها',
+      };
+    }
+
+    // 9b. Date of birth is mandatory and is the authoritative source of the age.
+    const dobCheck = validateDateOfBirth(data.dateOfBirth, data.appointmentDate);
+    if (!dobCheck.isValid) {
+      return {
+        success: false,
+        error: dobCheck.error || 'يرجى اختيار تاريخ ميلاد الطفل من التقويم',
+      };
     }
 
     // 10. Create appointment in store / database
     const result = await appointmentStore.createAppointment({
       clinicId: data.clinicId,
       serviceId: data.serviceId,
-      serviceName: data.serviceName,
+      serviceName: matched.name,
       patientName: data.patientName.trim(),
       phoneNumber: phoneCheck.normalized,
-      patientAge: data.patientAge?.trim(),
+      patientAge: dobCheck.age?.formatted || data.patientAge?.trim(),
+      dateOfBirth: data.dateOfBirth?.trim(),
       patientAddress: data.patientAddress?.trim(),
       guardianNationalId: data.nationalId?.trim(),
       appointmentDate: data.appointmentDate,

@@ -144,12 +144,25 @@ export function canTransitionStatus(
 
 /**
  * Canonical normalization for patient name identity checks.
- * Trims leading/trailing whitespace, collapses internal whitespace to a single space, and lowercases.
- * Must match PostgreSQL: lower(regexp_replace(trim(patient_name), '\s+', ' ', 'g'))
+ * Trims/collapses whitespace, lowercases, strips Arabic diacritics/tatweel and
+ * unifies letter variants (أ/إ/آ/ٱ -> ا, ى -> ي, ة -> ه, ؤ -> و, ئ/ی -> ي, ک -> ك)
+ * so "أحمد إبراهيم" and "احمد ابراهيم" identify the same child.
+ * Must match PostgreSQL public.normalize_patient_name(TEXT) exactly.
  */
 export function normalizePatientName(name?: string | null): string {
   if (!name || typeof name !== 'string') return '';
-  return name.trim().toLowerCase().replace(/\s+/g, ' ');
+  return name
+    .trim()
+    .replace(/[ً-ْٰـ]/g, '')
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/ؤ/g, 'و')
+    .replace(/ئ/g, 'ي')
+    .replace(/ی/g, 'ي')
+    .replace(/ک/g, 'ك')
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
 }
 
 /**
@@ -302,6 +315,117 @@ export function validatePatientAge(
   }
 
   return { isValid: true, formatted: `${num} ${unit}` };
+}
+
+export const MAX_PATIENT_AGE_YEARS = 18;
+
+export interface AgeBreakdown {
+  years: number;
+  months: number;
+  days: number;
+  totalDays: number;
+  formatted: string;
+}
+
+function parseIsoDateParts(value: string): { y: number; m: number; d: number } | null {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [y, m, d] = value.split('-').map(Number);
+  if (m < 1 || m > 12 || d < 1 || d > 31 || y < 1) return null;
+  const utc = new Date(Date.UTC(y, m - 1, d));
+  if (utc.getUTCFullYear() !== y || utc.getUTCMonth() !== m - 1 || utc.getUTCDate() !== d) return null;
+  return { y, m, d };
+}
+
+function daysInMonth(year: number, month1Based: number): number {
+  return new Date(Date.UTC(year, month1Based, 0)).getUTCDate();
+}
+
+/**
+ * Arabic pluralization for age components (سنة/سنتين/سنوات ...).
+ */
+export function formatAgeArabic(years: number, months: number, days: number): string {
+  const parts: string[] = [];
+  if (years > 0) {
+    parts.push(years === 1 ? 'سنة' : years === 2 ? 'سنتين' : years <= 10 ? `${years} سنوات` : `${years} سنة`);
+  }
+  if (months > 0) {
+    parts.push(months === 1 ? 'شهر' : months === 2 ? 'شهرين' : months <= 10 ? `${months} شهور` : `${months} شهر`);
+  }
+  if (days > 0) {
+    parts.push(days === 1 ? 'يوم' : days === 2 ? 'يومين' : days <= 10 ? `${days} أيام` : `${days} يوم`);
+  }
+  if (parts.length === 0) return 'حديث الولادة';
+  return parts.join(' و');
+}
+
+/**
+ * Calendar-accurate age from date of birth, mirroring PostgreSQL age(onDate, dob)
+ * field arithmetic (years/months/days with borrow from the on-date month).
+ * Both dates are YYYY-MM-DD. Returns null for invalid input or dob after onDate.
+ */
+export function calculateAgeFromDob(dob: string, onDate: string): AgeBreakdown | null {
+  const dobParts = parseIsoDateParts(dob);
+  const onParts = parseIsoDateParts(onDate);
+  if (!dobParts || !onParts) return null;
+
+  const dobUtc = Date.UTC(dobParts.y, dobParts.m - 1, dobParts.d);
+  const onUtc = Date.UTC(onParts.y, onParts.m - 1, onParts.d);
+  if (dobUtc > onUtc) return null;
+
+  let years = onParts.y - dobParts.y;
+  let months = onParts.m - dobParts.m;
+  let days = onParts.d - dobParts.d;
+  if (days < 0) {
+    months -= 1;
+    days += daysInMonth(onParts.y, onParts.m);
+  }
+  if (months < 0) {
+    years -= 1;
+    months += 12;
+  }
+
+  const totalDays = Math.round((onUtc - dobUtc) / 86400000);
+  return { years, months, days, totalDays, formatted: formatAgeArabic(years, months, days) };
+}
+
+/**
+ * Validates a pediatric date of birth and computes the age at onDate
+ * (defaults to today in Africa/Cairo). Rejects future/implausible dates and
+ * ages above MAX_PATIENT_AGE_YEARS at the visit date.
+ */
+export function validateDateOfBirth(
+  dob?: string | null,
+  onDate?: string
+): { isValid: boolean; error?: string; age?: AgeBreakdown } {
+  if (!dob || typeof dob !== 'string' || dob.trim() === '') {
+    return { isValid: false, error: 'يرجى اختيار تاريخ ميلاد الطفل من التقويم' };
+  }
+  const clean = dob.trim();
+  if (!parseIsoDateParts(clean)) {
+    return { isValid: false, error: 'تاريخ الميلاد غير صحيح، يرجى اختيار تاريخ صالح من التقويم' };
+  }
+
+  const todayCairo = getTodayCairoDateString();
+  if (clean > todayCairo) {
+    return { isValid: false, error: 'تاريخ الميلاد لا يمكن أن يكون في المستقبل' };
+  }
+  if (clean < '1900-01-01') {
+    return { isValid: false, error: 'تاريخ الميلاد غير منطقي، يرجى مراجعة شهادة الميلاد' };
+  }
+
+  const visitDate = onDate && parseIsoDateParts(onDate) ? onDate : todayCairo;
+  const age = calculateAgeFromDob(clean, visitDate);
+  if (!age) {
+    return { isValid: false, error: 'تاريخ الميلاد بعد تاريخ الكشف، يرجى مراجعة التاريخين' };
+  }
+  if (age.years > MAX_PATIENT_AGE_YEARS || (age.years === MAX_PATIENT_AGE_YEARS && (age.months > 0 || age.days > 0))) {
+    return {
+      isValid: false,
+      error: `مستشفى الأطفال التخصصي يستقبل الحالات حتى عمر ${MAX_PATIENT_AGE_YEARS} سنة فقط عند تاريخ الكشف`,
+    };
+  }
+
+  return { isValid: true, age };
 }
 
 /**

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { appointmentStore } from '@/services/appointmentService';
 import { AuthService } from '@/services/authService';
-import { formatLocalDate } from '@/lib/rules';
+import { formatLocalDate, validateDateOfBirth } from '@/lib/rules';
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,11 +17,25 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { clinicId, serviceId, patientName, phoneNumber, patientAge, patientAddress, appointmentDate, appointmentTime } = body;
+    const { clinicId, serviceId, patientName, phoneNumber, patientAge, dateOfBirth, patientAddress, appointmentDate, appointmentTime } = body;
 
     if (!clinicId || !patientName || !phoneNumber) {
       return NextResponse.json(
         { error: 'حقول العيادة، اسم المريض، ورقم الهاتف إلزامية للحجز الحضوري' },
+        { status: 400 }
+      );
+    }
+
+    if (!serviceId || typeof serviceId !== 'string' || !serviceId.trim()) {
+      return NextResponse.json(
+        { error: 'يجب اختيار خدمة فعلية تابعة للعيادة قبل تسجيل الحجز الحضوري' },
+        { status: 400 }
+      );
+    }
+
+    if (!dateOfBirth || typeof dateOfBirth !== 'string' || !dateOfBirth.trim()) {
+      return NextResponse.json(
+        { error: 'تاريخ ميلاد الطفل مطلوب لتحديد العمر تلقائياً عند تسجيل الحجز الحضوري' },
         { status: 400 }
       );
     }
@@ -43,12 +57,21 @@ export async function POST(req: NextRequest) {
     const todayStr = formatLocalDate();
     const targetDate = appointmentDate || todayStr;
 
+    const dobCheck = validateDateOfBirth(dateOfBirth, targetDate);
+    if (!dobCheck.isValid) {
+      return NextResponse.json(
+        { error: dobCheck.error || 'تاريخ ميلاد الطفل غير صالح' },
+        { status: 400 }
+      );
+    }
+
     const result = await appointmentStore.createAppointment({
       clinicId,
-      serviceId: serviceId || undefined,
+      serviceId,
       patientName,
       phoneNumber,
-      patientAge,
+      patientAge: dobCheck.age?.formatted || patientAge,
+      dateOfBirth,
       patientAddress,
       appointmentDate: targetDate,
       appointmentTime: appointmentTime || '09:00',
