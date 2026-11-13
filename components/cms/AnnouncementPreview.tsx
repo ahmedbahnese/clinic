@@ -8,7 +8,8 @@ function safeLink(value?: string) {
   const link = value?.trim();
   if (!link || /[\u0000-\u001f\\]/.test(link)) return null;
   if (link.startsWith('/') && !link.startsWith('//')) return link;
-  try { const parsed = new URL(link); return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.href : null; } catch { return null; }
+  const normalized = /^www\./i.test(link) ? `https://${link}` : link;
+  try { const parsed = new URL(normalized); return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.href : null; } catch { return null; }
 }
 
 export default function AnnouncementPreview({ announcement, onClose }: { announcement: NoticeAnnouncement; onClose: () => void }) {

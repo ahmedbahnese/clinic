@@ -11,6 +11,13 @@ function parseOptionalTimestamp(value?: string): number | null | undefined {
   return Number.isFinite(timestamp) ? timestamp : undefined;
 }
 
+function normalizeAnnouncementLink(value?: string): string {
+  const link = value?.trim() || '';
+  if (!link || /[\u0000-\u001f\\]/.test(link)) return '';
+  if (/^www\./i.test(link)) return `https://${link}`;
+  return link;
+}
+
 export function isAnnouncementActiveAt(announcement: NoticeAnnouncement, now: number): boolean {
   if (announcement.is_enabled === false || announcement.show_on_site === false) return false;
 
@@ -48,7 +55,7 @@ export function resolveNoticeAnnouncements(
       ...item,
       title: item.title?.trim() || '',
       summary: item.summary?.trim() || item.message?.trim() || '',
-      link_url: item.link_url?.trim() || (item as NoticeAnnouncement & { link?: string; url?: string }).link?.trim() || (item as NoticeAnnouncement & { url?: string }).url?.trim() || '',
+      link_url: normalizeAnnouncementLink(item.link_url || (item as NoticeAnnouncement & { link?: string; url?: string }).link || (item as NoticeAnnouncement & { url?: string }).url),
       link_label: item.link_label?.trim() || 'اضغط هنا',
     }));
   }
