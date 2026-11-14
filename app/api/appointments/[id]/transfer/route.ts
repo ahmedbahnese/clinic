@@ -20,20 +20,24 @@ export async function POST(
     }
 
     const body = await req.json().catch(() => ({}));
-    const { targetClinicId, reason } = body;
+    const { targetClinicId, targetServiceId, reason } = body;
 
     if (!targetClinicId) {
       return NextResponse.json({ error: 'العيادة المحول إليها مطلوبة' }, { status: 400 });
     }
 
-    const result = await appointmentStore.transferClinic(id, targetClinicId, reason, staffUser, token);
+    if (!targetServiceId || typeof targetServiceId !== 'string' || !targetServiceId.trim()) {
+      return NextResponse.json({ error: 'يجب اختيار خدمة تابعة للعيادة المحول إليها قبل إتمام التحويل' }, { status: 400 });
+    }
+
+    const result = await appointmentStore.transferClinic(id, targetClinicId, targetServiceId, reason, staffUser, token);
     if (!result.success || !result.appointment) {
       return NextResponse.json({ error: result.error || 'تعذر تحويل المريض' }, { status: 400 });
     }
 
     return NextResponse.json({
       success: true,
-      message: `تم تحويل المريض إلى ${result.appointment.clinicName} برقم دور جديد #${result.appointment.queueNumber}`,
+      message: `تم تحويل المريض إلى ${result.appointment.clinicName} — خدمة ${result.appointment.serviceName || ''} برقم دور جديد #${result.appointment.queueNumber}`,
       appointment: result.appointment,
     });
   } catch (error) {

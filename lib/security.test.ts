@@ -163,7 +163,7 @@ test('Security 6: Duplicate active reservation in same clinic on same date is bl
     appointmentDate: date,
   });
   assert.equal(second.success, false);
-  assert.match(second.error || '', /يوجد حجز مسبق بالفعل/, 'Duplicate booking for same patient on same date must be rejected');
+  assert.match(second.error || '', /يوجد حجز بنفس الرقم لنفس الميلاد/, 'Duplicate booking for same patient on same date must be rejected');
 
   // Third booking for a sibling with a different name sharing the same phone must SUCCEED
   const sibling = await appointmentStore.createAppointment({
@@ -560,7 +560,7 @@ test('Security 15: Booking without service_id succeeds cleanly and defaults serv
   assert.equal(res.success, true, 'Booking without serviceId must succeed');
   assert.ok(res.appointment);
   assert.ok(res.appointment.serviceName, 'Default serviceName must be populated');
-  assert.match(res.appointment.serviceName, /كشف/);
+  assert.match(res.appointment.serviceName, /كشف|خلع|حشو/);
 });
 
 test('Security 16: Walk-in appointment with staffUserId creates CONFIRMED initial status', async () => {
@@ -650,12 +650,12 @@ test('Security 19: Clinic transfer enforces schedule, active status, capacity, a
   // 1. Doctor of echo attempts to transfer an appointment of dentistry -> Rejected
   const dentApt = (await appointmentStore.getStaffAppointments()).find((a) => a.clinicId === 'dentistry');
   assert.ok(dentApt);
-  const crossDocRes = await appointmentStore.transferClinic(dentApt.id, 'echo', 'تحويل عيادة', echoDoctor);
+  const crossDocRes = await appointmentStore.transferClinic(dentApt.id, 'echo', 'srv_echo_standard', 'تحويل عيادة', echoDoctor);
   assert.equal(crossDocRes.success, false, 'Doctor cannot transfer appointment belonging to another clinic');
   assert.match(crossDocRes.error || '', /عيادته الخاصة/);
 
   // 2. Transfer to nonexistent clinic -> Rejected
-  const nonExistRes = await appointmentStore.transferClinic(aptId, 'non-existent-clinic', 'تحويل عيادة', echoDoctor);
+  const nonExistRes = await appointmentStore.transferClinic(aptId, 'non-existent-clinic', 'srv_echo_standard', 'تحويل عيادة', echoDoctor);
   assert.equal(nonExistRes.success, false);
   assert.match(nonExistRes.error || '', /العيادة المحول إليها غير متوفرة/);
 
@@ -668,7 +668,7 @@ test('Security 19: Clinic transfer enforces schedule, active status, capacity, a
     clinicId: 'echo',
     active: true,
   };
-  const recepCrossRes = await appointmentStore.transferClinic(dentApt.id, 'echo', 'تحويل عيادة', echoRecep);
+  const recepCrossRes = await appointmentStore.transferClinic(dentApt.id, 'echo', 'srv_echo_standard', 'تحويل عيادة', echoRecep);
   assert.equal(recepCrossRes.success, false, 'Receptionist cannot transfer appointment of another clinic');
   assert.match(recepCrossRes.error || '', /عيادة أخرى/);
 });
@@ -1805,6 +1805,88 @@ test('Security 63: Audit Trail & State Preservation - Rejection is recorded in a
   assert.equal(rejectLog.staffRole, dentistryRecep.role);
   assert.ok(rejectLog.details.includes(requestId), 'Audit log must record cancellation request ID');
   assert.ok(rejectLog.details.includes('تم التواصل والتأكيد على الحضور'), 'Audit log must record rejection reason');
+});
+
+test('Security 64: Booking Integrity Migration - cross-clinic duplicate index, DOB column, mandatory service, and safe swap', () => {
+  const migrationPath = path.join(process.cwd(), 'supabase', 'migrations', '20261113000000_booking_integrity_dob_and_transfer_service.sql');
+  assert.ok(fs.existsSync(migrationPath), 'Booking integrity migration file must exist');
+  const content = fs.readFileSync(migrationPath, 'utf8');
+
+  // 1. Canonical Arabic name normalization + server-side age formatting functions
+  assert.ok(content.includes('CREATE OR REPLACE FUNCTION public.normalize_patient_name'), 'normalize_patient_name must be defined');
+  assert.ok(content.includes('CREATE OR REPLACE FUNCTION public.format_patient_age'), 'format_patient_age must be defined');
+
+  // 2. Date of birth column with plausibility checks
+  assert.ok(content.includes('ADD COLUMN IF NOT EXISTS date_of_birth DATE'), 'date_of_birth column must be added');
+  assert.ok(content.includes('chk_appointments_dob_not_after_visit'), 'DOB must not be after visit date');
+  assert.ok(content.includes('chk_appointments_dob_plausible'), 'DOB plausibility check must exist');
+
+  // 3. Cross-clinic partial unique indexes: DOB-authoritative + legacy name fallback
+  const dobIndexIdx = content.indexOf('CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_apt_per_phone_dob_day');
+  const nameIndexIdx = content.indexOf('CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_apt_per_phone_name_day');
+  assert.ok(dobIndexIdx !== -1, 'DOB-based cross-clinic unique index must be created');
+  assert.ok(nameIndexIdx !== -1, 'Legacy name-based cross-clinic unique index must be created');
+  assert.ok(content.includes('public.normalize_patient_name(patient_name)'), 'Legacy index must use normalized patient name');
+  assert.ok(/WHERE\s*\(status\s*!=\s*'CANCELLED'/.test(content), 'Indexes must be partial on active bookings');
+
+  // 4. Fail-closed precheck for legacy duplicates BEFORE index creation (no silent data loss)
+  const precheckIdx = content.indexOf('RAISE EXCEPTION');
+  assert.ok(precheckIdx !== -1 && precheckIdx < dobIndexIdx, 'Legacy duplicate precheck must abort before creating the indexes');
+
+  // 5. Safe index swap: old per-clinic index dropped only after new indexes are validated
+  const dropOldIdx = content.indexOf('DROP INDEX IF EXISTS public.idx_unique_active_apt_per_phone_patient_clinic_day');
+  assert.ok(dropOldIdx !== -1, 'Old per-clinic index must be dropped');
+  assert.ok(dobIndexIdx < dropOldIdx && nameIndexIdx < dropOldIdx, 'New indexes must be created before the old one is dropped');
+  assert.ok(content.includes('indisvalid'), 'Swap must verify new index validity');
+
+  // 6. Booking RPC: new 12-param signature with DOB, old 11-param dropped
+  assert.ok(content.includes('DROP FUNCTION IF EXISTS public.book_appointment_atomic(TEXT, TEXT, TEXT, TEXT, TEXT, DATE, TEXT, TEXT, TEXT, TEXT, UUID)'), 'Old booking RPC overload must be dropped');
+  assert.ok(content.includes('p_date_of_birth DATE DEFAULT NULL'), 'Booking RPC must accept date of birth');
+  assert.ok(content.includes('يجب اختيار خدمة فعلية تابعة للعيادة'), 'Booking RPC must require a real clinic service');
+  assert.ok(content.includes('بنفس الرقم لنفس الميلاد'), 'Booking RPC must surface the cross-clinic duplicate note');
+
+  // 7. Transfer RPC: new 5-param signature with mandatory target service, old 4-param dropped
+  assert.ok(content.includes('DROP FUNCTION IF EXISTS public.transfer_appointment_clinic_atomic(TEXT, TEXT, UUID, TEXT)'), 'Old transfer RPC overload must be dropped');
+  assert.ok(content.includes('p_target_service_id TEXT'), 'Transfer RPC must require a target service');
+});
+
+test('Security 65: Walk-in and Transfer routes fail closed on missing service / DOB', () => {
+  const walkInPath = path.join(process.cwd(), 'app', 'api', 'appointments', 'walk-in', 'route.ts');
+  const walkIn = fs.readFileSync(walkInPath, 'utf8');
+  assert.match(walkIn, /يجب اختيار خدمة فعلية تابعة للعيادة/, 'Walk-in route must require a real service');
+  assert.match(walkIn, /تاريخ ميلاد الطفل مطلوب/, 'Walk-in route must require date of birth');
+  assert.match(walkIn, /validateDateOfBirth\(dateOfBirth/, 'Walk-in route must validate DOB server-side');
+  assert.match(walkIn, /dateOfBirth,/, 'Walk-in route must forward dateOfBirth to the store');
+
+  const transferPath = path.join(process.cwd(), 'app', 'api', 'appointments', '[id]', 'transfer', 'route.ts');
+  const transfer = fs.readFileSync(transferPath, 'utf8');
+  assert.match(transfer, /targetServiceId/, 'Transfer route must read targetServiceId');
+  assert.match(transfer, /يجب اختيار خدمة تابعة للعيادة المحول إليها/, 'Transfer route must require a target service');
+  assert.match(transfer, /transferClinic\(id, targetClinicId, targetServiceId, reason, staffUser, token\)/, 'Transfer route must pass targetServiceId to the store');
+
+  const actionPath = path.join(process.cwd(), 'app', 'appointments', 'new', 'actions.ts');
+  const action = fs.readFileSync(actionPath, 'utf8');
+  assert.match(action, /يرجى اختيار الخدمة المطلوبة من خدمات العيادة/, 'Online booking action must require a service');
+  assert.match(action, /validateDateOfBirth\(data\.dateOfBirth/, 'Online booking action must validate DOB server-side');
+});
+
+test('Security 66: Store never substitutes demo services when the central database is configured', () => {
+  const storePath = path.join(process.cwd(), 'services', 'appointmentService.ts');
+  const store = fs.readFileSync(storePath, 'utf8');
+
+  // getClinicServices must throw on DB failure (fail-closed) rather than fall back to INITIAL_SERVICES
+  assert.match(store, /تعذر الاتصال بقاعدة البيانات لجلب خدمات العيادة/, 'getClinicServices must fail closed with a connection error');
+  // createAppointment must require an explicitly chosen service in Supabase mode
+  assert.match(store, /يجب اختيار خدمة فعلية تابعة للعيادة قبل تسجيل الحجز/, 'createAppointment must require a real service in DB mode');
+  // Service name must come from the matched record, not client free text
+  assert.match(store, /const resolvedServiceName = matchedService\?\.name \|\| input\.serviceName\?\.trim\(\) \|\| 'كشف واستشارة طبية'/, 'Resolved service name must prefer the real clinic service record');
+  // Mock duplicate guard must span all clinics (no clinicId condition), be DOB-aware,
+  // and fall back to normalized names for legacy rows without a DOB.
+  assert.match(store, /private isSameChildDuplicate\(/, 'Store must centralize the DOB-aware duplicate predicate');
+  assert.match(store, /normalizePatientName\(existing\.patientName\) === normalizePatientName\(patientName\)/, 'Duplicate predicate must normalize names for legacy rows');
+  assert.match(store, /existing\.dateOfBirth === dateOfBirth/, 'Duplicate predicate must compare DOB when present on both sides');
+  assert.match(store, /this\.isSameChildDuplicate\(\s*a,\s*phoneCheck\.normalized/, 'createAppointment mock guard must use the shared predicate');
+  assert.match(store, /this\.isSameChildDuplicate\(a, apt\.phoneNumber, apt\.appointmentDate, apt\.patientName, apt\.dateOfBirth\)/, 'transferClinic mock guard must use the shared predicate');
 });
 
 

@@ -84,6 +84,7 @@ export interface Appointment {
   patientName: string;
   phoneNumber: string;
   patientAge?: string;
+  dateOfBirth?: string; // YYYY-MM-DD — authoritative age source; patientAge is derived from it
   patientAddress?: string;
   guardianNationalId?: string;
   bookingCode?: string; // One-time unhashed CSPRNG booking code returned only on creation
@@ -142,6 +143,7 @@ export interface CreateAppointmentInput {
   patientName: string;
   phoneNumber: string;
   patientAge?: string;
+  dateOfBirth?: string; // YYYY-MM-DD — when present, the server/RPC derives patientAge from it
   patientAddress?: string;
   guardianNationalId?: string;
   notes?: string;

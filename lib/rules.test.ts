@@ -10,6 +10,10 @@ import {
   formatLocalDate,
   maskPatientName,
   normalizePatientName,
+  calculateAgeFromDob,
+  formatAgeArabic,
+  validateDateOfBirth,
+  MAX_PATIENT_AGE_YEARS,
 } from './rules.ts';
 
 test('normalizeAndValidateEgyptianPhone validates standard 11-digit mobile numbers', () => {
@@ -370,13 +374,193 @@ test('Sibling bookings: Same guardian phone can book different children on the s
     appointmentDate: testDate,
   });
   assert.equal(duplicateChild1.success, false, 'Exact same child duplicate on same date must be rejected');
-  assert.match(duplicateChild1.error || '', /يوجد حجز مسبق بالفعل/);
+  assert.match(duplicateChild1.error || '', /يوجد حجز بنفس الرقم لنفس الميلاد/);
 });
 
-test('normalizePatientName collapses whitespace and lowercases string matching SQL index', () => {
-  assert.equal(normalizePatientName('  أحمد   محمد   علي  '), 'أحمد محمد علي');
-  assert.equal(normalizePatientName('سارة   محمود'), 'سارة محمود');
+test('normalizePatientName collapses whitespace, lowercases, and unifies Arabic letter variants matching SQL index', () => {
+  // Whitespace collapse + hamza unification (أ -> ا) to match public.normalize_patient_name
+  assert.equal(normalizePatientName('  أحمد   محمد   علي  '), 'احمد محمد علي');
+  assert.equal(normalizePatientName('سارة   محمود'), 'ساره محمود');
   assert.equal(normalizePatientName(''), '');
   assert.equal(normalizePatientName('   '), '');
+
+  // Letter-variant equivalence: these identify the SAME child
+  assert.equal(normalizePatientName('أحمد إبراهيم'), normalizePatientName('احمد ابراهيم'));
+  assert.equal(normalizePatientName('فاطمة'), normalizePatientName('فاطمه'));
+  assert.equal(normalizePatientName('مصطفى'), normalizePatientName('مصطفي'));
+  assert.equal(normalizePatientName('مؤمن'), normalizePatientName('مومن'));
+  assert.equal(normalizePatientName('كريم'), normalizePatientName('کريم'));
+
+  // Tashkeel and tatweel are stripped
+  assert.equal(normalizePatientName('مُحَمَّد'), normalizePatientName('محمد'));
+  assert.equal(normalizePatientName('عـــلي'), normalizePatientName('علي'));
+
+  // Distinct names remain distinct (عبد الرحمن vs عبدالرحمن are different)
+  assert.notEqual(normalizePatientName('عبد الرحمن'), normalizePatientName('عبدالرحمن'));
+});
+
+test('calculateAgeFromDob mirrors PostgreSQL age() field arithmetic exactly', () => {
+  // PostgreSQL documented example: age('2001-04-10', '1957-06-13') = 43 years 9 mons 27 days
+  const pgExample = calculateAgeFromDob('1957-06-13', '2001-04-10');
+  assert.ok(pgExample);
+  assert.equal(pgExample!.years, 43);
+  assert.equal(pgExample!.months, 9);
+  assert.equal(pgExample!.days, 27);
+
+  // Client example: "سنتين و٣ شهور"
+  const twoYearsThreeMonths = calculateAgeFromDob('2024-08-13', '2026-11-13');
+  assert.ok(twoYearsThreeMonths);
+  assert.equal(twoYearsThreeMonths!.years, 2);
+  assert.equal(twoYearsThreeMonths!.months, 3);
+  assert.equal(twoYearsThreeMonths!.days, 0);
+  assert.equal(twoYearsThreeMonths!.formatted, 'سنتين و3 شهور');
+
+  // Newborn on the visit day -> حديث الولادة
+  const newborn = calculateAgeFromDob('2026-11-13', '2026-11-13');
+  assert.ok(newborn);
+  assert.equal(newborn!.years, 0);
+  assert.equal(newborn!.months, 0);
+  assert.equal(newborn!.days, 0);
+  assert.equal(newborn!.formatted, 'حديث الولادة');
+
+  // Month-end borrow: Jan 31 -> Feb 28 (non-leap) = 28 days borrow from Feb
+  const janEdge = calculateAgeFromDob('2026-01-31', '2026-03-01');
+  assert.ok(janEdge);
+  assert.equal(janEdge!.months, 1);
+  assert.equal(janEdge!.days, 1);
+
+  // Invalid input / future dob -> null
+  assert.equal(calculateAgeFromDob('not-a-date', '2026-11-13'), null);
+  assert.equal(calculateAgeFromDob('2026-02-30', '2026-11-13'), null);
+  assert.equal(calculateAgeFromDob('2027-01-01', '2026-11-13'), null);
+});
+
+test('formatAgeArabic uses correct Arabic dual/plural forms', () => {
+  assert.equal(formatAgeArabic(0, 0, 0), 'حديث الولادة');
+  assert.equal(formatAgeArabic(1, 0, 0), 'سنة');
+  assert.equal(formatAgeArabic(2, 0, 0), 'سنتين');
+  assert.equal(formatAgeArabic(3, 0, 0), '3 سنوات');
+  assert.equal(formatAgeArabic(11, 0, 0), '11 سنة');
+  assert.equal(formatAgeArabic(0, 1, 0), 'شهر');
+  assert.equal(formatAgeArabic(0, 2, 0), 'شهرين');
+  assert.equal(formatAgeArabic(0, 6, 0), '6 شهور');
+  assert.equal(formatAgeArabic(0, 0, 1), 'يوم');
+  assert.equal(formatAgeArabic(0, 0, 2), 'يومين');
+  assert.equal(formatAgeArabic(0, 0, 15), '15 يوم');
+  assert.equal(formatAgeArabic(2, 3, 0), 'سنتين و3 شهور');
+  assert.equal(formatAgeArabic(0, 2, 15), 'شهرين و15 يوم');
+});
+
+test('validateDateOfBirth enforces required, plausible, non-future, and pediatric age bounds', () => {
+  // Required
+  assert.equal(validateDateOfBirth('').isValid, false);
+  assert.equal(validateDateOfBirth(null).isValid, false);
+  assert.equal(validateDateOfBirth(undefined).isValid, false);
+
+  // Malformed / impossible calendar dates
+  assert.equal(validateDateOfBirth('2020-13-01', '2026-11-13').isValid, false);
+  assert.equal(validateDateOfBirth('2021-02-29', '2026-11-13').isValid, false);
+
+  // Future dob relative to today
+  assert.equal(validateDateOfBirth('2030-01-01').isValid, false);
+
+  // Implausibly old
+  assert.equal(validateDateOfBirth('1899-12-31', '2026-11-13').isValid, false);
+
+  // dob after the visit date
+  assert.equal(validateDateOfBirth('2026-11-13', '2026-11-01').isValid, false);
+
+  // Valid pediatric dob with derived age
+  const ok = validateDateOfBirth('2024-05-13', '2026-11-13');
+  assert.equal(ok.isValid, true);
+  assert.equal(ok.age!.years, 2);
+  assert.equal(ok.age!.months, 6);
+
+  // Exactly 18 years at visit is allowed; 18 years + 1 day is rejected
+  assert.equal(validateDateOfBirth('2008-11-13', '2026-11-13').isValid, true);
+  assert.equal(validateDateOfBirth('2008-11-12', '2026-11-13').isValid, false);
+  assert.equal(MAX_PATIENT_AGE_YEARS, 18);
+});
+
+test('Cross-clinic duplicate booking for same phone + child + day is blocked in mock store', async () => {
+  const { appointmentStore } = await import('../services/appointmentService.ts');
+  const phone = '01066554433';
+  const date = '2026-11-24'; // Tuesday (open)
+
+  // First booking in dentistry
+  const first = await appointmentStore.createAppointment({
+    clinicId: 'dentistry',
+    patientName: 'حمزة وليد سمير',
+    phoneNumber: phone,
+    appointmentDate: date,
+  });
+  assert.equal(first.success, true);
+
+  // Same child + same phone + same day in a DIFFERENT clinic must be blocked
+  const crossClinic = await appointmentStore.createAppointment({
+    clinicId: 'echo',
+    patientName: 'حمزة وليد سمير',
+    phoneNumber: phone,
+    appointmentDate: date,
+  });
+  assert.equal(crossClinic.success, false, 'Cross-clinic duplicate for same child/day must be rejected');
+  assert.match(crossClinic.error || '', /بنفس الرقم لنفس الميلاد/);
+
+  // Arabic letter-variant (ة -> ه) of the same name must also be blocked
+  const variant = await appointmentStore.createAppointment({
+    clinicId: 'gi',
+    patientName: 'حمزه وليد سمير',
+    phoneNumber: phone,
+    appointmentDate: date,
+  });
+  assert.equal(variant.success, false, 'Normalized name variant must be treated as the same child');
+
+  // A sibling (different child) on the same phone/day in another clinic is allowed
+  const sibling = await appointmentStore.createAppointment({
+    clinicId: 'echo',
+    patientName: 'ملك وليد سمير',
+    phoneNumber: phone,
+    appointmentDate: date,
+  });
+  assert.equal(sibling.success, true, 'Different child sharing guardian phone must be permitted');
+});
+
+test('DOB duplicate rule: same phone + same DOB + day blocked across clinics; distinct DOB allowed', async () => {
+  const { appointmentStore } = await import('../services/appointmentService.ts');
+  const phone = '01055443322';
+  const date = '2026-11-25'; // Wednesday (open)
+  const dob = '2024-03-10';
+
+  // First child with a DOB
+  const first = await appointmentStore.createAppointment({
+    clinicId: 'dentistry',
+    patientName: 'آدم محمود إبراهيم',
+    phoneNumber: phone,
+    appointmentDate: date,
+    dateOfBirth: dob,
+  });
+  assert.equal(first.success, true);
+
+  // Same phone + same DOB + same day in another clinic, even with a DIFFERENT
+  // name (e.g. twin / data-entry variant), must be blocked with the client note.
+  const sameDob = await appointmentStore.createAppointment({
+    clinicId: 'echo',
+    patientName: 'اسم مختلف تماماً',
+    phoneNumber: phone,
+    appointmentDate: date,
+    dateOfBirth: dob,
+  });
+  assert.equal(sameDob.success, false, 'Same phone + same DOB + day must be rejected across clinics');
+  assert.match(sameDob.error || '', /يوجد حجز بنفس الرقم لنفس الميلاد/);
+
+  // A sibling with a DISTINCT DOB on the same phone/day must be allowed.
+  const sibling = await appointmentStore.createAppointment({
+    clinicId: 'echo',
+    patientName: 'لين محمود إبراهيم',
+    phoneNumber: phone,
+    appointmentDate: date,
+    dateOfBirth: '2022-07-01',
+  });
+  assert.equal(sibling.success, true, 'Sibling with distinct DOB sharing guardian phone must be permitted');
 });
 

@@ -150,10 +150,15 @@ export interface Database {
           reference_number: string;
           clinic_id: string;
           clinic_name: string;
+          service_id: string | null;
+          service_name: string | null;
           patient_name: string;
           phone_number: string;
           patient_age: string | null;
+          date_of_birth: string | null;
           patient_address: string | null;
+          guardian_national_id: string | null;
+          booking_code_hash: string | null;
           appointment_date: string;
           appointment_time: string;
           status: AppointmentStatus;
@@ -170,10 +175,15 @@ export interface Database {
           reference_number: string;
           clinic_id: string;
           clinic_name: string;
+          service_id?: string | null;
+          service_name?: string | null;
           patient_name: string;
           phone_number: string;
           patient_age?: string | null;
+          date_of_birth?: string | null;
           patient_address?: string | null;
+          guardian_national_id?: string | null;
+          booking_code_hash?: string | null;
           appointment_date: string;
           appointment_time?: string;
           status?: AppointmentStatus;
@@ -190,10 +200,15 @@ export interface Database {
           reference_number?: string;
           clinic_id?: string;
           clinic_name?: string;
+          service_id?: string | null;
+          service_name?: string | null;
           patient_name?: string;
           phone_number?: string;
           patient_age?: string | null;
+          date_of_birth?: string | null;
           patient_address?: string | null;
+          guardian_national_id?: string | null;
+          booking_code_hash?: string | null;
           appointment_date?: string;
           appointment_time?: string;
           status?: AppointmentStatus;
@@ -523,8 +538,30 @@ export interface Database {
           p_appointment_date?: string | null;
           p_appointment_time?: string;
           p_reference_number?: string | null;
+          p_service_id?: string | null;
+          p_guardian_national_id?: string | null;
+          p_staff_user_id?: string | null;
+          p_date_of_birth?: string | null;
         };
         Returns: Json;
+      };
+      transfer_appointment_clinic_atomic: {
+        Args: {
+          p_appointment_id: string;
+          p_target_clinic_id: string;
+          p_target_service_id: string;
+          p_staff_user_id?: string | null;
+          p_reason?: string | null;
+        };
+        Returns: Json;
+      };
+      normalize_patient_name: {
+        Args: { p_name: string };
+        Returns: string;
+      };
+      format_patient_age: {
+        Args: { p_dob: string; p_on_date: string };
+        Returns: string | null;
       };
       track_appointment_secure: {
         Args: {

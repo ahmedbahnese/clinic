@@ -40,9 +40,11 @@ import { submitBooking } from './actions';
 import {
   normalizeAndValidateEgyptianPhone,
   validatePatientName,
-  validatePatientAge,
+  validateDateOfBirth,
+  calculateAgeFromDob,
   validateGuardianNationalId,
   formatArabicDate,
+  getTodayCairoDateString,
 } from '@/lib/rules';
 import type { Clinic, ClinicService, ClinicScheduleException, Appointment } from '@/types';
 
@@ -50,52 +52,51 @@ import type { Clinic, ClinicService, ClinicScheduleException, Appointment } from
 // 1. ZOD SCHEMA & TYPES
 // ============================================================================
 
-function calculateAgeFromBirthDate(birthDate: string): { value: string; unit: 'سنة' | 'شهر' | 'يوم'; label: string } | null {
-  const birth = new Date(`${birthDate}T00:00:00`);
-  const now = new Date();
-  if (!birthDate || Number.isNaN(birth.getTime()) || birth > now) return null;
-  let years = now.getFullYear() - birth.getFullYear();
-  let months = now.getMonth() - birth.getMonth();
-  let days = now.getDate() - birth.getDate();
-  if (days < 0) {
-    months -= 1;
-    days += new Date(now.getFullYear(), now.getMonth(), 0).getDate();
-  }
-  if (months < 0) {
-    years -= 1;
-    months += 12;
-  }
-  if (years > 0) return { value: String(years), unit: 'سنة', label: months ? `${years} سنة و${months} شهر` : `${years} سنة` };
-  if (months > 0) return { value: String(months), unit: 'شهر', label: `${months} شهر` };
-  return { value: String(Math.max(days, 0)), unit: 'يوم', label: `${Math.max(days, 0)} يوم` };
-}
+const bookingSchema = z
+  .object({
+    // Section 1: Patient & Parent Data
+    patientName: z
+      .string()
+      .min(1, 'الاسم الرباعي للطفل مطلوب')
+      .refine(
+        (val) => validatePatientName(val).isValid,
+        'يرجى كتابة الاسم ثلاثياً أو رباعياً على الأقل كما هو مسجل في شهادة الميلاد'
+      ),
+    dateOfBirth: z.string().min(1, 'يرجى اختيار تاريخ ميلاد الطفل من التقويم'),
+    phoneNumber: z
+      .string()
+      .min(1, 'رقم الهاتف مطلوب لمتابعة الحجز')
+      .refine(
+        (val) => normalizeAndValidateEgyptianPhone(val).isValid,
+        'رقم الهاتف غير صحيح، يجب أن يتكون من 11 رقماً ويبدأ بـ 01 (010 / 011 / 012 / 015)'
+      ),
+    patientAddress: z
+      .string()
+      .min(3, 'العنوان بالتفصيل مطلوب (المركز / المدينة / القرية / الشارع)'),
+    nationalId: z
+      .string()
+      .optional()
+      .refine((val) => {
+        if (!val || val.trim() === '') return true;
+        return validateGuardianNationalId(val).isValid;
+      }, 'الرقم القومي لولي الأمر يجب أن يتكون من 14 رقماً ويبدأ بـ 2 أو 3'),
 
-const bookingSchema = z.object({
-  patientName: z.string().min(1, 'الاسم الرباعي للطفل مطلوب').refine((val) => validatePatientName(val).isValid, 'يرجى كتابة الاسم ثلاثياً أو رباعياً على الأقل كما هو مسجل في شهادة الميلاد'),
-  ageValue: z.string().optional(),
-  ageUnit: z.enum(['سنة', 'شهر', 'يوم'] as const).optional(),
-  birthDate: z.string().optional(),
-  phoneNumber: z.string().min(1, 'رقم الهاتف مطلوب لمتابعة الحجز').refine((val) => normalizeAndValidateEgyptianPhone(val).isValid, 'رقم الهاتف غير صحيح، يجب أن يتكون من 11 رقماً ويبدأ بـ 01 (010 / 011 / 012 / 015)'),
-  patientAddress: z.string().min(3, 'العنوان بالتفصيل مطلوب (المركز / المدينة / القرية / الشارع)'),
-  nationalId: z.string().optional().refine((val) => !val || val.trim() === '' || validateGuardianNationalId(val).isValid, 'الرقم القومي لولي الأمر يجب أن يتكون من 14 رقماً ويبدأ بـ 2 أو 3'),
-  clinicId: z.string().min(1, 'يرجى اختيار العيادة التخصصية المطلوبة'),
-  serviceId: z.string().min(1, 'يرجى اختيار الخدمة أو الفحص المطلوب'),
-  appointmentDate: z.string().min(1, 'يرجى اختيار تاريخ الحضور المتاح بالعيادة'),
-  notes: z.string().optional(),
-}).superRefine((data, ctx) => {
-  const hasBirthDate = Boolean(data.birthDate);
-  const hasAge = Boolean(data.ageValue && data.ageUnit);
-  if (!hasBirthDate && !hasAge) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['ageValue'], message: 'يرجى تحديد تاريخ الميلاد أو كتابة العمر' });
-    return;
-  }
-  if (hasBirthDate) {
-    if (!calculateAgeFromBirthDate(data.birthDate || '')) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['birthDate'], message: 'تاريخ الميلاد غير صحيح أو يقع في المستقبل' });
-    return;
-  }
-  const ageCheck = validatePatientAge(data.ageValue || '', data.ageUnit || 'سنة');
-  if (!ageCheck.isValid) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['ageValue'], message: ageCheck.error || 'عمر الطفل غير صحيح' });
-});
+    // Section 2: Clinic & Appointment
+    clinicId: z.string().min(1, 'يرجى اختيار العيادة التخصصية المطلوبة'),
+    serviceId: z.string().min(1, 'يرجى اختيار الخدمة أو الفحص المطلوب'),
+    appointmentDate: z.string().min(1, 'يرجى اختيار تاريخ الحضور المتاح بالعيادة'),
+    notes: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    const dobCheck = validateDateOfBirth(data.dateOfBirth, data.appointmentDate || undefined);
+    if (!dobCheck.isValid) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['dateOfBirth'],
+        message: dobCheck.error || 'تاريخ ميلاد الطفل غير صحيح',
+      });
+    }
+  });
 
 type BookingFormValues = z.infer<typeof bookingSchema>;
 
@@ -148,9 +149,7 @@ function NewAppointmentForm() {
     resolver: zodResolver(bookingSchema),
     defaultValues: {
       patientName: '',
-      ageValue: '',
-      ageUnit: 'سنة',
-      birthDate: '',
+      dateOfBirth: '',
       phoneNumber: '',
       patientAddress: '',
       nationalId: '',
@@ -166,8 +165,13 @@ function NewAppointmentForm() {
   const selectedClinicId = watch('clinicId');
   const selectedServiceId = watch('serviceId');
   const selectedDate = watch('appointmentDate');
-  const birthDate = watch('birthDate');
-  const ageValue = watch('ageValue');
+  const selectedDob = watch('dateOfBirth');
+
+  // Live, calendar-accurate age derived from the date of birth at the visit date.
+  const liveAge = useMemo(() => {
+    if (!selectedDob) return null;
+    return calculateAgeFromDob(selectedDob, selectedDate || getTodayCairoDateString());
+  }, [selectedDob, selectedDate]);
 
   // Fetch real clinics from database
   useEffect(() => {
@@ -209,11 +213,15 @@ function NewAppointmentForm() {
     // Check if services are already pre-loaded on activeClinic
     if (activeClinic && activeClinic.services && activeClinic.services.length > 0) {
       setClinicServices(activeClinic.services);
-      setValue('serviceId', (activeClinic.services.find((service) => !service.isWalkInOnly) || activeClinic.services[0]).id);
+      setValue('serviceId', activeClinic.services[0].id);
       return;
     }
 
     setLoadingServices(true);
+    // Clear any previous clinic's services so a failed fetch never shows stale
+    // services belonging to a different clinic.
+    setClinicServices([]);
+    setValue('serviceId', '');
     async function fetchServices() {
       try {
         const res = await fetch(`/api/clinics/${selectedClinicId}/services`);
@@ -221,7 +229,7 @@ function NewAppointmentForm() {
         if (active && data.services) {
           setClinicServices(data.services);
           if (data.services.length > 0) {
-            setValue('serviceId', (data.services.find((service: ClinicService) => !service.isWalkInOnly) || data.services[0]).id);
+            setValue('serviceId', data.services[0].id);
           } else {
             setValue('serviceId', '');
           }
@@ -317,26 +325,6 @@ function NewAppointmentForm() {
     }
   }, [availableDates, selectedDate, setValue]);
 
-  // Selecting a birth date derives the age and locks the manual age controls.
-  useEffect(() => {
-    if (!birthDate) return;
-    const derived = calculateAgeFromBirthDate(birthDate);
-    if (derived) {
-      setValue('ageValue', derived.value, { shouldValidate: true });
-      setValue('ageUnit', derived.unit, { shouldValidate: true });
-    }
-  }, [birthDate, setValue]);
-
-  // Selecting a birth date derives the age and locks the manual age controls.
-  useEffect(() => {
-    if (!birthDate) return;
-    const derived = calculateAgeFromBirthDate(birthDate);
-    if (derived) {
-      setValue('ageValue', derived.value, { shouldValidate: true });
-      setValue('ageUnit', derived.unit, { shouldValidate: true });
-    }
-  }, [birthDate, setValue]);
-
   // Form Submit Handler
   const onSubmit = async (values: BookingFormValues) => {
     setServerError(null);
@@ -347,9 +335,8 @@ function NewAppointmentForm() {
         setServerError('هذه الخدمة بالحضور المباشر فقط ولا يتم الحجز الإلكتروني بها. يرجى التوجه للاستقبال في نفس اليوم.');
         return;
       }
-      const derivedAge = values.birthDate ? calculateAgeFromBirthDate(values.birthDate) : null;
-      const combinedAge = derivedAge?.label || `${values.ageValue} ${values.ageUnit}`;
-      const resolvedServiceName = activeService?.name || 'كشف واستشارة طبية';
+      const dobAge = calculateAgeFromDob(values.dateOfBirth, values.appointmentDate || getTodayCairoDateString());
+      const resolvedServiceName = activeService?.name || '';
 
       const result = await submitBooking({
         clinicId: values.clinicId,
@@ -357,7 +344,8 @@ function NewAppointmentForm() {
         serviceName: resolvedServiceName,
         patientName: values.patientName,
         phoneNumber: values.phoneNumber,
-        patientAge: combinedAge,
+        patientAge: dobAge?.formatted,
+        dateOfBirth: values.dateOfBirth,
         patientAddress: values.patientAddress,
         nationalId: values.nationalId,
         appointmentDate: values.appointmentDate,
@@ -605,66 +593,46 @@ function NewAppointmentForm() {
                     )}
                   </div>
 
-                  {/* Field 2: Birth date OR manually entered age (mutually exclusive) */}
+                  {/* Field 2: Date of Birth (calendar) with auto-calculated age */}
                   <div>
-                    <label htmlFor="birthDate" className="block text-xs sm:text-sm font-bold text-[#163C3A] mb-1.5">
-                      تاريخ ميلاد الطفل أو العمر <span className="text-red-500">*</span>
+                    <label
+                      htmlFor="dateOfBirth"
+                      className="block text-xs sm:text-sm font-bold text-[#163C3A] mb-1.5"
+                    >
+                      تاريخ ميلاد الطفل <span className="text-red-500">*</span>
                     </label>
-                    <input
-                      id="birthDate"
-                      type="date"
-                      max={new Date().toISOString().split('T')[0]}
-                      disabled={Boolean(ageValue)}
-                      {...register('birthDate')}
-                      className={`w-full px-4 py-3 rounded-xl border bg-white text-slate-900 text-xs sm:text-sm font-mono transition-all shadow-2xs focus:outline-hidden disabled:bg-slate-100 disabled:text-slate-400 ${
-                        errors.birthDate
-                          ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-100'
-                          : 'border-slate-200 focus:border-[#087F78] focus:ring-2 focus:ring-[#087F78]/15'
-                      }`}
-                    />
-                    <div className="flex items-center gap-2 my-2 text-[10px] text-slate-400">
-                      <span className="h-px flex-1 bg-slate-200" />
-                      <span>أو اكتب العمر</span>
-                      <span className="h-px flex-1 bg-slate-200" />
+                    <div className="relative">
+                      <input
+                        id="dateOfBirth"
+                        type="date"
+                        dir="ltr"
+                        max={getTodayCairoDateString()}
+                        min="1900-01-01"
+                        {...register('dateOfBirth')}
+                        className={`w-full px-4 py-3 rounded-xl border bg-white text-slate-900 text-xs sm:text-sm font-mono text-right transition-all shadow-2xs focus:outline-hidden ${
+                          errors.dateOfBirth
+                            ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-100'
+                            : 'border-slate-200 focus:border-[#087F78] focus:ring-2 focus:ring-[#087F78]/15'
+                        }`}
+                      />
+                      <Calendar className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400 pointer-events-none" />
                     </div>
-                    <div className="flex items-center gap-2">
-                      <div className="relative flex-1">
-                        <input
-                          type="number"
-                          min="0"
-                          max="36"
-                          disabled={Boolean(birthDate)}
-                          {...register('ageValue')}
-                          placeholder="الرقم (مثال: 4)"
-                          className={`w-full px-4 py-3 rounded-xl border bg-white text-slate-900 text-xs sm:text-sm placeholder:text-slate-400 font-mono transition-all shadow-2xs focus:outline-hidden disabled:bg-slate-100 disabled:text-slate-400 ${
-                            errors.ageValue
-                              ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-100'
-                              : 'border-slate-200 focus:border-[#087F78] focus:ring-2 focus:ring-[#087F78]/15'
-                          }`}
-                        />
-                      </div>
-                      <div className="w-32">
-                        <select
-                          disabled={Boolean(birthDate)}
-                          {...register('ageUnit')}
-                          className="w-full px-3 py-3 rounded-xl border border-slate-200 bg-slate-50/70 hover:bg-slate-100 text-[#163C3A] text-xs sm:text-sm font-semibold transition-all focus:border-[#087F78] focus:outline-hidden shadow-2xs cursor-pointer disabled:bg-slate-100 disabled:text-slate-400"
-                        >
-                          <option value="سنة">سنة (1-18)</option>
-                          <option value="شهر">شهر (1-36)</option>
-                          <option value="يوم">يوم (0-30)</option>
-                        </select>
-                      </div>
-                    </div>
-                    {errors.ageValue ? (
+                    {errors.dateOfBirth ? (
                       <p className="text-[11px] text-red-600 mt-1 font-medium">
-                        {errors.ageValue.message}
+                        {errors.dateOfBirth.message}
                       </p>
+                    ) : liveAge ? (
+                      <div className="mt-2 flex items-center gap-2 rounded-lg bg-[#087F78]/10 border border-[#087F78]/20 px-3 py-2">
+                        <Sparkles className="w-3.5 h-3.5 text-[#087F78] shrink-0" />
+                        <span className="text-[11px] sm:text-xs font-bold text-[#163C3A]">
+                          عمر الطفل عند الكشف: <span className="text-[#087F78]">{liveAge.formatted}</span>
+                        </span>
+                      </div>
                     ) : (
                       <span className="block text-[10.5px] text-slate-400 mt-1">
-                        عند اختيار تاريخ الميلاد يُحسب العمر تلقائيًا ويُقفل الإدخال الآخر. امسح الحقل للتبديل.
+                        اختر تاريخ الميلاد من التقويم وسيُحسب العمر تلقائياً (سنوات / شهور / أيام) عند تاريخ الكشف
                       </span>
                     )}
-                    {errors.birthDate && <p className="text-[11px] text-red-600 mt-1 font-medium">{errors.birthDate.message}</p>}
                   </div>
 
                   {/* Field 3: Guardian Phone Number */}
@@ -865,8 +833,8 @@ function NewAppointmentForm() {
                             <option value="">لا توجد خدمات محددة حالياً لهذه العيادة</option>
                           ) : (
                             clinicServices.map((srv) => (
-                              <option key={srv.id} value={srv.id} disabled={srv.isWalkInOnly}>
-                                {srv.name}{srv.isWalkInOnly ? ' — حضور مباشر (لا يُحجز إلكترونيًا)' : ''}
+                              <option key={srv.id} value={srv.id}>
+                                {srv.name}
                               </option>
                             ))
                           )}
@@ -879,7 +847,7 @@ function NewAppointmentForm() {
                       </p>
                     )}
                     <span className="block text-[10.5px] text-slate-400 mt-1">
-                      الخدمات تتغير تلقائياً وفقاً للعيادة التخصصية المختارة. خدمات «الحضور المباشر» تظهر للتوضيح فقط ويسجلها الاستقبال أو المدير في نفس اليوم.
+                      الخدمات تتغير تلقائياً وفقاً للعيادة التخصصية المختارة
                     </span>
                   </div>
 
@@ -928,11 +896,6 @@ function NewAppointmentForm() {
                               خاص بالخدمة
                             </span>
                           </div>
-                          {activeService.isWalkInOnly && (
-                            <div className="mb-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900 font-bold">
-                              هذه الخدمة بالحضور المباشر فقط. لا يمكن إرسال حجز إلكتروني لها؛ يرجى مراجعة الاستقبال أو مدير النظام في نفس اليوم.
-                            </div>
-                          )}
 
                           {activeService.requiredDocuments && activeService.requiredDocuments.length > 0 && (
                             <div className="mb-2">

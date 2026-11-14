@@ -41,13 +41,14 @@ import {
   PlayCircle,
   SkipForward,
   Receipt,
+  Sparkles,
 } from 'lucide-react';
 import CmsDashboard from '@/components/cms/CmsDashboard';
 import StaffManager from './components/StaffManager';
 import LiveQueueManager from '@/components/LiveQueueManager';
 import ReceiptCard from '@/components/ReceiptCard';
 import { Appointment, Clinic, ClinicService, ClinicScheduleException, AppointmentStatus, AuditLogItem, CancellationRequest } from '@/types';
-import { getStatusDisplay, formatArabicDate, formatLocalDate, isTodayLocalDate } from '@/lib/rules';
+import { getStatusDisplay, formatArabicDate, formatLocalDate, isTodayLocalDate, calculateAgeFromDob, validateDateOfBirth, getTodayCairoDateString } from '@/lib/rules';
 
 function formatSafeDateTime(dateStr?: string | null): string {
   if (!dateStr || typeof dateStr !== 'string') return '—';
@@ -173,6 +174,9 @@ export default function StaffDashboardPage() {
   // Transfer Modal State
   const [transferApt, setTransferApt] = useState<Appointment | null>(null);
   const [targetClinicId, setTargetClinicId] = useState('');
+  const [transferServiceId, setTransferServiceId] = useState('');
+  const [transferServicesList, setTransferServicesList] = useState<ClinicService[]>([]);
+  const [loadingTransferServices, setLoadingTransferServices] = useState(false);
   const [transferReason, setTransferReason] = useState('');
   const [isTransferring, setIsTransferring] = useState(false);
 
@@ -183,7 +187,7 @@ export default function StaffDashboardPage() {
   const [walkInClinicId, setWalkInClinicId] = useState('');
   const [walkInServiceId, setWalkInServiceId] = useState('');
   const [walkInAppointmentDate, setWalkInAppointmentDate] = useState('');
-  const [walkInAge, setWalkInAge] = useState('');
+  const [walkInDob, setWalkInDob] = useState('');
   const [walkInAddress, setWalkInAddress] = useState('');
   const [walkInSubmitting, setWalkInSubmitting] = useState(false);
   const [walkInError, setWalkInError] = useState<string | null>(null);
@@ -358,13 +362,14 @@ export default function StaffDashboardPage() {
   useEffect(() => {
     if (!walkInClinicId) return;
     let active = true;
+    setWalkInServicesList([]);
+    setWalkInServiceId('');
     async function loadWalkInServices() {
       try {
         const res = await fetch(`/api/clinics/${walkInClinicId}/services`);
         const data = await res.json();
         if (active && data.services) {
           setWalkInServicesList(data.services.filter((s: ClinicService) => s.isActive !== false));
-          setWalkInServiceId('');
         }
       } catch {
         if (active) setWalkInServicesList([]);
@@ -375,6 +380,36 @@ export default function StaffDashboardPage() {
       active = false;
     };
   }, [walkInClinicId]);
+
+  // Load real services for the transfer target clinic
+  useEffect(() => {
+    if (!targetClinicId) {
+      setTransferServicesList([]);
+      setTransferServiceId('');
+      return;
+    }
+    let active = true;
+    setTransferServicesList([]);
+    setTransferServiceId('');
+    setLoadingTransferServices(true);
+    async function loadTransferServices() {
+      try {
+        const res = await fetch(`/api/clinics/${targetClinicId}/services`);
+        const data = await res.json();
+        if (active && data.services) {
+          setTransferServicesList(data.services.filter((s: ClinicService) => s.isActive !== false));
+        }
+      } catch {
+        if (active) setTransferServicesList([]);
+      } finally {
+        if (active) setLoadingTransferServices(false);
+      }
+    }
+    loadTransferServices();
+    return () => {
+      active = false;
+    };
+  }, [targetClinicId]);
 
   // Load services for editing clinic
   useEffect(() => {
@@ -733,6 +768,10 @@ export default function StaffDashboardPage() {
   // Transfer Clinic Handler
   async function handleConfirmTransfer() {
     if (!transferApt || !targetClinicId) return;
+    if (!transferServiceId) {
+      alert('يرجى اختيار الخدمة المطلوبة في العيادة المحول إليها قبل إتمام التحويل');
+      return;
+    }
     const token = localStorage.getItem('bsch_staff_token');
     if (!token) return;
 
@@ -746,6 +785,7 @@ export default function StaffDashboardPage() {
         },
         body: JSON.stringify({
           targetClinicId,
+          targetServiceId: transferServiceId,
           reason: transferReason || 'تحويل استشاري بين العيادات',
         }),
       });
@@ -755,6 +795,7 @@ export default function StaffDashboardPage() {
         alert(data.message || 'تم تحويل المريض بنجاح');
         setTransferApt(null);
         setTransferReason('');
+        setTransferServiceId('');
         setRefreshKey((k) => k + 1);
       } else {
         alert(data.error || 'تعذر تحويل المريض');
@@ -776,6 +817,11 @@ export default function StaffDashboardPage() {
 
     const chosenDate = walkInAppointmentDate || formatLocalDate();
 
+    if (!walkInServiceId) {
+      setWalkInError('يرجى اختيار خدمة فعلية تابعة للعيادة قبل تسجيل الحجز الحضوري.');
+      return;
+    }
+
     // Direct-attendance services can only be registered on the current day.
     const chosenService = walkInServicesList.find((service) => service.id === walkInServiceId);
     if (chosenService?.isWalkInOnly && chosenDate !== formatLocalDate()) {
@@ -783,6 +829,12 @@ export default function StaffDashboardPage() {
       return;
     }
 
+    const dobCheck = validateDateOfBirth(walkInDob, chosenDate);
+    if (!dobCheck.isValid) {
+      setWalkInError(dobCheck.error || 'يرجى اختيار تاريخ ميلاد الطفل من التقويم');
+      return;
+    }
+    const derivedAge = dobCheck.age?.formatted || '';
     // Check clinic working days
     const currentClinic = clinics.find((c) => c.id === walkInClinicId);
     if (currentClinic && currentClinic.daysOfWeek && currentClinic.daysOfWeek.length > 0) {
@@ -803,10 +855,11 @@ export default function StaffDashboardPage() {
         },
         body: JSON.stringify({
           clinicId: walkInClinicId,
-          serviceId: walkInServiceId || undefined,
+          serviceId: walkInServiceId,
           patientName: walkInPatientName,
           phoneNumber: walkInPhone,
-          patientAge: walkInAge,
+          patientAge: derivedAge,
+          dateOfBirth: walkInDob,
           patientAddress: walkInAddress,
           appointmentDate: chosenDate,
         }),
@@ -818,7 +871,7 @@ export default function StaffDashboardPage() {
         setWalkInSuccessReceipt(data.appointment);
         setWalkInPatientName('');
         setWalkInPhone('');
-        setWalkInAge('');
+        setWalkInDob('');
         setWalkInAddress('');
         setWalkInServiceId('');
         setWalkInAppointmentDate('');
@@ -3046,6 +3099,38 @@ export default function StaffDashboardPage() {
 
             <div>
               <label className="block text-xs font-bold text-[#163C3A] mb-1.5">
+                اختر الخدمة في العيادة المحول إليها <span className="text-red-500">*</span>
+              </label>
+              {loadingTransferServices ? (
+                <div className="w-full px-3 py-2.5 rounded-xl border border-[#E2E8EE] text-xs text-slate-400 bg-slate-50 flex items-center gap-2">
+                  <div className="w-3.5 h-3.5 border-2 border-[#087F78] border-t-transparent rounded-full animate-spin" />
+                  <span>جاري تحميل خدمات العيادة...</span>
+                </div>
+              ) : (
+                <select
+                  value={transferServiceId}
+                  onChange={(e) => setTransferServiceId(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-[#E2E8EE] text-sm font-bold text-[#124E4A] bg-white focus:border-[#087F78]"
+                >
+                  <option value="">
+                    {transferServicesList.length === 0
+                      ? 'لا توجد خدمات متاحة لهذه العيادة'
+                      : '— اختر الخدمة المطلوبة —'}
+                  </option>
+                  {transferServicesList.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <span className="block text-[10.5px] text-slate-400 mt-1">
+                يتم تحويل الحجز إلى خدمة فعلية تابعة للعيادة الجديدة مع تحديث المستندات والتعليمات
+              </span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-[#163C3A] mb-1.5">
                 سبب التحويل / الملاحظات الطبية
               </label>
               <textarea
@@ -3065,9 +3150,9 @@ export default function StaffDashboardPage() {
                 إلغاء
               </button>
               <button
-                disabled={isTransferring}
+                disabled={isTransferring || !transferServiceId}
                 onClick={handleConfirmTransfer}
-                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#087F78] hover:bg-[#124E4A] text-white shadow-xs"
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-[#087F78] hover:bg-[#124E4A] text-white shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isTransferring ? 'جاري التحويل...' : 'تأكيد التحويل الآن'}
               </button>
@@ -3155,9 +3240,14 @@ export default function StaffDashboardPage() {
                 <select
                   value={walkInServiceId}
                   onChange={(e) => setWalkInServiceId(e.target.value)}
+                  required
                   className="w-full px-3 py-2.5 rounded-xl border border-[#E2E8EE] text-sm font-semibold text-[#124E4A] bg-white focus:border-[#087F78]"
                 >
-                  <option value="">كشف واستشارة طبية عامة (افتراضي)</option>
+                  <option value="">
+                    {walkInServicesList.length === 0
+                      ? 'لا توجد خدمات متاحة لهذه العيادة'
+                      : '— اختر الخدمة المطلوبة —'}
+                  </option>
                   {walkInServicesList.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name} {s.maxDailyCapacity ? `(السعة اليومية: ${s.maxDailyCapacity} مريض)` : ''} {s.isWalkInOnly ? '— حضور مباشر' : ''}
@@ -3199,13 +3289,18 @@ export default function StaffDashboardPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-[#163C3A] mb-1">السن</label>
+                  <label className="block text-xs font-bold text-[#163C3A] mb-1">
+                    تاريخ الميلاد <span className="text-red-500">*</span>
+                  </label>
                   <input
-                    type="text"
-                    value={walkInAge}
-                    onChange={(e) => setWalkInAge(e.target.value)}
-                    placeholder="مثال: 4 سنوات"
-                    className="w-full px-3 py-2.5 rounded-xl border border-[#E2E8EE] text-sm focus:border-[#087F78]"
+                    type="date"
+                    dir="ltr"
+                    required
+                    max={getTodayCairoDateString()}
+                    min="1900-01-01"
+                    value={walkInDob}
+                    onChange={(e) => setWalkInDob(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl border border-[#E2E8EE] text-sm font-bold text-[#124E4A] bg-white focus:border-[#087F78] text-right"
                   />
                 </div>
                 <div>
@@ -3219,6 +3314,25 @@ export default function StaffDashboardPage() {
                   />
                 </div>
               </div>
+
+              {(() => {
+                const walkInLiveAge = walkInDob
+                  ? calculateAgeFromDob(walkInDob, walkInAppointmentDate || formatLocalDate())
+                  : null;
+                return walkInLiveAge ? (
+                  <div className="flex items-center gap-2 rounded-lg bg-[#087F78]/10 border border-[#087F78]/20 px-3 py-2 -mt-1">
+                    <Sparkles className="w-3.5 h-3.5 text-[#087F78] shrink-0" />
+                    <span className="text-[11px] font-bold text-[#163C3A]">
+                      العمر عند الكشف: <span className="text-[#087F78]">{walkInLiveAge.formatted}</span>
+                      <span className="text-slate-400 font-medium"> (يُكتب تلقائياً)</span>
+                    </span>
+                  </div>
+                ) : (
+                  <span className="block text-[10.5px] text-slate-400 -mt-1">
+                    اختر تاريخ الميلاد وسيُحسب العمر تلقائياً بالسنوات والشهور والأيام
+                  </span>
+                );
+              })()}
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
