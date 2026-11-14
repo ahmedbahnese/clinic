@@ -214,7 +214,8 @@ function NewAppointmentForm() {
     // Check if services are already pre-loaded on activeClinic
     if (activeClinic && activeClinic.services && activeClinic.services.length > 0) {
       setClinicServices(activeClinic.services);
-      setValue('serviceId', activeClinic.services[0].id);
+      const bookableService = activeClinic.services.find((service) => !service.isWalkInOnly);
+      setValue('serviceId', bookableService?.id || '');
       return;
     }
 
@@ -230,7 +231,8 @@ function NewAppointmentForm() {
         if (active && data.services) {
           setClinicServices(data.services);
           if (data.services.length > 0) {
-            setValue('serviceId', data.services[0].id);
+            const bookableService = data.services.find((service: ClinicService) => !service.isWalkInOnly);
+            setValue('serviceId', bookableService?.id || '');
           } else {
             setValue('serviceId', '');
           }
@@ -877,8 +879,8 @@ function NewAppointmentForm() {
                             <option value="">لا توجد خدمات محددة حالياً لهذه العيادة</option>
                           ) : (
                             clinicServices.map((srv) => (
-                              <option key={srv.id} value={srv.id}>
-                                {srv.name}
+                              <option key={srv.id} value={srv.id} disabled={Boolean(srv.isWalkInOnly)}>
+                                {srv.name}{srv.isWalkInOnly ? ' — حضور مباشر فقط' : ''}
                               </option>
                             ))
                           )}
@@ -891,8 +893,13 @@ function NewAppointmentForm() {
                       </p>
                     )}
                     <span className="block text-[10.5px] text-slate-400 mt-1">
-                      الخدمات تتغير تلقائياً وفقاً للعيادة التخصصية المختارة
+                      الخدمات تتغير تلقائياً وفقاً للعيادة التخصصية المختارة. الخدمة المعلّمة «حضور مباشر فقط» تظهر للتوضيح ولا يمكن حجزها إلكترونياً.
                     </span>
+                    {clinicServices.some((service) => service.isWalkInOnly) && (
+                      <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[10.5px] font-semibold text-amber-800">
+                        حضور مباشر فقط: {clinicServices.filter((service) => service.isWalkInOnly).map((service) => service.name).join('، ')}. يرجى التوجه إلى الاستقبال أو مدير النظام لتسجيلها.
+                      </div>
+                    )}
                   </div>
 
                   {/* ======================================================== */}
