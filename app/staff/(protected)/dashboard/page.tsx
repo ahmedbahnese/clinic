@@ -223,6 +223,7 @@ export default function StaffDashboardPage() {
   const [newServiceWalkInOnly, setNewServiceWalkInOnly] = useState(false);
   const [newServiceExceptionDate, setNewServiceExceptionDate] = useState('');
   const [newServiceExceptionCapacity, setNewServiceExceptionCapacity] = useState(20);
+  const [newServiceExceptionOnly, setNewServiceExceptionOnly] = useState(false);
   const [addingServiceLoading, setAddingServiceLoading] = useState(false);
   const [deletingServiceId, setDeletingServiceId] = useState<string | null>(null);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
@@ -918,6 +919,7 @@ export default function StaffDashboardPage() {
           isWalkInOnly: newServiceWalkInOnly,
           exceptionDate: newServiceExceptionDate || undefined,
           exceptionCapacity: newServiceExceptionDate ? Number(newServiceExceptionCapacity) || 1 : undefined,
+          exceptionOnly: newServiceExceptionOnly,
           isActive: true,
         }),
       });
@@ -931,6 +933,7 @@ export default function StaffDashboardPage() {
         setNewServiceWalkInOnly(false);
         setNewServiceExceptionDate('');
         setNewServiceExceptionCapacity(20);
+        setNewServiceExceptionOnly(false);
         alert('تمت إضافة الخدمة للعيادة بنجاح');
       } else {
         alert(data.error || 'تعذر إضافة الخدمة');
@@ -982,6 +985,7 @@ export default function StaffDashboardPage() {
     setNewServiceWalkInOnly(Boolean(service.isWalkInOnly));
     setNewServiceExceptionDate(service.exceptionDate || '');
     setNewServiceExceptionCapacity(service.exceptionCapacity ?? service.maxDailyCapacity ?? 20);
+    setNewServiceExceptionOnly(Boolean(service.exceptionOnly));
   }
 
   // Cancel Edit Service Handler
@@ -994,6 +998,7 @@ export default function StaffDashboardPage() {
     setNewServiceWalkInOnly(false);
     setNewServiceExceptionDate('');
     setNewServiceExceptionCapacity(20);
+    setNewServiceExceptionOnly(false);
   }
 
   // Save / Update Service Handler
@@ -1022,6 +1027,7 @@ export default function StaffDashboardPage() {
           isWalkInOnly: newServiceWalkInOnly,
           exceptionDate: newServiceExceptionDate || undefined,
           exceptionCapacity: newServiceExceptionDate ? Number(newServiceExceptionCapacity) || 1 : undefined,
+          exceptionOnly: newServiceExceptionOnly,
           isActive: true,
         }),
       });
@@ -4017,6 +4023,16 @@ export default function StaffDashboardPage() {
                     <p className="sm:col-span-2 text-3xs text-sky-800">
                       عند اختيار يوم، تظهر هذه الخدمة في الحجز في ذلك اليوم بالسعة المحددة. اترك التاريخ فارغًا إذا لم يوجد استثناء.
                     </p>
+                    <label className="sm:col-span-2 flex items-start gap-2 text-2xs font-bold text-sky-900 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newServiceExceptionOnly}
+                        disabled={!newServiceExceptionDate}
+                        onChange={(e) => setNewServiceExceptionOnly(e.target.checked)}
+                        className="mt-0.5 accent-sky-600"
+                      />
+                      <span>عرض يوم الاستثناء فقط في الحجز (بدون عرض باقي أيام العيادة)</span>
+                    </label>
                   </div>
                   {editingServiceId ? (
                     <div className="flex items-center gap-2 pt-1">

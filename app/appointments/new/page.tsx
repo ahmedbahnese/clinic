@@ -45,6 +45,7 @@ import {
   validateGuardianNationalId,
   formatArabicDate,
   getTodayCairoDateString,
+  BOOKING_START_DATE,
 } from '@/lib/rules';
 import type { Clinic, ClinicService, ClinicScheduleException, Appointment } from '@/types';
 
@@ -286,7 +287,7 @@ function NewAppointmentForm() {
       isException: boolean;
       maxCapacity: number;
     }[] = [];
-    const baseDate = new Date();
+    const baseDate = new Date(`${BOOKING_START_DATE}T12:00:00`);
     const dayNames = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 
     const allowedDays =
@@ -295,7 +296,7 @@ function NewAppointmentForm() {
         : [0, 1, 2, 3, 4, 6];
 
     // Unified 30-day booking horizon
-    for (let i = 1; i <= 30 && dates.length < 14; i++) {
+    for (let i = 0; i <= 30 && dates.length < 14; i++) {
       const d = new Date(baseDate);
       d.setDate(baseDate.getDate() + i);
       const dayOfWeek = d.getDay();
@@ -313,8 +314,11 @@ function NewAppointmentForm() {
         isOpen = allowedDays.includes(dayOfWeek);
       }
 
+      const hasServiceException = Boolean(activeService?.exceptionDate);
       const serviceException = activeService?.exceptionDate === dateStr ? activeService : undefined;
-      if (isOpen || Boolean(serviceException)) {
+      const serviceExceptionOnly = Boolean(activeService?.exceptionOnly && hasServiceException);
+      const dateAllowedByService = serviceExceptionOnly ? Boolean(serviceException) : (isOpen || Boolean(serviceException));
+      if (dateAllowedByService) {
         const maxCapacity = serviceException?.exceptionCapacity ?? exception?.maxCapacity ?? activeClinic.maxDailySlots;
         dates.push({
           dateStr,

@@ -32,6 +32,7 @@ export interface ClinicService {
   maxDailyCapacity?: number;
   exceptionDate?: string;
   exceptionCapacity?: number;
+  exceptionOnly?: boolean;
   isWalkInOnly?: boolean;
   isActive: boolean;
   displayOrder: number;

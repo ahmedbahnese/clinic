@@ -1,5 +1,5 @@
 import type { Clinic, ClinicService, ClinicScheduleException, Appointment, AppointmentSlot, AppointmentStatus, CreateAppointmentInput, AuditLogItem, StaffUser, CancellationRequest } from '../types/index.ts';
-import { normalizeAndValidateEgyptianPhone, validatePatientName, generateReferenceNumber, canTransitionStatus, formatLocalDate, getTodayCairoDateString, validateGuardianNationalId, maskPatientName, normalizePatientName, validateDateOfBirth } from '../lib/rules.ts';
+import { normalizeAndValidateEgyptianPhone, validatePatientName, generateReferenceNumber, canTransitionStatus, formatLocalDate, getTodayCairoDateString, validateGuardianNationalId, maskPatientName, normalizePatientName, validateDateOfBirth, BOOKING_START_DATE } from '../lib/rules.ts';
 import { generateBookingCode, hashBookingCode } from '../lib/trackingAccess.ts';
 import { createClient } from '@supabase/supabase-js';
 import { createAdminClient, createUserClient, getSystemSupabaseClient, getAuthenticatedServerClient, isSupabaseConfigured, isSupabaseAdminConfigured, isMockStoreAllowed } from '../lib/supabase/admin.ts';
@@ -219,6 +219,7 @@ class AppointmentServiceStore {
           maxDailyCapacity: s.max_daily_capacity !== null && s.max_daily_capacity !== undefined ? Number(s.max_daily_capacity) : undefined,
           exceptionDate: s.exception_date || undefined,
           exceptionCapacity: s.exception_capacity !== null && s.exception_capacity !== undefined ? Number(s.exception_capacity) : undefined,
+          exceptionOnly: Boolean(s.exception_only),
           isWalkInOnly: Boolean(s.is_walk_in_only),
           isActive: s.is_active,
           displayOrder: s.display_order,
@@ -263,6 +264,7 @@ class AppointmentServiceStore {
       maxDailyCapacity: input.maxDailyCapacity !== undefined && input.maxDailyCapacity !== null ? Number(input.maxDailyCapacity) : undefined,
       exceptionDate: input.exceptionDate || undefined,
       exceptionCapacity: input.exceptionDate && input.exceptionCapacity !== undefined ? Number(input.exceptionCapacity) : undefined,
+      exceptionOnly: Boolean(input.exceptionOnly),
       isWalkInOnly: input.isWalkInOnly ?? false,
       isActive: input.isActive ?? true,
       displayOrder: input.displayOrder ?? (this.services.length + 1),
@@ -282,6 +284,7 @@ class AppointmentServiceStore {
           max_daily_capacity: newService.maxDailyCapacity ?? null,
           exception_date: newService.exceptionDate || null,
           exception_capacity: newService.exceptionCapacity ?? null,
+          exception_only: newService.exceptionOnly ?? false,
           is_walk_in_only: newService.isWalkInOnly ?? false,
           is_active: newService.isActive,
           display_order: newService.displayOrder,
@@ -327,6 +330,7 @@ class AppointmentServiceStore {
             max_daily_capacity: updates.maxDailyCapacity !== undefined ? (updates.maxDailyCapacity ? Number(updates.maxDailyCapacity) : null) : (service.maxDailyCapacity ?? null),
             exception_date: updates.exceptionDate !== undefined ? (updates.exceptionDate || null) : (service.exceptionDate || null),
             exception_capacity: updates.exceptionCapacity !== undefined ? (updates.exceptionCapacity ? Number(updates.exceptionCapacity) : null) : (service.exceptionCapacity ?? null),
+            exception_only: updates.exceptionOnly !== undefined ? Boolean(updates.exceptionOnly) : (service.exceptionOnly ?? false),
             is_walk_in_only: updates.isWalkInOnly ?? service.isWalkInOnly ?? false,
             is_active: updates.isActive ?? service.isActive,
             display_order: updates.displayOrder ?? service.displayOrder,
@@ -349,6 +353,7 @@ class AppointmentServiceStore {
     }
     if (updates.exceptionDate !== undefined) service.exceptionDate = updates.exceptionDate || undefined;
     if (updates.exceptionCapacity !== undefined) service.exceptionCapacity = updates.exceptionCapacity ? Number(updates.exceptionCapacity) : undefined;
+    if (updates.exceptionOnly !== undefined) service.exceptionOnly = Boolean(updates.exceptionOnly);
     if (updates.isActive !== undefined) service.isActive = updates.isActive;
     if (updates.isWalkInOnly !== undefined) service.isWalkInOnly = updates.isWalkInOnly;
     if (updates.displayOrder !== undefined) service.displayOrder = updates.displayOrder;
@@ -1003,7 +1008,7 @@ class AppointmentServiceStore {
     }
 
     const todayCairo = getTodayCairoDateString();
-    if (input.appointmentDate < todayCairo) {
+    if (input.appointmentDate < BOOKING_START_DATE) {
       return { success: false, error: 'لا يمكن حجز موعد في تاريخ سابق' };
     }
 
