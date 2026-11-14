@@ -256,6 +256,7 @@ function NewAppointmentForm() {
   const [clinicSchedules, setClinicSchedules] = useState<ClinicScheduleException[]>([]);
   useEffect(() => {
     let active = true;
+    setClinicSchedules([]);
     if (!selectedClinicId) return;
     async function loadSchedules() {
       try {
@@ -278,7 +279,13 @@ function NewAppointmentForm() {
   const availableDates = useMemo(() => {
     if (!activeClinic) return [];
 
-    const dates: { dateStr: string; label: string; dayOfWeekName: string }[] = [];
+    const dates: {
+      dateStr: string;
+      label: string;
+      dayOfWeekName: string;
+      isException: boolean;
+      maxCapacity: number;
+    }[] = [];
     const baseDate = new Date();
     const dayNames = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 
@@ -307,10 +314,13 @@ function NewAppointmentForm() {
       }
 
       if (isOpen) {
+        const maxCapacity = exception?.maxCapacity ?? activeClinic.maxDailySlots;
         dates.push({
           dateStr,
-          label: `${dayNames[dayOfWeek]} (${dd}/${mm})`,
+          label: `${dayNames[dayOfWeek]} (${dd}/${mm})${exception ? ' — تشغيل استثنائي' : ''} — السعة: ${maxCapacity} مريض`,
           dayOfWeekName: dayNames[dayOfWeek],
+          isException: Boolean(exception),
+          maxCapacity,
         });
       }
     }
