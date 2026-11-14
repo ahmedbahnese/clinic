@@ -1012,16 +1012,9 @@ class AppointmentServiceStore {
       return { success: false, error: 'لا يمكن حجز موعد في تاريخ سابق' };
     }
 
-    // Maximum booking horizon: 30 days ahead
-    const maxHorizonDate = new Date();
-    maxHorizonDate.setUTCDate(maxHorizonDate.getUTCDate() + 30);
-    const maxHorizonString = maxHorizonDate.toISOString().split('T')[0];
-    if (input.appointmentDate > maxHorizonString) {
-      return { success: false, error: 'الحجز الإلكتروني متاح بحد أقصى 30 يوماً مقدماً' };
-    }
-
     // Check schedule overrides, closures, and capacity from clinic_schedules (Precedence rule)
     let effectiveCapacity = clinic.maxDailySlots;
+    let weeklyClosed = false;
     const scheduleOverride = await this.getClinicScheduleForDate(input.clinicId, input.appointmentDate);
     if (scheduleOverride) {
       if (scheduleOverride.isClosed) {
@@ -1036,12 +1029,7 @@ class AppointmentServiceStore {
     } else {
       const appointmentDateObj = new Date(input.appointmentDate + 'T12:00:00Z');
       const dayOfWeek = appointmentDateObj.getUTCDay();
-      if (!clinic.daysOfWeek.includes(dayOfWeek)) {
-        return {
-          success: false,
-          error: 'العيادة المختارة لا تعمل في هذا اليوم (عطلة أسبوعية). يرجى اختيار يوم عمل رسمي للعيادة.',
-        };
-      }
+      weeklyClosed = !clinic.daysOfWeek.includes(dayOfWeek);
     }
 
     // Resolve service details & validate service-clinic match.
@@ -1069,6 +1057,25 @@ class AppointmentServiceStore {
     // The service name always comes from the clinic's real service record,
     // never from client-supplied free text.
     const resolvedServiceName = matchedService?.name || input.serviceName?.trim() || 'كشف واستشارة طبية';
+
+    // Regular services keep the 30-day horizon. A configured service exception
+    // is an explicit override and may be booked even months in the future.
+    const maxHorizonDate = new Date();
+    maxHorizonDate.setUTCDate(maxHorizonDate.getUTCDate() + 30);
+    const maxHorizonString = maxHorizonDate.toISOString().split('T')[0];
+    const isServiceExceptionDate = matchedService?.exceptionDate === input.appointmentDate;
+    if (weeklyClosed && !isServiceExceptionDate) {
+      return {
+        success: false,
+        error: 'العيادة المختارة لا تعمل في هذا اليوم (عطلة أسبوعية). يرجى اختيار يوم عمل رسمي للعيادة.',
+      };
+    }
+    if (input.appointmentDate > maxHorizonString && !isServiceExceptionDate) {
+      return { success: false, error: 'الحجز الإلكتروني متاح بحد أقصى 30 يوماً مقدماً، باستثناء يوم الاستثناء المحدد للخدمة.' };
+    }
+    if (matchedService?.exceptionOnly && !isServiceExceptionDate) {
+      return { success: false, error: `الخدمة "${matchedService.name}" متاحة فقط في يوم الاستثناء المحدد.` };
+    }
 
     // Date of birth is the authoritative age source. When provided, validate it
     // against the visit date and derive the display age server-side so the

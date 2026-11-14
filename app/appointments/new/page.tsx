@@ -295,6 +295,22 @@ function NewAppointmentForm() {
         ? activeClinic.daysOfWeek
         : [0, 1, 2, 3, 4, 6];
 
+    const hasServiceException = Boolean(activeService?.exceptionDate);
+    const serviceExceptionOnly = Boolean(activeService?.exceptionOnly && hasServiceException);
+    if (serviceExceptionOnly && activeService?.exceptionDate && activeService.exceptionDate >= BOOKING_START_DATE) {
+      const exceptionDateObj = new Date(`${activeService.exceptionDate}T12:00:00Z`);
+      const dayOfWeek = exceptionDateObj.getUTCDay();
+      const [, mm, dd] = activeService.exceptionDate.split('-');
+      dates.push({
+        dateStr: activeService.exceptionDate,
+        label: `${dayNames[dayOfWeek]} (${dd}/${mm}) — تشغيل استثنائي — السعة: ${activeService.exceptionCapacity ?? activeClinic.maxDailySlots} مريض`,
+        dayOfWeekName: dayNames[dayOfWeek],
+        isException: true,
+        maxCapacity: activeService.exceptionCapacity ?? activeClinic.maxDailySlots,
+      });
+      return dates;
+    }
+
     // Unified 30-day booking horizon
     for (let i = 0; i <= 30 && dates.length < 14; i++) {
       const d = new Date(baseDate);
@@ -314,9 +330,7 @@ function NewAppointmentForm() {
         isOpen = allowedDays.includes(dayOfWeek);
       }
 
-      const hasServiceException = Boolean(activeService?.exceptionDate);
       const serviceException = activeService?.exceptionDate === dateStr ? activeService : undefined;
-      const serviceExceptionOnly = Boolean(activeService?.exceptionOnly && hasServiceException);
       const dateAllowedByService = serviceExceptionOnly ? Boolean(serviceException) : (isOpen || Boolean(serviceException));
       if (dateAllowedByService) {
         const maxCapacity = serviceException?.exceptionCapacity ?? exception?.maxCapacity ?? activeClinic.maxDailySlots;
@@ -328,6 +342,21 @@ function NewAppointmentForm() {
           maxCapacity,
         });
       }
+    }
+
+    // Keep regular clinic dates, but append a distant service exception so it
+    // is visible even when it falls outside the normal 30-day list.
+    if (activeService?.exceptionDate && activeService.exceptionDate >= BOOKING_START_DATE && !dates.some((d) => d.dateStr === activeService.exceptionDate)) {
+      const exceptionDateObj = new Date(`${activeService.exceptionDate}T12:00:00Z`);
+      const dayOfWeek = exceptionDateObj.getUTCDay();
+      const [, mm, dd] = activeService.exceptionDate.split('-');
+      dates.push({
+        dateStr: activeService.exceptionDate,
+        label: `${dayNames[dayOfWeek]} (${dd}/${mm}) — تشغيل استثنائي — السعة: ${activeService.exceptionCapacity ?? activeClinic.maxDailySlots} مريض`,
+        dayOfWeekName: dayNames[dayOfWeek],
+        isException: true,
+        maxCapacity: activeService.exceptionCapacity ?? activeClinic.maxDailySlots,
+      });
     }
 
     return dates;
