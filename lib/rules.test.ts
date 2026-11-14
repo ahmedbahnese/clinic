@@ -337,7 +337,7 @@ test('maskPatientName redacts patronymic words while preserving first name for g
   assert.equal(maskPatientName(undefined), '');
 });
 
-test('Sibling bookings: Same guardian phone can book different children on the same date and clinic', async () => {
+test('Duplicate bookings: Same phone cannot book two children in the same clinic on the same date', async () => {
   const { appointmentStore } = await import('../services/appointmentService.ts');
   const siblingPhone = '01599887766';
   const testDate = '2026-11-23'; // Monday (open)
@@ -360,9 +360,10 @@ test('Sibling bookings: Same guardian phone can book different children on the s
     patientAge: '2 سنة',
     appointmentDate: testDate,
   });
-  assert.equal(child2.success, true, 'Sibling with different name must succeed on same phone, clinic, and date');
+  assert.equal(child2.success, false, 'A second child using the same phone, clinic, and date must be rejected');
+  assert.match(child2.error || '', /يوجد حجز مسبق بالفعل/);
 
-  // Re-booking the first child again on the same date must be rejected as duplicate
+  // Re-booking the first child again on the same date must also be rejected
   const duplicateChild1 = await appointmentStore.createAppointment({
     clinicId: 'dentistry',
     patientName: 'ياسين أحمد علي حسن',
@@ -379,4 +380,3 @@ test('normalizePatientName collapses whitespace and lowercases string matching S
   assert.equal(normalizePatientName(''), '');
   assert.equal(normalizePatientName('   '), '');
 });
-

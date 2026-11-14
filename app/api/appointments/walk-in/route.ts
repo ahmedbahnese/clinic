@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { clinicId, serviceId, patientName, phoneNumber, patientAge, patientAddress, appointmentDate, appointmentTime } = body;
+    const { clinicId, serviceId, patientName, phoneNumber, patientBirthDate, patientAge, patientAddress, appointmentDate, appointmentTime } = body;
 
     if (!clinicId || !patientName || !phoneNumber) {
       return NextResponse.json(
@@ -42,12 +42,20 @@ export async function POST(req: NextRequest) {
 
     const todayStr = formatLocalDate();
     const targetDate = appointmentDate || todayStr;
+    const clinicServices = await appointmentStore.getClinicServices(clinicId);
+    if (clinicServices.length > 0 && !serviceId) {
+      return NextResponse.json(
+        { error: 'يرجى اختيار خدمة موجودة ومفعلة تابعة للعيادة المختارة.' },
+        { status: 400 }
+      );
+    }
 
     const result = await appointmentStore.createAppointment({
       clinicId,
       serviceId: serviceId || undefined,
       patientName,
       phoneNumber,
+      patientBirthDate,
       patientAge,
       patientAddress,
       appointmentDate: targetDate,

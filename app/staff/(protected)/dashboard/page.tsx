@@ -47,7 +47,7 @@ import StaffManager from './components/StaffManager';
 import LiveQueueManager from '@/components/LiveQueueManager';
 import ReceiptCard from '@/components/ReceiptCard';
 import { Appointment, Clinic, ClinicService, ClinicScheduleException, AppointmentStatus, AuditLogItem, CancellationRequest } from '@/types';
-import { getStatusDisplay, formatArabicDate, formatLocalDate, isTodayLocalDate } from '@/lib/rules';
+import { calculatePatientAgeFromBirthDate, getStatusDisplay, formatArabicDate, formatLocalDate, isTodayLocalDate } from '@/lib/rules';
 
 function formatSafeDateTime(dateStr?: string | null): string {
   if (!dateStr || typeof dateStr !== 'string') return '—';
@@ -173,6 +173,9 @@ export default function StaffDashboardPage() {
   // Transfer Modal State
   const [transferApt, setTransferApt] = useState<Appointment | null>(null);
   const [targetClinicId, setTargetClinicId] = useState('');
+  const [targetServiceId, setTargetServiceId] = useState('');
+  const [targetClinicServices, setTargetClinicServices] = useState<ClinicService[]>([]);
+  const [loadingTargetClinicServices, setLoadingTargetClinicServices] = useState(false);
   const [transferReason, setTransferReason] = useState('');
   const [isTransferring, setIsTransferring] = useState(false);
 
@@ -180,6 +183,7 @@ export default function StaffDashboardPage() {
   const [showWalkInModal, setShowWalkInModal] = useState(false);
   const [walkInPatientName, setWalkInPatientName] = useState('');
   const [walkInPhone, setWalkInPhone] = useState('');
+  const [walkInBirthDate, setWalkInBirthDate] = useState('');
   const [walkInClinicId, setWalkInClinicId] = useState('');
   const [walkInServiceId, setWalkInServiceId] = useState('');
   const [walkInAppointmentDate, setWalkInAppointmentDate] = useState('');
@@ -189,6 +193,11 @@ export default function StaffDashboardPage() {
   const [walkInError, setWalkInError] = useState<string | null>(null);
   const [walkInServicesList, setWalkInServicesList] = useState<ClinicService[]>([]);
   const [walkInSuccessReceipt, setWalkInSuccessReceipt] = useState<Appointment | null>(null);
+  useEffect(() => {
+    if (!walkInBirthDate) return;
+    const result = calculatePatientAgeFromBirthDate(walkInBirthDate);
+    if (result.isValid && result.formatted) setWalkInAge(result.formatted);
+  }, [walkInBirthDate]);
 
   // Queue Receipt Modal State (عرض الإيصال)
   const [receiptApt, setReceiptApt] = useState<Appointment | null>(null);
@@ -358,8 +367,10 @@ export default function StaffDashboardPage() {
         const res = await fetch(`/api/clinics/${walkInClinicId}/services`);
         const data = await res.json();
         if (active && data.services) {
-          setWalkInServicesList(data.services.filter((s: ClinicService) => s.isActive !== false));
-          setWalkInServiceId('');
+          const services = data.services.filter((s: ClinicService) => s.isActive !== false);
+          setWalkInServicesList(services);
+          // Select a real clinic service, never the removed generic default.
+          setWalkInServiceId(services[0]?.id || '');
         }
       } catch {
         if (active) setWalkInServicesList([]);
@@ -370,6 +381,39 @@ export default function StaffDashboardPage() {
       active = false;
     };
   }, [walkInClinicId]);
+
+  // Load services for the clinic selected in the transfer modal.
+  useEffect(() => {
+    if (!targetClinicId) {
+      setTargetClinicServices([]);
+      setTargetServiceId('');
+      return;
+    }
+    let active = true;
+    setLoadingTargetClinicServices(true);
+    fetch(`/api/clinics/${targetClinicId}/services`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!active) return;
+        const services = Array.isArray(data.services)
+          ? data.services.filter((s: ClinicService) => s.isActive !== false)
+          : [];
+        setTargetClinicServices(services);
+        setTargetServiceId('');
+      })
+      .catch(() => {
+        if (active) {
+          setTargetClinicServices([]);
+          setTargetServiceId('');
+        }
+      })
+      .finally(() => {
+        if (active) setLoadingTargetClinicServices(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [targetClinicId]);
 
   // Load services for editing clinic
   useEffect(() => {
@@ -689,6 +733,7 @@ export default function StaffDashboardPage() {
         },
         body: JSON.stringify({
           targetClinicId,
+          targetServiceId: targetServiceId || undefined,
           reason: transferReason || 'تحويل استشاري بين العيادات',
         }),
       });
@@ -697,6 +742,7 @@ export default function StaffDashboardPage() {
       if (data.success) {
         alert(data.message || 'تم تحويل المريض بنجاح');
         setTransferApt(null);
+        setTargetServiceId('');
         setTransferReason('');
         setRefreshKey((k) => k + 1);
       } else {
@@ -742,6 +788,7 @@ export default function StaffDashboardPage() {
           serviceId: walkInServiceId || undefined,
           patientName: walkInPatientName,
           phoneNumber: walkInPhone,
+          patientBirthDate: walkInBirthDate || undefined,
           patientAge: walkInAge,
           patientAddress: walkInAddress,
           appointmentDate: chosenDate,
@@ -754,6 +801,7 @@ export default function StaffDashboardPage() {
         setWalkInSuccessReceipt(data.appointment);
         setWalkInPatientName('');
         setWalkInPhone('');
+        setWalkInBirthDate('');
         setWalkInAge('');
         setWalkInAddress('');
         setWalkInServiceId('');
@@ -1990,7 +2038,10 @@ export default function StaffDashboardPage() {
                                 onClick={() => {
                                   setTransferApt(apt);
                                   const nextClinic = clinics.find((c) => c.id !== apt.clinicId);
-                                  if (nextClinic) setTargetClinicId(nextClinic.id);
+                                  if (nextClinic) {
+                                    setTargetClinicId(nextClinic.id);
+                                    setTargetServiceId('');
+                                  }
                                 }}
                                 className="w-full py-2 px-3 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
                               >
@@ -2277,7 +2328,10 @@ export default function StaffDashboardPage() {
                                       onClick={() => {
                                         setTransferApt(apt);
                                         const nextClinic = clinics.find((c) => c.id !== apt.clinicId);
-                                        if (nextClinic) setTargetClinicId(nextClinic.id);
+                                        if (nextClinic) {
+                                          setTargetClinicId(nextClinic.id);
+                                          setTargetServiceId('');
+                                        }
                                       }}
                                       className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-2xs font-bold"
                                       title="تحويل المريض لعيادة أخرى"
@@ -2957,6 +3011,24 @@ export default function StaffDashboardPage() {
 
             <div>
               <label className="block text-xs font-bold text-[#163C3A] mb-1.5">
+                اختر الخدمة في العيادة الجديدة <span className="text-red-500">*</span>
+              </label>
+              <select
+                required={targetClinicServices.length > 0}
+                value={targetServiceId}
+                onChange={(e) => setTargetServiceId(e.target.value)}
+                disabled={loadingTargetClinicServices}
+                className="w-full px-3 py-2.5 rounded-xl border border-[#E2E8EE] text-sm font-bold text-[#124E4A] bg-white focus:border-[#087F78] disabled:bg-slate-50"
+              >
+                <option value="">{loadingTargetClinicServices ? 'جاري تحميل خدمات العيادة...' : targetClinicServices.length ? '-- اختر الخدمة --' : 'لا توجد خدمات مفعلة لهذه العيادة'}</option>
+                {targetClinicServices.map((service) => (
+                  <option key={service.id} value={service.id}>{service.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-[#163C3A] mb-1.5">
                 سبب التحويل / الملاحظات الطبية
               </label>
               <textarea
@@ -3058,6 +3130,20 @@ export default function StaffDashboardPage() {
                 </div>
               </div>
 
+              <div>
+                <label className="block text-xs font-bold text-[#163C3A] mb-1">
+                  تاريخ ميلاد الطفل (اختياري)
+                </label>
+                <input
+                  type="date"
+                  value={walkInBirthDate}
+                  max={new Date().toISOString().split('T')[0]}
+                  onChange={(e) => setWalkInBirthDate(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-[#E2E8EE] text-sm text-[#163C3A] focus:border-[#087F78]"
+                />
+                <span className="block text-[10px] text-slate-400 mt-1">سيُستخدم لحساب عمر الطفل تلقائيًا.</span>
+              </div>
+
               {/* Service Selection for Selected Clinic */}
               <div>
                 <label className="block text-xs font-bold text-[#163C3A] mb-1">
@@ -3066,9 +3152,10 @@ export default function StaffDashboardPage() {
                 <select
                   value={walkInServiceId}
                   onChange={(e) => setWalkInServiceId(e.target.value)}
+                  required={walkInServicesList.length > 0}
                   className="w-full px-3 py-2.5 rounded-xl border border-[#E2E8EE] text-sm font-semibold text-[#124E4A] bg-white focus:border-[#087F78]"
                 >
-                  <option value="">كشف واستشارة طبية عامة (افتراضي)</option>
+                  <option value="">{walkInServicesList.length ? '-- اختر الخدمة التابعة للعيادة --' : 'لا توجد خدمات مفعلة لهذه العيادة'}</option>
                   {walkInServicesList.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name} {s.maxDailyCapacity ? `(السعة اليومية: ${s.maxDailyCapacity} مريض)` : ''}

@@ -1,5 +1,5 @@
 import type { Clinic, ClinicService, ClinicScheduleException, Appointment, AppointmentSlot, AppointmentStatus, CreateAppointmentInput, AuditLogItem, StaffUser, CancellationRequest } from '../types/index.ts';
-import { normalizeAndValidateEgyptianPhone, validatePatientName, generateReferenceNumber, canTransitionStatus, formatLocalDate, getTodayCairoDateString, validateGuardianNationalId, maskPatientName } from '../lib/rules.ts';
+import { calculatePatientAgeFromBirthDate, normalizeAndValidateEgyptianPhone, validatePatientName, generateReferenceNumber, canTransitionStatus, formatLocalDate, getTodayCairoDateString, validateGuardianNationalId, maskPatientName } from '../lib/rules.ts';
 import { generateBookingCode, hashBookingCode } from '../lib/trackingAccess.ts';
 import { createClient } from '@supabase/supabase-js';
 import { createAdminClient, createUserClient, getSystemSupabaseClient, getAuthenticatedServerClient, isSupabaseConfigured, isSupabaseAdminConfigured, isMockStoreAllowed } from '../lib/supabase/admin.ts';
@@ -1097,6 +1097,12 @@ class AppointmentServiceStore {
     if (!phoneCheck.isValid) {
       return { success: false, error: phoneCheck.error || 'رقم هاتف غير صالح' };
     }
+    let resolvedPatientAge = input.patientAge?.trim() || '';
+    if (input.patientBirthDate) {
+      const birthAge = calculatePatientAgeFromBirthDate(input.patientBirthDate);
+      if (!birthAge.isValid) return { success: false, error: birthAge.error };
+      resolvedPatientAge = birthAge.formatted || resolvedPatientAge;
+    }
 
     const nameCheck = validatePatientName(input.patientName);
     if (!nameCheck.isValid) {
@@ -1161,6 +1167,25 @@ class AppointmentServiceStore {
       matchedService = clinicServices.find((s) => s.isActive) || clinicServices[0];
     }
     const resolvedServiceName = input.serviceName || matchedService?.name || 'كشف واستشارة طبية';
+    const duplicateMessage = 'يوجد حجز مسبق بالفعل: يوجد حجز بنفس رقم الهاتف لنفس العيادة في نفس اليوم.';
+    // Fast server-side guard gives the receptionist/guardian a clear message;
+    // the database unique index remains the final concurrency-safe guard.
+    if (isSupabaseConfigured()) {
+      try {
+        const supabase = createAdminClient();
+        const { data: existing } = await (supabase as any)
+          .from('appointments')
+          .select('id')
+          .eq('phone_number', phoneCheck.normalized)
+          .eq('clinic_id', input.clinicId)
+          .eq('appointment_date', input.appointmentDate)
+          .neq('status', 'CANCELLED')
+          .limit(1);
+        if (existing && existing.length > 0) return { success: false, error: duplicateMessage };
+      } catch (err) {
+        console.warn('Duplicate appointment precheck failed; relying on atomic database guard:', err);
+      }
+    }
 
     // Check per-service capacity if defined
     if (matchedService?.maxDailyCapacity) {
@@ -1227,7 +1252,7 @@ class AppointmentServiceStore {
           p_clinic_id: input.clinicId,
           p_patient_name: input.patientName.trim(),
           p_phone_number: phoneCheck.normalized,
-          p_patient_age: input.patientAge?.trim() || null,
+          p_patient_age: resolvedPatientAge || null,
           p_patient_address: input.patientAddress?.trim() || null,
           p_appointment_date: input.appointmentDate,
           p_appointment_time: selectedTime || '09:00',
@@ -1263,7 +1288,7 @@ class AppointmentServiceStore {
               serviceName: resolvedServiceName,
               patientName: dbApt.patient_name || input.patientName.trim(),
               phoneNumber: dbApt.phone_number || phoneCheck.normalized,
-              patientAge: dbApt.patient_age || input.patientAge?.trim() || undefined,
+              patientAge: dbApt.patient_age || resolvedPatientAge || undefined,
               patientAddress: dbApt.patient_address || input.patientAddress?.trim() || undefined,
               bookingCode: bookingCode, // Unhashed transient code returned once for the ticket receipt
               bookingCodeHash: bookingCodeHash,
@@ -1348,19 +1373,17 @@ class AppointmentServiceStore {
     }
 
     // Local memory transaction check fallback (allows siblings with different patient names)
-    const normalizedInputName = input.patientName.trim().toLowerCase().replace(/\s+/g, ' ');
     const existing = this.appointments.find(
       (a) =>
         a.phoneNumber === phoneCheck.normalized &&
         a.clinicId === input.clinicId &&
         a.appointmentDate === input.appointmentDate &&
-        a.patientName.trim().toLowerCase().replace(/\s+/g, ' ') === normalizedInputName &&
         a.status !== 'CANCELLED'
     );
     if (existing) {
       return {
         success: false,
-        error: `يوجد حجز مسبق بالفعل لنفس المريض في ${clinic.name} بنفس التاريخ برقم مرجعي (${existing.referenceNumber})`,
+        error: 'يوجد حجز مسبق بالفعل: يوجد حجز بنفس رقم الهاتف لنفس العيادة في نفس اليوم.',
       };
     }
 
@@ -1393,7 +1416,7 @@ class AppointmentServiceStore {
       serviceInstructions: matchedService?.instructions,
       patientName: input.patientName.trim(),
       phoneNumber: phoneCheck.normalized,
-      patientAge: input.patientAge?.trim() || undefined,
+      patientAge: resolvedPatientAge || undefined,
       patientAddress: input.patientAddress?.trim() || undefined,
       appointmentDate: input.appointmentDate,
       appointmentTime: selectedTime || '09:00',
@@ -2025,12 +2048,21 @@ class AppointmentServiceStore {
   public async transferClinic(
     id: string,
     targetClinicId: string,
-    reason: string,
-    staffUser: StaffUser,
+    targetServiceIdOrReason: string | undefined,
+    reasonOrStaffUser: string | StaffUser,
+    staffUserOrToken?: StaffUser | string,
     userToken?: string
   ): Promise<{ success: boolean; appointment?: Appointment; error?: string }> {
+    // Backward compatibility: old callers used (id, clinic, reason, staff, token).
+    const legacyCall = typeof reasonOrStaffUser === 'object';
+    const targetServiceId = legacyCall ? undefined : targetServiceIdOrReason;
+    const reason = legacyCall ? (targetServiceIdOrReason || '') : (reasonOrStaffUser as string);
+    const staffUser = (legacyCall ? reasonOrStaffUser : staffUserOrToken) as StaffUser;
+    const resolvedUserToken = legacyCall
+      ? (typeof staffUserOrToken === 'string' ? staffUserOrToken : userToken)
+      : userToken;
     // 1. Validate Staff Authorization
-    const apt = await this.getAppointmentByIdAsync(id, userToken);
+    const apt = await this.getAppointmentByIdAsync(id, resolvedUserToken);
     if (!apt) {
       return { success: false, error: 'الحجز غير موجود' };
     }
@@ -2064,6 +2096,13 @@ class AppointmentServiceStore {
     if (apt.clinicId === targetClinicId) {
       return { success: false, error: 'المريض مسجل بالفعل في هذه العيادة' };
     }
+    const targetServices = await this.getClinicServices(targetClinicId);
+    const targetService = targetServiceId
+      ? targetServices.find((service) => service.id === targetServiceId && service.isActive)
+      : undefined;
+    if (targetServices.length > 0 && !targetService) {
+      return { success: false, error: 'يرجى اختيار خدمة مفعلة تابعة للعيادة المحول إليها.' };
+    }
 
     // 2. Validate Target Clinic Calendar & Schedule Precedence
     const scheduleException = await this.getClinicScheduleForDate(targetClinic.id, apt.appointmentDate);
@@ -2085,12 +2124,12 @@ class AppointmentServiceStore {
     let targetDayCount = 0;
     if (isSupabaseConfigured()) {
       try {
-        const isRealJwt = userToken && userToken.startsWith('eyJ') && userToken.split('.').length === 3;
+        const isRealJwt = resolvedUserToken && resolvedUserToken.startsWith('eyJ') && resolvedUserToken.split('.').length === 3;
         let client: any = null;
         let staffUserId: string | null = null;
 
         if (isRealJwt) {
-          client = createUserClient(userToken);
+          client = createUserClient(resolvedUserToken);
           staffUserId = isValidUuid(staffUser.id) ? staffUser.id : null;
         } else {
           const sys = await getSystemSupabaseClient();
@@ -2101,6 +2140,7 @@ class AppointmentServiceStore {
         const { data, error: rpcError } = await (client as any).rpc('transfer_appointment_clinic_atomic', {
           p_appointment_id: apt.id,
           p_target_clinic_id: targetClinicId,
+          p_target_service_id: targetService?.id || null,
           p_staff_user_id: staffUserId,
           p_reason: reason || null,
         });
@@ -2121,6 +2161,10 @@ class AppointmentServiceStore {
 
         apt.clinicId = targetClinic.id;
         apt.clinicName = targetClinic.name;
+        apt.serviceId = targetService?.id;
+        apt.serviceName = targetService?.name || 'كشف واستشارة طبية (تحويل عيادة)';
+        apt.requiredDocuments = targetService?.requiredDocuments;
+        apt.serviceInstructions = targetService?.instructions;
         apt.queueNumber = newQueue;
         apt.status = 'CONFIRMED';
         apt.updatedAt = now;
@@ -2167,6 +2211,10 @@ class AppointmentServiceStore {
 
     apt.clinicId = targetClinic.id;
     apt.clinicName = targetClinic.name;
+    apt.serviceId = targetService?.id;
+    apt.serviceName = targetService?.name || 'كشف واستشارة طبية (تحويل عيادة)';
+    apt.requiredDocuments = targetService?.requiredDocuments;
+    apt.serviceInstructions = targetService?.instructions;
     apt.queueNumber = newQueue;
     apt.status = 'CONFIRMED';
     apt.updatedAt = now;

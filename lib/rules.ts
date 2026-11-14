@@ -239,6 +239,38 @@ export function formatLocalDate(date: Date = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
+/** Calculates a pediatric age from an ISO birth date without rounding up. */
+export function calculatePatientAgeFromBirthDate(
+  birthDate: string,
+  now: Date = new Date()
+): { isValid: boolean; formatted?: string; error?: string } {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) {
+    return { isValid: false, error: 'يرجى اختيار تاريخ ميلاد صحيح' };
+  }
+  const [year, month, day] = birthDate.split('-').map(Number);
+  const birth = new Date(year, month - 1, day);
+  if (birth.getFullYear() !== year || birth.getMonth() !== month - 1 || birth.getDate() !== day || birth > now) {
+    return { isValid: false, error: 'تاريخ ميلاد الطفل غير صحيح أو في المستقبل' };
+  }
+  let years = now.getFullYear() - year;
+  let months = now.getMonth() - (month - 1);
+  let days = now.getDate() - day;
+  if (days < 0) {
+    months -= 1;
+    days += new Date(now.getFullYear(), now.getMonth(), 0).getDate();
+  }
+  if (months < 0) {
+    years -= 1;
+    months += 12;
+  }
+  if (years > 18 || (years === 18 && (months > 0 || days > 0))) {
+    return { isValid: false, error: 'عمر الطفل يجب ألا يتجاوز 18 سنة' };
+  }
+  if (years > 0) return { isValid: true, formatted: `${years} سنة` };
+  if (months > 0) return { isValid: true, formatted: `${months} شهر` };
+  return { isValid: true, formatted: `${days} يوم` };
+}
+
 /**
  * Whether an appointment date (YYYY-MM-DD) matches the current system date.
  * Used by the queue date guard: calling (نداء) or completing (تم الكشف) an

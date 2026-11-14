@@ -165,14 +165,15 @@ test('Security 6: Duplicate active reservation in same clinic on same date is bl
   assert.equal(second.success, false);
   assert.match(second.error || '', /يوجد حجز مسبق بالفعل/, 'Duplicate booking for same patient on same date must be rejected');
 
-  // Third booking for a sibling with a different name sharing the same phone must SUCCEED
+  // Third booking for a sibling with a different name sharing the same phone must also be blocked
   const sibling = await appointmentStore.createAppointment({
     clinicId,
     patientName: 'مريم طارق أحمد مصطفى',
     phoneNumber: phone,
     appointmentDate: date,
   });
-  assert.equal(sibling.success, true, 'Sibling with different name sharing guardian phone must be permitted');
+  assert.equal(sibling.success, false, 'A sibling sharing the same phone, clinic, and date must be blocked');
+  assert.match(sibling.error || '', /يوجد حجز مسبق بالفعل/);
 });
 
 test('Security 7: Terminal status protection - Completed or cancelled appointments cannot be reopened by staff', async () => {
@@ -1806,6 +1807,5 @@ test('Security 63: Audit Trail & State Preservation - Rejection is recorded in a
   assert.ok(rejectLog.details.includes(requestId), 'Audit log must record cancellation request ID');
   assert.ok(rejectLog.details.includes('تم التواصل والتأكيد على الحضور'), 'Audit log must record rejection reason');
 });
-
 
 

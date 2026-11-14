@@ -39,6 +39,7 @@ import ReceiptCard from '@/components/ReceiptCard';
 import { submitBooking } from './actions';
 import {
   normalizeAndValidateEgyptianPhone,
+  calculatePatientAgeFromBirthDate,
   validatePatientName,
   validatePatientAge,
   validateGuardianNationalId,
@@ -60,6 +61,7 @@ const bookingSchema = z
         (val) => validatePatientName(val).isValid,
         'يرجى كتابة الاسم ثلاثياً أو رباعياً على الأقل كما هو مسجل في شهادة الميلاد'
       ),
+    patientBirthDate: z.string().optional(),
     ageValue: z.string().min(1, 'يرجى كتابة عمر الطفل'),
     ageUnit: z.enum(['سنة', 'شهر', 'يوم'] as const),
     phoneNumber: z
@@ -148,6 +150,7 @@ function NewAppointmentForm() {
     resolver: zodResolver(bookingSchema),
     defaultValues: {
       patientName: '',
+      patientBirthDate: '',
       ageValue: '',
       ageUnit: 'سنة',
       phoneNumber: '',
@@ -165,6 +168,17 @@ function NewAppointmentForm() {
   const selectedClinicId = watch('clinicId');
   const selectedServiceId = watch('serviceId');
   const selectedDate = watch('appointmentDate');
+  const patientBirthDate = watch('patientBirthDate');
+
+  useEffect(() => {
+    if (!patientBirthDate) return;
+    const result = calculatePatientAgeFromBirthDate(patientBirthDate);
+    const match = result.formatted?.match(/^(\d+)\s+(يوم|شهر|سنة)$/);
+    if (result.isValid && match) {
+      setValue('ageValue', match[1], { shouldValidate: true });
+      setValue('ageUnit', match[2] as 'سنة' | 'شهر' | 'يوم', { shouldValidate: true });
+    }
+  }, [patientBirthDate, setValue]);
 
   // Fetch real clinics from database
   useEffect(() => {
@@ -329,6 +343,7 @@ function NewAppointmentForm() {
         serviceName: resolvedServiceName,
         patientName: values.patientName,
         phoneNumber: values.phoneNumber,
+        patientBirthDate: values.patientBirthDate,
         patientAge: combinedAge,
         patientAddress: values.patientAddress,
         nationalId: values.nationalId,
@@ -577,7 +592,24 @@ function NewAppointmentForm() {
                     )}
                   </div>
 
-                  {/* Field 2: Combined Age (Number + Unit Dropdown with strict bounds) */}
+                  {/* Field 2: Birth date (age remains visible and is filled automatically) */}
+                  <div>
+                    <label htmlFor="patientBirthDate" className="block text-xs sm:text-sm font-bold text-[#163C3A] mb-1.5">
+                      تاريخ ميلاد الطفل <span className="text-slate-400 text-xs font-normal">(اختياري)</span>
+                    </label>
+                    <input
+                      id="patientBirthDate"
+                      type="date"
+                      max={new Date().toISOString().split('T')[0]}
+                      {...register('patientBirthDate')}
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 text-xs sm:text-sm focus:outline-hidden focus:border-[#087F78] focus:ring-2 focus:ring-[#087F78]/15"
+                    />
+                    <span className="block text-[10.5px] text-slate-400 mt-1">
+                      عند اختياره يُحسب العمر تلقائيًا وتظل خانتا العمر وتاريخ الميلاد ظاهرتين.
+                    </span>
+                  </div>
+
+                  {/* Field 3: Combined Age (Number + Unit Dropdown with strict bounds) */}
                   <div>
                     <label className="block text-xs sm:text-sm font-bold text-[#163C3A] mb-1.5">
                       العمر <span className="text-red-500">*</span>
@@ -589,8 +621,9 @@ function NewAppointmentForm() {
                           min="0"
                           max="36"
                           {...register('ageValue')}
+                          readOnly={Boolean(patientBirthDate)}
                           placeholder="الرقم (مثال: 4)"
-                          className={`w-full px-4 py-3 rounded-xl border bg-white text-slate-900 text-xs sm:text-sm placeholder:text-slate-400 font-mono transition-all shadow-2xs focus:outline-hidden ${
+                          className={`w-full px-4 py-3 rounded-xl border ${patientBirthDate ? 'bg-slate-50 cursor-not-allowed' : 'bg-white'} text-slate-900 text-xs sm:text-sm placeholder:text-slate-400 font-mono transition-all shadow-2xs focus:outline-hidden ${
                             errors.ageValue
                               ? 'border-red-300 focus:border-red-500 focus:ring-2 focus:ring-red-100'
                               : 'border-slate-200 focus:border-[#087F78] focus:ring-2 focus:ring-[#087F78]/15'

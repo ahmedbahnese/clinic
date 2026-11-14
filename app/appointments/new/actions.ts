@@ -2,7 +2,7 @@
 
 import { headers } from 'next/headers';
 import { appointmentStore } from '@/services/appointmentService';
-import { normalizeAndValidateEgyptianPhone, validatePatientName, validateGuardianNationalId } from '@/lib/rules';
+import { calculatePatientAgeFromBirthDate, normalizeAndValidateEgyptianPhone, validatePatientName, validateGuardianNationalId } from '@/lib/rules';
 import { checkIpRateLimit } from '@/lib/otp';
 import { verifyTurnstileToken } from '@/lib/turnstile';
 import type { Appointment } from '@/types';
@@ -13,6 +13,7 @@ export interface BookingFormData {
   serviceName?: string;
   patientName: string;
   phoneNumber: string;
+  patientBirthDate?: string;
   patientAge?: string;
   patientAddress: string;
   nationalId?: string;
@@ -71,6 +72,11 @@ export async function submitBooking(data: BookingFormData): Promise<{
         success: false,
         error: 'عنوان المريض طويل جداً (الحد الأقصى 250 حرفاً)',
       };
+    }
+
+    if (data.patientBirthDate) {
+      const birthAge = calculatePatientAgeFromBirthDate(data.patientBirthDate);
+      if (!birthAge.isValid) return { success: false, error: birthAge.error };
     }
 
     // 4. Validate notes length
@@ -166,6 +172,7 @@ export async function submitBooking(data: BookingFormData): Promise<{
       serviceName: data.serviceName,
       patientName: data.patientName.trim(),
       phoneNumber: phoneCheck.normalized,
+      patientBirthDate: data.patientBirthDate,
       patientAge: data.patientAge?.trim(),
       patientAddress: data.patientAddress?.trim(),
       guardianNationalId: data.nationalId?.trim(),
@@ -193,4 +200,3 @@ export async function submitBooking(data: BookingFormData): Promise<{
     };
   }
 }
-

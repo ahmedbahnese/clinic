@@ -20,13 +20,13 @@ export async function POST(
     }
 
     const body = await req.json().catch(() => ({}));
-    const { targetClinicId, reason } = body;
+    const { targetClinicId, targetServiceId, reason } = body;
 
     if (!targetClinicId) {
       return NextResponse.json({ error: 'العيادة المحول إليها مطلوبة' }, { status: 400 });
     }
 
-    const result = await appointmentStore.transferClinic(id, targetClinicId, reason, staffUser, token);
+    const result = await appointmentStore.transferClinic(id, targetClinicId, targetServiceId, reason, staffUser, token);
     if (!result.success || !result.appointment) {
       return NextResponse.json({ error: result.error || 'تعذر تحويل المريض' }, { status: 400 });
     }

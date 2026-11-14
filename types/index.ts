@@ -82,6 +82,7 @@ export interface Appointment {
   serviceName?: string;
   patientName: string;
   phoneNumber: string;
+  patientBirthDate?: string;
   patientAge?: string;
   patientAddress?: string;
   guardianNationalId?: string;
@@ -140,6 +141,7 @@ export interface CreateAppointmentInput {
   serviceName?: string;
   patientName: string;
   phoneNumber: string;
+  patientBirthDate?: string;
   patientAge?: string;
   patientAddress?: string;
   guardianNationalId?: string;
