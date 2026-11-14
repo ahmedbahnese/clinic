@@ -103,7 +103,7 @@ test('Security 4: Receptionist Privilege Boundaries - Cannot mark COMPLETED or a
     clinicId: 'gi',
     patientName: 'عمر إبراهيم حسن الشناوي',
     phoneNumber: '01511223344',
-    appointmentDate: '2026-11-18',
+    appointmentDate: '2026-11-17',
     appointmentTime: '11:00',
   });
   assert.equal(aptResult.success, true);
@@ -126,7 +126,7 @@ test('Security 5: book_appointment_atomic data minimization', async () => {
     phoneNumber: '01211112233',
     patientAge: '3 سنوات',
     patientAddress: 'أبو حمص - دمسنا - البحيرة',
-    appointmentDate: '2026-11-21',
+    appointmentDate: '2026-11-18',
     appointmentTime: '09:00',
   });
 
@@ -136,14 +136,14 @@ test('Security 5: book_appointment_atomic data minimization', async () => {
   // Minimum required safe fields
   assert.ok(apt.referenceNumber.startsWith('BSCH-'));
   assert.equal(apt.clinicName, 'عيادة التغذية');
-  assert.equal(apt.appointmentDate, '2026-11-21');
+  assert.equal(apt.appointmentDate, '2026-11-18');
   assert.equal(apt.status, 'PENDING_REVIEW');
   assert.ok((apt.queueNumber || 0) > 0);
 });
 
 test('Security 6: Duplicate active reservation in same clinic on same date is blocked', async () => {
   const phone = '01122334455';
-  const clinicId = 'cardio';
+  const clinicId = 'echo';
   const date = '2026-11-22';
 
   // First booking
@@ -198,7 +198,7 @@ test('Security 7: Terminal status protection - Completed or cancelled appointmen
     clinicId: 'gi',
     patientName: 'فاطمة علي إبراهيم عمار',
     phoneNumber: '01099887766',
-    appointmentDate: '2026-11-25',
+    appointmentDate: '2026-11-24',
   });
   const aptId = aptRes.appointment!.id;
   await appointmentStore.updateStatus(aptId, 'CONFIRMED', receptionist);
@@ -439,7 +439,7 @@ test('Security 12: Calendar exception precedence (Closure overrides weekly open,
 
   // Case A: Normally open day (Monday 2026-11-23) with isClosed = true exception
   await appointmentStore.upsertClinicScheduleException(
-    'cardio',
+    'echo',
     {
       scheduleDate: '2026-11-23',
       isClosed: true,
@@ -449,7 +449,7 @@ test('Security 12: Calendar exception precedence (Closure overrides weekly open,
   );
 
   const closedBooking = await appointmentStore.createAppointment({
-    clinicId: 'cardio',
+    clinicId: 'echo',
     patientName: 'مروان عادل حسن',
     phoneNumber: '01011113333',
     appointmentDate: '2026-11-23',
@@ -459,7 +459,7 @@ test('Security 12: Calendar exception precedence (Closure overrides weekly open,
 
   // Case B: Normally closed day (Friday 2026-11-27) with isClosed = false exception
   await appointmentStore.upsertClinicScheduleException(
-    'cardio',
+    'echo',
     {
       scheduleDate: '2026-11-27',
       isClosed: false,
@@ -469,7 +469,7 @@ test('Security 12: Calendar exception precedence (Closure overrides weekly open,
   );
 
   const openBooking = await appointmentStore.createAppointment({
-    clinicId: 'cardio',
+    clinicId: 'echo',
     patientName: 'عصام أحمد حسن',
     phoneNumber: '01011114444',
     appointmentDate: '2026-11-27',
@@ -576,7 +576,7 @@ test('Security 16: Walk-in appointment with staffUserId creates CONFIRMED initia
     clinicId: 'echo',
     patientName: 'عادل يوسف الشناوي',
     phoneNumber: '01277665544',
-    appointmentDate: '2026-11-23',
+    appointmentDate: '2026-11-24',
     isWalkIn: true,
     staffUserId: receptionist.id,
   });
@@ -963,17 +963,17 @@ test('Security 36: Phase 8.4 - Receptionist cannot alter patient identity or app
 });
 
 test('Security 37: Phase 8.5 - Doctor can only access and update appointments in assigned clinic', async () => {
-  const cardioDoctor: StaffUser = {
-    id: 'staff-doc-cardio',
-    username: 'dr.cardio',
+  const echoDoctor: StaffUser = {
+    id: 'staff-doc-echo',
+    username: 'dr.echo',
     name: 'د/ أسامة القلب',
     role: 'DOCTOR',
-    clinicId: 'cardio',
+    clinicId: 'echo',
     active: true,
   };
 
   const newApt = await appointmentStore.createAppointment({
-    clinicId: 'cardio',
+    clinicId: 'echo',
     patientName: 'ياسين أحمد فؤاد',
     phoneNumber: '01044556677',
     appointmentDate: '2026-11-16',
@@ -982,20 +982,20 @@ test('Security 37: Phase 8.5 - Doctor can only access and update appointments in
   assert.equal(newApt.success, true);
   const aptId = newApt.appointment!.id;
 
-  await appointmentStore.updateStatus(aptId, 'CONFIRMED', cardioDoctor);
-  await appointmentStore.updateStatus(aptId, 'CHECKED_IN', cardioDoctor);
-  const res = await appointmentStore.updateStatus(aptId, 'COMPLETED', cardioDoctor);
+  await appointmentStore.updateStatus(aptId, 'CONFIRMED', echoDoctor);
+  await appointmentStore.updateStatus(aptId, 'CHECKED_IN', echoDoctor);
+  const res = await appointmentStore.updateStatus(aptId, 'COMPLETED', echoDoctor);
   assert.equal(res.success, true);
   assert.equal(res.appointment?.status, 'COMPLETED');
 });
 
 test('Security 38: Phase 8.6 - Doctor cannot access or update appointments in other clinics', async () => {
-  const cardioDoctor: StaffUser = {
-    id: 'staff-doc-cardio-2',
-    username: 'dr.cardio2',
+  const echoDoctor: StaffUser = {
+    id: 'staff-doc-echo-2',
+    username: 'dr.echo2',
     name: 'د/ أسماء القلب',
     role: 'DOCTOR',
-    clinicId: 'cardio',
+    clinicId: 'echo',
     active: true,
   };
 
@@ -1009,7 +1009,7 @@ test('Security 38: Phase 8.6 - Doctor cannot access or update appointments in ot
   assert.equal(dentistryApt.success, true);
   const aptId = dentistryApt.appointment!.id;
 
-  const res = await appointmentStore.updateStatus(aptId, 'CONFIRMED', cardioDoctor);
+  const res = await appointmentStore.updateStatus(aptId, 'CONFIRMED', echoDoctor);
   assert.equal(res.success, false);
   assert.match(res.error || '', /عيادة أخرى/);
 });
@@ -1028,7 +1028,7 @@ test('Security 39: Phase 8.7 - Unassigned Doctor (null clinicId) is denied acces
     clinicId: 'dentistry',
     patientName: 'طارق زياد النجار',
     phoneNumber: '01077889900',
-    appointmentDate: '2026-11-16',
+    appointmentDate: '2026-11-17',
     appointmentTime: '12:30',
   });
   assert.equal(newApt.success, true);
@@ -1044,19 +1044,19 @@ test('Security 39: Phase 8.7 - Unassigned Doctor (null clinicId) is denied acces
 
 test('Security 40: Phase 8.8 - Terminal states (COMPLETED, CANCELLED) cannot be altered without Admin role', async () => {
   const doctor: StaffUser = {
-    id: 'staff-doc-surgery',
-    username: 'dr.surgery',
+    id: 'staff-doc-gi',
+    username: 'dr.gi',
     name: 'د/ شريف جراحة',
     role: 'DOCTOR',
-    clinicId: 'surgery',
+    clinicId: 'gi',
     active: true,
   };
 
   const newApt = await appointmentStore.createAppointment({
-    clinicId: 'surgery',
+    clinicId: 'gi',
     patientName: 'مروان هيثم وجدي',
     phoneNumber: '01199887766',
-    appointmentDate: '2026-11-16',
+    appointmentDate: '2026-11-17',
     appointmentTime: '13:00',
   });
   assert.equal(newApt.success, true);
@@ -1073,11 +1073,11 @@ test('Security 40: Phase 8.8 - Terminal states (COMPLETED, CANCELLED) cannot be 
 
   // Receptionist attempts to alter completed appointment
   const rec: StaffUser = {
-    id: 'rec-surgery',
-    username: 'rec.surgery',
+    id: 'rec-gi',
+    username: 'rec.gi',
     name: 'استقبال جراحة',
     role: 'RECEPTIONIST',
-    clinicId: 'surgery',
+    clinicId: 'gi',
     active: true,
   };
   const recReopen = await appointmentStore.updateStatus(aptId, 'CONFIRMED', rec);
@@ -1238,7 +1238,7 @@ test('Security 49: Cancellation Request - Patient / anonymous direct cancellatio
 
 test('Security 50: Cancellation Review - Unauthorized staff (different clinic) is denied permission to review request', async () => {
   const newApt = await appointmentStore.createAppointment({
-    clinicId: 'dentistry',
+    clinicId: 'nutrition',
     patientName: 'يوسف رامي الشربيني',
     phoneNumber: '01511223388',
     appointmentDate: '2026-11-25',
@@ -1256,19 +1256,19 @@ test('Security 50: Cancellation Review - Unauthorized staff (different clinic) i
   const requestId = req.requestId!;
 
   // Receptionist assigned to CARDIO attempts to review DENTISTRY request
-  const cardioReceptionist: StaffUser = {
-    id: 'staff-rec-cardio-99',
-    username: 'rec.cardio',
+  const echoReceptionist: StaffUser = {
+    id: 'staff-rec-echo-99',
+    username: 'rec.echo',
     name: 'استقبال القلب',
     role: 'RECEPTIONIST',
-    clinicId: 'cardio',
+    clinicId: 'echo',
     active: true,
   };
 
   const reviewRes = await appointmentStore.reviewCancellationRequest(
     requestId,
     'APPROVED',
-    cardioReceptionist,
+    echoReceptionist,
     'محاولة اعتماد من عيادة أخرى'
   );
   assert.equal(reviewRes.success, false, 'Receptionist of another clinic must be denied review permission');
@@ -1277,7 +1277,7 @@ test('Security 50: Cancellation Review - Unauthorized staff (different clinic) i
 
 test('Security 51: Cancellation Review - Authorized staff approval cancels appointment via protected atomic path', async () => {
   const newApt = await appointmentStore.createAppointment({
-    clinicId: 'dentistry',
+    clinicId: 'nutrition',
     patientName: 'جنا عماد التلاوي',
     phoneNumber: '01066778899',
     appointmentDate: '2026-11-25',
@@ -1294,12 +1294,12 @@ test('Security 51: Cancellation Review - Authorized staff approval cancels appoi
   assert.equal(req.success, true);
   const requestId = req.requestId!;
 
-  const dentistryReceptionist: StaffUser = {
+  const nutritionReceptionist: StaffUser = {
     id: 'staff-rec-dent-10',
-    username: 'rec.dentistry',
+    username: 'rec.nutrition',
     name: 'أحمد استقبال الأسنان',
     role: 'RECEPTIONIST',
-    clinicId: 'dentistry',
+    clinicId: 'nutrition',
     active: true,
   };
 
@@ -1307,7 +1307,7 @@ test('Security 51: Cancellation Review - Authorized staff approval cancels appoi
   const approveRes = await appointmentStore.reviewCancellationRequest(
     requestId,
     'APPROVED',
-    dentistryReceptionist,
+    nutritionReceptionist,
     'تم قبول اعتذار ولي الأمر وإلغاء الحجز'
   );
   assert.equal(approveRes.success, true);
@@ -1321,12 +1321,12 @@ test('Security 51: Cancellation Review - Authorized staff approval cancels appoi
   // Verify status history recorded staff member name
   const lastHistory = cancelledApt.statusHistory[cancelledApt.statusHistory.length - 1];
   assert.equal(lastHistory.status, 'CANCELLED');
-  assert.equal(lastHistory.updatedBy, dentistryReceptionist.name);
+  assert.equal(lastHistory.updatedBy, nutritionReceptionist.name);
 });
 
 test('Security 52: Cancellation Review - Staff rejection keeps appointment active and records rejection reason', async () => {
   const newApt = await appointmentStore.createAppointment({
-    clinicId: 'dentistry',
+    clinicId: 'nutrition',
     patientName: 'علي كمال البغدادي',
     phoneNumber: '01088990011',
     appointmentDate: '2026-11-25',
@@ -1378,13 +1378,13 @@ test('Security 53: Cancellation Request - Terminal state appointments (COMPLETED
     username: 'dr.dent',
     name: 'د/ طبيب الأسنان',
     role: 'DOCTOR',
-    clinicId: 'dentistry',
+    clinicId: 'nutrition',
     active: true,
   };
 
   // 1. Completed appointment (transition through CONFIRMED -> CHECKED_IN -> COMPLETED)
   const apt1 = await appointmentStore.createAppointment({
-    clinicId: 'dentistry',
+    clinicId: 'nutrition',
     patientName: 'حسن إبراهيم الحكيم',
     phoneNumber: '01011224455',
     appointmentDate: '2026-11-25',
@@ -1405,7 +1405,7 @@ test('Security 53: Cancellation Request - Terminal state appointments (COMPLETED
 
   // 2. Already Cancelled appointment
   const apt2 = await appointmentStore.createAppointment({
-    clinicId: 'dentistry',
+    clinicId: 'nutrition',
     patientName: 'نور الدين مصطفى',
     phoneNumber: '01077881122',
     appointmentDate: '2026-11-25',
@@ -1485,7 +1485,7 @@ test('Security 56: RLS & Privilege Protection - Direct UPDATE on cancellation_re
 
 test('Security 57: Clinic Confinement - Receptionist without assigned clinic (null/empty clinicId) is strictly denied reviewing any cancellation request', async () => {
   const newApt = await appointmentStore.createAppointment({
-    clinicId: 'dentistry',
+    clinicId: 'nutrition',
     patientName: 'سعيد عبد العال شرف',
     phoneNumber: '01011998877',
     appointmentDate: '2026-11-25',
@@ -1529,7 +1529,7 @@ test('Security 57: Clinic Confinement - Receptionist without assigned clinic (nu
 
 test('Security 58: Clinic Confinement - Receptionist cannot review cancellation request belonging to another clinic', async () => {
   const newApt = await appointmentStore.createAppointment({
-    clinicId: 'dentistry',
+    clinicId: 'nutrition',
     patientName: 'مريم طارق البدري',
     phoneNumber: '01122336699',
     appointmentDate: '2026-11-25',
@@ -1547,19 +1547,19 @@ test('Security 58: Clinic Confinement - Receptionist cannot review cancellation 
   const requestId = req.requestId!;
 
   // Receptionist assigned to CARDIO
-  const cardioReceptionist: StaffUser = {
-    id: 'staff-rec-cardio-58',
-    username: 'rec.cardio58',
+  const echoReceptionist: StaffUser = {
+    id: 'staff-rec-echo-58',
+    username: 'rec.echo58',
     name: 'موظف استقبال القلب',
     role: 'RECEPTIONIST',
-    clinicId: 'cardio',
+    clinicId: 'echo',
     active: true,
   };
 
   const reviewRes = await appointmentStore.reviewCancellationRequest(
     requestId,
     'APPROVED',
-    cardioReceptionist,
+    echoReceptionist,
     'محاولة اعتماد من عيادة أخرى'
   );
 
@@ -1569,7 +1569,7 @@ test('Security 58: Clinic Confinement - Receptionist cannot review cancellation 
 
 test('Security 59: Role Authorization - Doctor is strictly blocked from reviewing cancellation requests', async () => {
   const newApt = await appointmentStore.createAppointment({
-    clinicId: 'dentistry',
+    clinicId: 'nutrition',
     patientName: 'ياسر كمال المنشاوي',
     phoneNumber: '01222446688',
     appointmentDate: '2026-11-25',
@@ -1592,7 +1592,7 @@ test('Security 59: Role Authorization - Doctor is strictly blocked from reviewin
     username: 'dr.dent59',
     name: 'دكتور الأسنان',
     role: 'DOCTOR',
-    clinicId: 'dentistry',
+    clinicId: 'nutrition',
     active: true,
   };
 
@@ -1641,7 +1641,7 @@ test('Security 60: Bot Protection - Turnstile cannot be bypassed in production b
 
 test('Security 61: Transactional Atomicity - Failure of appointment cancellation aborts the operation and never leaves request in APPROVED status', async () => {
   const newApt = await appointmentStore.createAppointment({
-    clinicId: 'dentistry',
+    clinicId: 'nutrition',
     patientName: 'صلاح الدين الأيوبي الصغير',
     phoneNumber: '01099887766',
     appointmentDate: '2026-11-25',
@@ -1672,7 +1672,7 @@ test('Security 61: Transactional Atomicity - Failure of appointment cancellation
     username: 'dr.atomicity',
     name: 'طبيب الكشف',
     role: 'DOCTOR',
-    clinicId: 'dentistry',
+    clinicId: 'nutrition',
     active: true,
   };
   await appointmentStore.updateStatus(apt.id, 'CONFIRMED', doc);
@@ -1685,7 +1685,7 @@ test('Security 61: Transactional Atomicity - Failure of appointment cancellation
     username: 'rec.dent61',
     name: 'موظف الاستقبال',
     role: 'RECEPTIONIST',
-    clinicId: 'dentistry',
+    clinicId: 'nutrition',
     active: true,
   };
 
@@ -1707,7 +1707,7 @@ test('Security 61: Transactional Atomicity - Failure of appointment cancellation
 
 test('Security 62: Audit Trail - Approval of cancellation request is recorded in audit_logs with staff identity, request ID, and appointment reference', async () => {
   const newApt = await appointmentStore.createAppointment({
-    clinicId: 'dentistry',
+    clinicId: 'nutrition',
     patientName: 'أنس جلال المرشدي',
     phoneNumber: '01022334455',
     appointmentDate: '2026-11-25',
@@ -1724,19 +1724,19 @@ test('Security 62: Audit Trail - Approval of cancellation request is recorded in
   assert.equal(req.success, true);
   const requestId = req.requestId!;
 
-  const dentistryRecep: StaffUser = {
+  const nutritionRecep: StaffUser = {
     id: 'staff-rec-dent-62',
     username: 'rec.dent62',
     name: 'أحمد كمال عبد الله',
     role: 'RECEPTIONIST',
-    clinicId: 'dentistry',
+    clinicId: 'nutrition',
     active: true,
   };
 
   const reviewRes = await appointmentStore.reviewCancellationRequest(
     requestId,
     'APPROVED',
-    dentistryRecep,
+    nutritionRecep,
     'تم قبول عذر الطقس وإلغاء الحجز'
   );
   assert.equal(reviewRes.success, true);
@@ -1747,14 +1747,14 @@ test('Security 62: Audit Trail - Approval of cancellation request is recorded in
     (l) => l.action.includes('موافقة على إلغاء حجز') && l.referenceNumber === apt.referenceNumber
   );
   assert.ok(approveLog, 'Audit log must contain approval record for the appointment');
-  assert.equal(approveLog.staffName, dentistryRecep.name, 'Audit log must record staff full name');
-  assert.equal(approveLog.staffRole, dentistryRecep.role, 'Audit log must record staff role');
+  assert.equal(approveLog.staffName, nutritionRecep.name, 'Audit log must record staff full name');
+  assert.equal(approveLog.staffRole, nutritionRecep.role, 'Audit log must record staff role');
   assert.ok(approveLog.details.includes(requestId), 'Audit log must record cancellation request ID');
 });
 
 test('Security 63: Audit Trail & State Preservation - Rejection is recorded in audit_logs and appointment remains active in its original status', async () => {
   const newApt = await appointmentStore.createAppointment({
-    clinicId: 'dentistry',
+    clinicId: 'nutrition',
     patientName: 'حمزة سامح الصاوي',
     phoneNumber: '01033446677',
     appointmentDate: '2026-11-25',
@@ -1772,19 +1772,19 @@ test('Security 63: Audit Trail & State Preservation - Rejection is recorded in a
   assert.equal(req.success, true);
   const requestId = req.requestId!;
 
-  const dentistryRecep: StaffUser = {
+  const nutritionRecep: StaffUser = {
     id: 'staff-rec-dent-63',
     username: 'rec.dent63',
     name: 'محمود سعد الخولي',
     role: 'RECEPTIONIST',
-    clinicId: 'dentistry',
+    clinicId: 'nutrition',
     active: true,
   };
 
   const reviewRes = await appointmentStore.reviewCancellationRequest(
     requestId,
     'REJECTED',
-    dentistryRecep,
+    nutritionRecep,
     'تم التواصل والتأكيد على الحضور في الموعد'
   );
   assert.equal(reviewRes.success, true);
@@ -1801,8 +1801,8 @@ test('Security 63: Audit Trail & State Preservation - Rejection is recorded in a
     (l) => l.action.includes('رفض طلب إلغاء حجز') && l.referenceNumber === apt.referenceNumber
   );
   assert.ok(rejectLog, 'Audit log must contain rejection record for the appointment');
-  assert.equal(rejectLog.staffName, dentistryRecep.name);
-  assert.equal(rejectLog.staffRole, dentistryRecep.role);
+  assert.equal(rejectLog.staffName, nutritionRecep.name);
+  assert.equal(rejectLog.staffRole, nutritionRecep.role);
   assert.ok(rejectLog.details.includes(requestId), 'Audit log must record cancellation request ID');
   assert.ok(rejectLog.details.includes('تم التواصل والتأكيد على الحضور'), 'Audit log must record rejection reason');
 });
@@ -1888,6 +1888,4 @@ test('Security 66: Store never substitutes demo services when the central databa
   assert.match(store, /this\.isSameChildDuplicate\(\s*a,\s*phoneCheck\.normalized/, 'createAppointment mock guard must use the shared predicate');
   assert.match(store, /this\.isSameChildDuplicate\(a, apt\.phoneNumber, apt\.appointmentDate, apt\.patientName, apt\.dateOfBirth\)/, 'transferClinic mock guard must use the shared predicate');
 });
-
-
 

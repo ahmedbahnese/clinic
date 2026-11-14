@@ -1139,13 +1139,12 @@ class AppointmentServiceStore {
     // Attempt Supabase atomic function if configured
     if (isSupabaseConfigured()) {
       try {
-        // Staff bookings must execute with the verified bearer session so the
-        // RPC's auth.uid() matches p_staff_user_id. Falling back to a cached
-        // system session here can identify a different administrator and is
-        // correctly rejected by the database anti-spoofing guard.
-        const supabase = input.isWalkIn && input.staffAuthToken
-          ? (await getAuthenticatedServerClient(input.staffAuthToken)).client
-          : createAdminClient();
+        // This RPC is intentionally executable only by service_role in the
+        // deployed database. The staff identity was already verified by the
+        // API route and is passed as p_staff_user_id; the SECURITY DEFINER RPC
+        // validates that profile and permits the service-mediated path without
+        // exposing the RPC to authenticated browser clients.
+        const supabase = createAdminClient();
         const { data, error } = await (supabase as any).rpc('book_appointment_atomic', {
           p_clinic_id: input.clinicId,
           p_patient_name: input.patientName.trim(),
