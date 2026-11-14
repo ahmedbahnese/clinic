@@ -30,6 +30,8 @@ export interface ClinicService {
   requiredDocuments: string[];
   instructions: string;
   maxDailyCapacity?: number;
+  exceptionDate?: string;
+  exceptionCapacity?: number;
   isWalkInOnly?: boolean;
   isActive: boolean;
   displayOrder: number;

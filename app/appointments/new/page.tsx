@@ -313,11 +313,12 @@ function NewAppointmentForm() {
         isOpen = allowedDays.includes(dayOfWeek);
       }
 
-      if (isOpen) {
-        const maxCapacity = exception?.maxCapacity ?? activeClinic.maxDailySlots;
+      const serviceException = activeService?.exceptionDate === dateStr ? activeService : undefined;
+      if (isOpen || Boolean(serviceException)) {
+        const maxCapacity = serviceException?.exceptionCapacity ?? exception?.maxCapacity ?? activeClinic.maxDailySlots;
         dates.push({
           dateStr,
-          label: `${dayNames[dayOfWeek]} (${dd}/${mm})${exception ? ' — تشغيل استثنائي' : ''} — السعة: ${maxCapacity} مريض`,
+          label: `${dayNames[dayOfWeek]} (${dd}/${mm})${exception || serviceException ? ' — تشغيل استثنائي' : ''} — السعة: ${maxCapacity} مريض`,
           dayOfWeekName: dayNames[dayOfWeek],
           isException: Boolean(exception),
           maxCapacity,
@@ -326,7 +327,7 @@ function NewAppointmentForm() {
     }
 
     return dates;
-  }, [activeClinic, clinicSchedules]);
+  }, [activeClinic, activeService, clinicSchedules]);
 
   // Default to first available date
   useEffect(() => {

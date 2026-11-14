@@ -217,6 +217,8 @@ class AppointmentServiceStore {
           requiredDocuments: s.required_documents || [],
           instructions: s.instructions || '',
           maxDailyCapacity: s.max_daily_capacity !== null && s.max_daily_capacity !== undefined ? Number(s.max_daily_capacity) : undefined,
+          exceptionDate: s.exception_date || undefined,
+          exceptionCapacity: s.exception_capacity !== null && s.exception_capacity !== undefined ? Number(s.exception_capacity) : undefined,
           isWalkInOnly: Boolean(s.is_walk_in_only),
           isActive: s.is_active,
           displayOrder: s.display_order,
@@ -259,6 +261,8 @@ class AppointmentServiceStore {
       ],
       instructions: input.instructions?.trim() || 'الحضور صباحاً والتسجيل بأسبقية الحضور لشباك الاستقبال بالمستشفى.',
       maxDailyCapacity: input.maxDailyCapacity !== undefined && input.maxDailyCapacity !== null ? Number(input.maxDailyCapacity) : undefined,
+      exceptionDate: input.exceptionDate || undefined,
+      exceptionCapacity: input.exceptionDate && input.exceptionCapacity !== undefined ? Number(input.exceptionCapacity) : undefined,
       isWalkInOnly: input.isWalkInOnly ?? false,
       isActive: input.isActive ?? true,
       displayOrder: input.displayOrder ?? (this.services.length + 1),
@@ -276,6 +280,8 @@ class AppointmentServiceStore {
           required_documents: newService.requiredDocuments,
           instructions: newService.instructions,
           max_daily_capacity: newService.maxDailyCapacity ?? null,
+          exception_date: newService.exceptionDate || null,
+          exception_capacity: newService.exceptionCapacity ?? null,
           is_walk_in_only: newService.isWalkInOnly ?? false,
           is_active: newService.isActive,
           display_order: newService.displayOrder,
@@ -303,7 +309,8 @@ class AppointmentServiceStore {
       return { success: false, error: 'تعديل الخدمات يتطلب صلاحية مدير النظام' };
     }
 
-    const service = this.services.find((s) => s.id === serviceId && s.clinicId === clinicId);
+    const service = (await this.getClinicServices(clinicId)).find((s) => s.id === serviceId && s.clinicId === clinicId)
+      || this.services.find((s) => s.id === serviceId && s.clinicId === clinicId);
     if (!service) {
       return { success: false, error: 'الخدمة غير موجودة' };
     }
@@ -318,6 +325,8 @@ class AppointmentServiceStore {
             required_documents: updates.requiredDocuments ?? service.requiredDocuments,
             instructions: updates.instructions ?? service.instructions,
             max_daily_capacity: updates.maxDailyCapacity !== undefined ? (updates.maxDailyCapacity ? Number(updates.maxDailyCapacity) : null) : (service.maxDailyCapacity ?? null),
+            exception_date: updates.exceptionDate !== undefined ? (updates.exceptionDate || null) : (service.exceptionDate || null),
+            exception_capacity: updates.exceptionCapacity !== undefined ? (updates.exceptionCapacity ? Number(updates.exceptionCapacity) : null) : (service.exceptionCapacity ?? null),
             is_walk_in_only: updates.isWalkInOnly ?? service.isWalkInOnly ?? false,
             is_active: updates.isActive ?? service.isActive,
             display_order: updates.displayOrder ?? service.displayOrder,
@@ -338,6 +347,8 @@ class AppointmentServiceStore {
     if (updates.maxDailyCapacity !== undefined) {
       service.maxDailyCapacity = updates.maxDailyCapacity ? Number(updates.maxDailyCapacity) : undefined;
     }
+    if (updates.exceptionDate !== undefined) service.exceptionDate = updates.exceptionDate || undefined;
+    if (updates.exceptionCapacity !== undefined) service.exceptionCapacity = updates.exceptionCapacity ? Number(updates.exceptionCapacity) : undefined;
     if (updates.isActive !== undefined) service.isActive = updates.isActive;
     if (updates.isWalkInOnly !== undefined) service.isWalkInOnly = updates.isWalkInOnly;
     if (updates.displayOrder !== undefined) service.displayOrder = updates.displayOrder;
@@ -1080,7 +1091,10 @@ class AppointmentServiceStore {
     }
 
     // Check per-service capacity if defined
-    if (matchedService?.maxDailyCapacity) {
+    const serviceDailyCapacity = matchedService?.exceptionDate === input.appointmentDate
+      ? matchedService.exceptionCapacity
+      : matchedService?.maxDailyCapacity;
+    if (serviceDailyCapacity) {
       let currentServiceBooked = 0;
       if (isSupabaseConfigured()) {
         try {
@@ -1106,10 +1120,10 @@ class AppointmentServiceStore {
         ).length;
       }
 
-      if (currentServiceBooked >= matchedService.maxDailyCapacity) {
+      if (currentServiceBooked >= serviceDailyCapacity) {
         return {
           success: false,
-          error: `عفواً، اكتملت السعة اليومية المتاحة لخدمة "${matchedService.name}" في هذا التاريخ (${matchedService.maxDailyCapacity} مريض). يرجى اختيار موعد آخر أو خدمة بديلة.`,
+          error: `عفواً، اكتملت السعة اليومية المتاحة لخدمة "${matchedService.name}" في هذا التاريخ (${serviceDailyCapacity} مريض). يرجى اختيار موعد آخر أو خدمة بديلة.`,
         };
       }
     }
