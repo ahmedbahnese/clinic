@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
@@ -14,8 +14,17 @@ import {
   X,
   Stethoscope,
   Globe,
+  Download,
+  CheckCircle2,
 } from 'lucide-react';
 import { ThemeToggle } from '@/components/ThemeToggle';
+import {
+  isPwaStandaloneMode,
+  PWA_INSTALL_REQUEST_EVENT,
+  PWA_INSTALL_STATE_EVENT,
+  readPwaInstalledHint,
+  writePwaInstalledHint,
+} from '@/lib/pwaInstall';
 import type { NavigationItem } from '@/types/cms';
 
 function formatExternalUrl(url?: string): string {
@@ -38,6 +47,66 @@ export function SiteHeader({
 }: SiteHeaderProps) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [pwaInstalled, setPwaInstalled] = useState(false);
+
+  useEffect(() => {
+    const syncInstallStatus = () => {
+      const legacyStandalone = (navigator as Navigator & { standalone?: boolean }).standalone === true;
+      const displayModeStandalone = window.matchMedia?.('(display-mode: standalone)').matches ?? false;
+      const standalone = isPwaStandaloneMode(displayModeStandalone, legacyStandalone);
+      const savedHint = readPwaInstalledHint();
+      if (standalone && !savedHint) writePwaInstalledHint(true);
+      setPwaInstalled(standalone || savedHint);
+    };
+
+    const onInstalled = () => {
+      writePwaInstalledHint(true);
+      setPwaInstalled(true);
+    };
+
+    syncInstallStatus();
+    window.addEventListener('appinstalled', onInstalled);
+    window.addEventListener(PWA_INSTALL_STATE_EVENT, syncInstallStatus);
+    window.addEventListener('storage', syncInstallStatus);
+    document.addEventListener('visibilitychange', syncInstallStatus);
+    const displayMode = window.matchMedia?.('(display-mode: standalone)');
+    displayMode?.addEventListener('change', syncInstallStatus);
+
+    return () => {
+      window.removeEventListener('appinstalled', onInstalled);
+      window.removeEventListener(PWA_INSTALL_STATE_EVENT, syncInstallStatus);
+      window.removeEventListener('storage', syncInstallStatus);
+      document.removeEventListener('visibilitychange', syncInstallStatus);
+      displayMode?.removeEventListener('change', syncInstallStatus);
+    };
+  }, []);
+
+  const requestPwaInstall = () => {
+    window.dispatchEvent(new Event(PWA_INSTALL_REQUEST_EVENT));
+  };
+
+  const renderPwaInstallControl = (compact = false) => pwaInstalled ? (
+    <span
+      role="status"
+      aria-label="تطبيق العيادات مثبت على هذا الجهاز"
+      className={`inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full border border-[#B7DCD7] bg-[#F0F7F6] px-3 text-xs font-bold text-[#087F78] ${compact ? 'min-w-[44px]' : ''}`}
+      title="التطبيق مثبت"
+    >
+      <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+      <span>{compact ? 'مثبت' : 'التطبيق مثبت'}</span>
+    </span>
+  ) : (
+    <button
+      type="button"
+      onClick={requestPwaInstall}
+      className={`inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full border border-[#79C7C1] bg-white/80 px-3 text-xs font-bold text-[#087F78] shadow-2xs transition hover:bg-[#087F78] hover:text-white focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#087F78] ${compact ? 'min-h-[44px] rounded-xl px-2.5' : ''}`}
+      aria-label="تثبيت تطبيق العيادات"
+      title="تثبيت التطبيق على هذا الجهاز"
+    >
+      <Download className="h-4 w-4 shrink-0" aria-hidden="true" />
+      <span>{compact ? 'تثبيت' : 'تثبيت التطبيق'}</span>
+    </button>
+  );
 
   // Icon mapper helper
   const getNavIcon = (href: string) => {
@@ -142,6 +211,7 @@ export function SiteHeader({
 
         {/* Left side: External Hospital Site Link */}
         <div className="hidden md:flex items-center gap-2">
+          {renderPwaInstallControl()}
           <ThemeToggle />
           <a
             href={formattedHospitalUrl}
@@ -158,6 +228,7 @@ export function SiteHeader({
         {/* Mobile Menu Button */}
         <div className="flex md:hidden items-center gap-2">
           <ThemeToggle />
+          {renderPwaInstallControl(true)}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="min-w-[44px] min-h-[44px] p-2.5 rounded-xl text-[#163C3A] hover:bg-slate-100 active:bg-slate-200 flex items-center justify-center focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#087F78]"
