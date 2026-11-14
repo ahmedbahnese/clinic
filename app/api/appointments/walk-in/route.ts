@@ -54,6 +54,7 @@ export async function POST(req: NextRequest) {
       appointmentTime: appointmentTime || '09:00',
       isWalkIn: true,
       staffUserId: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(staffUser.id) ? staffUser.id : undefined,
+      staffAuthToken: token,
     });
 
     if (!result.success || !result.appointment) {

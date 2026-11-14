@@ -149,6 +149,8 @@ export interface CreateAppointmentInput {
   appointmentTime?: string;
   isWalkIn?: boolean;
   staffUserId?: string;
+  /** Verified staff bearer token used to preserve auth.uid() in staff RPC calls. */
+  staffAuthToken?: string;
 }
 
 export interface AuditLogItem {
