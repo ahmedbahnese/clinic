@@ -369,7 +369,11 @@ export default function StaffDashboardPage() {
         const res = await fetch(`/api/clinics/${walkInClinicId}/services`);
         const data = await res.json();
         if (active && data.services) {
-          setWalkInServicesList(data.services.filter((s: ClinicService) => s.isActive !== false));
+          const services = data.services.filter((s: ClinicService) => s.isActive !== false);
+          setWalkInServicesList(services);
+          // Use the first real clinic service instead of leaving the required
+          // selector empty and causing a false validation error.
+          setWalkInServiceId(services[0]?.id || '');
         }
       } catch {
         if (active) setWalkInServicesList([]);
