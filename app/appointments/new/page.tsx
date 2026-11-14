@@ -1047,12 +1047,19 @@ function NewAppointmentForm() {
                   </div>
                 </div>
 
+                {activeService?.isWalkInOnly && (
+                  <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-xs font-bold text-amber-800">
+                    الخدمة المختارة «{activeService.name}» حضور مباشر فقط، ولا يمكن إصدار تذكرة حجز إلكترونية لها. يرجى التوجه إلى الاستقبال أو مدير النظام.
+                  </div>
+                )}
                 <button
                   type="submit"
-                  disabled={submitting}
+                  disabled={submitting || Boolean(activeService?.isWalkInOnly)}
                   className={`w-full py-4 rounded-2xl text-white text-sm sm:text-base font-bold shadow-md transition-all flex items-center justify-center gap-2.5 ${
                     submitting
                       ? 'bg-[#066560] cursor-wait opacity-90'
+                      : activeService?.isWalkInOnly
+                        ? 'bg-slate-400 cursor-not-allowed opacity-80'
                       : 'bg-[#087F78] hover:bg-[#066560] active:scale-[0.99] cursor-pointer shadow-teal-900/10 hover:shadow-lg'
                   }`}
                 >
@@ -1060,6 +1067,11 @@ function NewAppointmentForm() {
                     <>
                       <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       <span>جاري إرسال طلب الحجز والتحقق...</span>
+                    </>
+                  ) : activeService?.isWalkInOnly ? (
+                    <>
+                      <AlertTriangle className="w-5 h-5" />
+                      <span>حضور مباشر فقط — لا يمكن إصدار تذكرة إلكترونية</span>
                     </>
                   ) : (
                     <>
