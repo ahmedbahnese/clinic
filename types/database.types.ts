@@ -30,6 +30,8 @@ export interface Database {
           max_daily_slots: number;
           slot_duration_minutes: number;
           instructions: string | null;
+          required_documents: string[];
+          booking_start_date: string | null;
           is_active: boolean;
           is_hospital_confirmed: boolean;
           display_order: number;
@@ -50,6 +52,8 @@ export interface Database {
           max_daily_slots?: number;
           slot_duration_minutes?: number;
           instructions?: string | null;
+          required_documents?: string[];
+          booking_start_date?: string | null;
           is_active?: boolean;
           is_hospital_confirmed?: boolean;
           display_order?: number;
@@ -70,6 +74,8 @@ export interface Database {
           max_daily_slots?: number;
           slot_duration_minutes?: number;
           instructions?: string | null;
+          required_documents?: string[];
+          booking_start_date?: string | null;
           is_active?: boolean;
           is_hospital_confirmed?: boolean;
           display_order?: number;
