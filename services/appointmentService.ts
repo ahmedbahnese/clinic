@@ -1,6 +1,7 @@
 import type { Clinic, ClinicService, ClinicScheduleException, Appointment, AppointmentSlot, AppointmentStatus, CreateAppointmentInput, AuditLogItem, StaffUser, CancellationRequest } from '../types/index.ts';
 import { normalizeAndValidateEgyptianPhone, validatePatientName, generateReferenceNumber, canTransitionStatus, formatLocalDate, getTodayCairoDateString, validateGuardianNationalId, maskPatientName, normalizePatientName, validateDateOfBirth, BOOKING_START_DATE } from '../lib/rules.ts';
 import { generateBookingCode, hashBookingCode } from '../lib/trackingAccess.ts';
+import { formatClinicBookingStartDate, getLatestClinicBookingDate, isBeforeClinicBookingStartDate } from '../lib/clinicBooking.ts';
 import { createClient } from '@supabase/supabase-js';
 import { createAdminClient, createUserClient, getSystemSupabaseClient, getAuthenticatedServerClient, isSupabaseConfigured, isSupabaseAdminConfigured, isMockStoreAllowed } from '../lib/supabase/admin.ts';
 import type { Database } from '../types/database.types.ts';
@@ -10,13 +11,27 @@ const isValidUuid = (id?: string | null): boolean =>
 
 // Pre-defined pediatric outpatient clinics from BSCH
 // Note: Marked as isHospitalConfirmed = false until verified by hospital administration
+const AUDIOLOGY_GENERAL_INSTRUCTIONS = [
+  '1. يشترط أن يكون العمر أكبر من 3 شهور وأقل من 5 سنوات. حالات التأخر العقلي أو تأخر الكلام مستثناة من شرط العمر ويمكن أن تكون أكبر من 5 سنوات.',
+  '2. يجب التأكد من عدم وجود كحة أو رشح/نزلة برد أو ارتفاع درجة الحرارة.',
+  '3. ليلة الاختبار: نوم الطفل الساعة 12 مساءً وإيقاظه الساعة 4 فجراً وعدم السماح له بالنوم حتى الوصول للمستشفى وتهيئته للاختبار.',
+  '4. في اليوم السابق للاختبار: غسل الرأس جيدًا بالماء والصابون. عدم وضع كريم على الشعر أو البشرة يوم الاختبار.',
+  '5. الحضور للمستشفى مبكرًا وبحد أقصى الساعة 8:30 صباحًا.',
+  '6. إحضار (كلورال هيدرات 10%) إذا قرر الطبيب استخدامه، ويُعطى فقط تحت إشراف طبي.',
+].join('\n');
+
+const AUDIOLOGY_TONE_TEST_INSTRUCTIONS = [
+  '1. يشترط أن يكون العمر 5 سنوات فأكثر.',
+  ...AUDIOLOGY_GENERAL_INSTRUCTIONS.split('\n').slice(1),
+].join('\n');
+
 const INITIAL_CLINICS: Clinic[] = [
   { id: 'gi', name: 'عيادة الجهاز الهضمي', description: 'كشف ومتابعة حالات الجهاز الهضمي والكبد للأطفال.', location: 'مبنى العيادات الخارجية', workingHours: '08:30-14:00', daysOfWeek: [2, 6], maxDailySlots: 75, slotDurationMinutes: 5, requiredDocuments: ['صورة بطاقة الأب والأم', 'شهادة ميلاد كمبيوتر', 'تقارير الطفل'], instructions: '', isActive: true, isHospitalConfirmed: true },
   { id: 'nutrition', name: 'عيادة التغذية', description: 'متابعة التغذية والنمو وحالات سوء التغذية والنحافة والسمنة للأطفال.', location: 'مبنى العيادات الخارجية', workingHours: '08:30-14:00', daysOfWeek: [0, 3, 4], maxDailySlots: 50, slotDurationMinutes: 5, requiredDocuments: ['صورة بطاقة الأب والأم', 'شهادة ميلاد كمبيوتر', 'تقارير الطفل'], instructions: '', isActive: true, isHospitalConfirmed: true },
   { id: 'neuro', name: 'عيادة النفسية والعصبية', description: 'تقييم ومتابعة الحالات النفسية والعصبية وتأخر التطور والكلام.', location: 'مبنى العيادات الخارجية', workingHours: '08:30-14:00', daysOfWeek: [6], maxDailySlots: 15, slotDurationMinutes: 10, requiredDocuments: [], instructions: '', isActive: true, isHospitalConfirmed: true },
   { id: 'dentistry', name: 'عيادة الأسنان', description: 'خدمات خلع وحشو أسنان الأطفال.', location: 'مبنى العيادات الخارجية', workingHours: '08:30-14:00', daysOfWeek: [0, 1, 2, 3, 4, 6], maxDailySlots: 4, slotDurationMinutes: 15, requiredDocuments: ['صورة بطاقة الأب أو الأم'], instructions: '', isActive: true, isHospitalConfirmed: true },
   { id: 'echo', name: 'عيادة الإيكو', description: 'فحص الإيكو للأطفال حسب تحويل وتقييم عيادة القلب.', location: 'أمام عيادة القلب بالدور الرابع', workingHours: '08:30-14:00', daysOfWeek: [0, 1, 2, 3, 4, 6], maxDailySlots: 5, slotDurationMinutes: 20, requiredDocuments: [], instructions: 'الحضور الساعة 8:30 صباحًا أمام عيادة القلب بالدور الرابع.\n\nللأطفال من 6 شهور حتى 3 سنوات: قد يُطلب تجهيز الطفل بمادة كلورال هيدرات تحت إشراف طبيب عيادة القلب حسب الحالة.\n\nيجب أن يكون الطفل خاليًا من أعراض البرد.\n\nإيقاظ الطفل مبكرًا وعدم السماح له بالنوم في الطريق حتى يمكنه النوم أثناء الفحص عند الحاجة.', isActive: true, isHospitalConfirmed: true },
-  { id: 'audiology', name: 'عيادة السمعيات', description: 'خدمات رسم السمع الإلكتروني وفحوصات ضغط الأذن وحالات مبادرة السمع.', location: 'مبنى العيادات الخارجية', workingHours: '08:30-14:00', daysOfWeek: [0, 1, 2, 3, 4, 6], maxDailySlots: 20, slotDurationMinutes: 15, requiredDocuments: [], instructions: 'الحضور للمستشفى مبكرًا وبحد أقصى الساعة 8:30 صباحًا.\n\nيجب التأكد من عدم وجود كحة أو رشح/نزلة برد أو ارتفاع درجة الحرارة.', isActive: true, isHospitalConfirmed: true },
+  { id: 'audiology', name: 'عيادة السمعيات', description: 'خدمات رسم السمع الإلكتروني وفحوصات ضغط الأذن وحالات مبادرة السمع.', location: 'مبنى العيادات الخارجية', workingHours: '08:30-14:00', daysOfWeek: [0, 1, 2, 3, 4, 6], maxDailySlots: 20, slotDurationMinutes: 15, requiredDocuments: ['إحضار جواب التأمين أو إيصال الدفع'], bookingStartDate: '2027-02-11', instructions: AUDIOLOGY_GENERAL_INSTRUCTIONS, isActive: true, isHospitalConfirmed: true },
 ];
 
 function getTodayDateString(): string {
@@ -34,8 +49,8 @@ const INITIAL_SERVICES: ClinicService[] = [
   { id: 'dentistry_filling', clinicId: 'dentistry', name: 'حشو', requiredDocuments: ['صورة بطاقة الأب أو الأم'], instructions: 'يرجى إحضار صورة بطاقة الأب أو الأم.', maxDailyCapacity: 4, isWalkInOnly: false, isActive: true, displayOrder: 2 },
   { id: 'echo_first_visit', clinicId: 'echo', name: 'كشف أول مرة', requiredDocuments: [], instructions: 'الحضور الساعة 8:30 صباحًا أمام عيادة القلب بالدور الرابع.\n\nللأطفال من 6 شهور حتى 3 سنوات: قد يُطلب تجهيز الطفل بمادة كلورال هيدرات تحت إشراف طبيب عيادة القلب حسب الحالة.\n\nيجب أن يكون الطفل خاليًا من أعراض البرد.\n\nإيقاظ الطفل مبكرًا وعدم السماح له بالنوم في الطريق حتى يمكنه النوم أثناء الفحص عند الحاجة.', maxDailyCapacity: 5, isWalkInOnly: false, isActive: true, displayOrder: 1 },
   { id: 'echo_follow_up', clinicId: 'echo', name: 'متابعة', requiredDocuments: [], instructions: 'الحضور الساعة 8:30 صباحًا أمام عيادة القلب بالدور الرابع.\n\nللأطفال من 6 شهور حتى 3 سنوات: قد يُطلب تجهيز الطفل بمادة كلورال هيدرات تحت إشراف طبيب عيادة القلب حسب الحالة.\n\nيجب أن يكون الطفل خاليًا من أعراض البرد.\n\nإيقاظ الطفل مبكرًا وعدم السماح له بالنوم في الطريق حتى يمكنه النوم أثناء الفحص عند الحاجة.', maxDailyCapacity: 5, isWalkInOnly: false, isActive: true, displayOrder: 2 },
-  { id: 'audiology_abr', clinicId: 'audiology', name: 'رسم سمع كمبيوتر عن طريق جذع المخ — 3 حالات', requiredDocuments: [], instructions: 'العمر أكبر من 3 شهور وأقل من 5 سنوات، مع استثناء حالات التأخر العقلي أو تأخر الكلام. يجب التأكد من عدم وجود كحة أو رشح/نزلة برد أو ارتفاع درجة الحرارة.\n\nليلة الاختبار: نوم الطفل الساعة 12 مساءً وإيقاظه الساعة 4 فجراً وعدم السماح له بالنوم حتى الوصول للمستشفى وتهيئته للاختبار.\n\nفي اليوم السابق للاختبار: غسل الرأس جيدًا بالماء والصابون. عدم وضع كريم على الشعر أو البشرة يوم الاختبار.\n\nالحضور للمستشفى مبكرًا وبحد أقصى الساعة 8:30 صباحًا. إحضار كلورال هيدرات إذا قرر الطبيب استخدامه، ويُعطى فقط تحت إشراف طبي.', maxDailyCapacity: 3, isWalkInOnly: false, isActive: true, displayOrder: 1 },
-  { id: 'audiology_tone_test', clinicId: 'audiology', name: 'رسم سمع للسن 5 سنوات فأكثر — 5 حالات', requiredDocuments: [], instructions: 'يشترط أن يكون العمر 5 سنوات فأكثر. يجب التأكد من عدم وجود كحة أو رشح/نزلة برد أو ارتفاع درجة الحرارة.\n\nالحضور للمستشفى مبكرًا وبحد أقصى الساعة 8:30 صباحًا.', maxDailyCapacity: 5, isWalkInOnly: false, isActive: true, displayOrder: 2 },
+  { id: 'audiology_abr', clinicId: 'audiology', name: 'رسم سمع كمبيوتر عن طريق جذع المخ — 3 حالات', requiredDocuments: [], instructions: AUDIOLOGY_GENERAL_INSTRUCTIONS, maxDailyCapacity: 3, isWalkInOnly: false, isActive: true, displayOrder: 1 },
+  { id: 'audiology_tone_test', clinicId: 'audiology', name: 'رسم سمع للسن 5 سنوات فأكثر — 5 حالات', requiredDocuments: [], instructions: AUDIOLOGY_TONE_TEST_INSTRUCTIONS, maxDailyCapacity: 5, isWalkInOnly: false, isActive: true, displayOrder: 2 },
   { id: 'audiology_ear_pressure', clinicId: 'audiology', name: 'حالات ضغط الأذن — حضور مباشر', requiredDocuments: [], instructions: 'هذه الخدمة بالحضور المباشر فقط ولا يتم الحجز الإلكتروني بها. يتم تسجيلها من موظف الاستقبال أو مدير النظام في نفس اليوم.', isWalkInOnly: true, isActive: true, displayOrder: 3 },
   { id: 'audiology_newborn_referral', clinicId: 'audiology', name: 'حالات محولة من الوحدات الصحية للمواليد ضمن مبادرة السمع — حضور مباشر', requiredDocuments: [], instructions: 'هذه الخدمة بالحضور المباشر فقط ولا يتم الحجز الإلكتروني بها. يتم تسجيلها من موظف الاستقبال أو مدير النظام في نفس اليوم.', isWalkInOnly: true, isActive: true, displayOrder: 4 },
 ];
@@ -442,6 +457,7 @@ class AppointmentServiceStore {
             slotDurationMinutes: c.slot_duration_minutes,
             instructions: c.instructions || undefined,
             requiredDocuments: (c as any).required_documents || [],
+            bookingStartDate: c.booking_start_date || this.clinics.find((local) => local.id === c.id)?.bookingStartDate,
             services: allServices.filter((s) => s.clinicId === c.id),
             isActive: c.is_active,
             isHospitalConfirmed: c.is_hospital_confirmed,
@@ -512,6 +528,7 @@ class AppointmentServiceStore {
             slotDurationMinutes: row.slot_duration_minutes,
             instructions: row.instructions || undefined,
             requiredDocuments: (row as any).required_documents || ['أصل شهادة ميلاد الطفل أو بطاقة التأمين الصحي'],
+            bookingStartDate: row.booking_start_date || this.clinics.find((local) => local.id === row.id)?.bookingStartDate,
             services: allServices,
             isActive: row.is_active,
             isHospitalConfirmed: row.is_hospital_confirmed,
@@ -564,6 +581,7 @@ class AppointmentServiceStore {
         'أصل شهادة ميلاد الطفل أو بطاقة التأمين الصحي',
         'صورة بطاقة ولي الأمر',
       ],
+      bookingStartDate: input.bookingStartDate,
       isActive: input.isActive ?? true,
       isHospitalConfirmed: input.isHospitalConfirmed ?? false,
     };
@@ -582,6 +600,7 @@ class AppointmentServiceStore {
           slot_duration_minutes: newClinic.slotDurationMinutes,
           instructions: newClinic.instructions || null,
           required_documents: newClinic.requiredDocuments,
+          booking_start_date: newClinic.bookingStartDate || null,
           is_active: newClinic.isActive,
           is_hospital_confirmed: newClinic.isHospitalConfirmed,
         } as any);
@@ -637,6 +656,7 @@ class AppointmentServiceStore {
             is_hospital_confirmed: updates.isHospitalConfirmed !== undefined ? updates.isHospitalConfirmed : (clinic.isHospitalConfirmed ?? false),
             instructions: updates.instructions !== undefined ? updates.instructions : clinic.instructions,
             required_documents: updates.requiredDocuments !== undefined ? updates.requiredDocuments : (clinic.requiredDocuments || []),
+            booking_start_date: updates.bookingStartDate !== undefined ? updates.bookingStartDate : (clinic.bookingStartDate || null),
             updated_at: new Date().toISOString(),
           } as any)
           .eq('id', clinicId);
@@ -672,6 +692,7 @@ class AppointmentServiceStore {
     if (updates.isActive !== undefined) clinic.isActive = updates.isActive;
     if (updates.instructions !== undefined) clinic.instructions = updates.instructions;
     if (updates.requiredDocuments !== undefined) clinic.requiredDocuments = updates.requiredDocuments;
+    if (updates.bookingStartDate !== undefined) clinic.bookingStartDate = updates.bookingStartDate;
     if (updates.isHospitalConfirmed !== undefined) clinic.isHospitalConfirmed = updates.isHospitalConfirmed;
 
     this.addAuditLog(
@@ -1008,9 +1029,6 @@ class AppointmentServiceStore {
     }
 
     const todayCairo = getTodayCairoDateString();
-    if (input.appointmentDate < BOOKING_START_DATE) {
-      return { success: false, error: 'لا يمكن حجز موعد في تاريخ سابق' };
-    }
 
     // Check schedule overrides, closures, and capacity from clinic_schedules (Precedence rule)
     let effectiveCapacity = clinic.maxDailySlots;
@@ -1058,11 +1076,30 @@ class AppointmentServiceStore {
     // never from client-supplied free text.
     const resolvedServiceName = matchedService?.name || input.serviceName?.trim() || 'كشف واستشارة طبية';
 
+    if (
+      !matchedService?.isWalkInOnly &&
+      isBeforeClinicBookingStartDate(input.appointmentDate, clinic.bookingStartDate)
+    ) {
+      const firstDate = formatClinicBookingStartDate(clinic.bookingStartDate);
+      return {
+        success: false,
+        error: `أول موعد متاح للحجز في عيادة ${clinic.name} هو ${firstDate}. يرجى اختيار هذا التاريخ أو تاريخًا لاحقًا.`,
+      };
+    }
+    if (input.appointmentDate < BOOKING_START_DATE) {
+      return { success: false, error: 'لا يمكن حجز موعد في تاريخ سابق' };
+    }
+
     // Regular services keep the 30-day horizon. A configured service exception
     // is an explicit override and may be booked even months in the future.
-    const maxHorizonDate = new Date();
-    maxHorizonDate.setUTCDate(maxHorizonDate.getUTCDate() + 30);
-    const maxHorizonString = maxHorizonDate.toISOString().split('T')[0];
+    let maxHorizonString: string;
+    if (clinic.bookingStartDate) {
+      maxHorizonString = getLatestClinicBookingDate(todayCairo, 30);
+    } else {
+      const maxHorizonDate = new Date();
+      maxHorizonDate.setUTCDate(maxHorizonDate.getUTCDate() + 30);
+      maxHorizonString = maxHorizonDate.toISOString().split('T')[0];
+    }
     const isServiceExceptionDate = matchedService?.exceptionDate === input.appointmentDate;
     if (weeklyClosed && !isServiceExceptionDate) {
       return {
@@ -2042,6 +2079,16 @@ class AppointmentServiceStore {
     const targetService = targetServices.find((s) => s.id === targetServiceId && s.isActive);
     if (!targetService) {
       return { success: false, error: 'الخدمة المختارة غير تابعة للعيادة المحول إليها أو غير مفعلة' };
+    }
+
+    if (
+      !targetService.isWalkInOnly &&
+      isBeforeClinicBookingStartDate(apt.appointmentDate, targetClinic.bookingStartDate)
+    ) {
+      return {
+        success: false,
+        error: `لا يمكن تحويل الموعد إلى عيادة ${targetClinic.name} قبل تاريخ بدء الحجز ${formatClinicBookingStartDate(targetClinic.bookingStartDate)}.`,
+      };
     }
 
     // Per-service daily capacity in the target clinic (excluding this booking).

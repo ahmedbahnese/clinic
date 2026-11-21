@@ -47,6 +47,7 @@ import {
   getTodayCairoDateString,
   BOOKING_START_DATE,
 } from '@/lib/rules';
+import { formatClinicBookingStartDate, getClinicBookingDateRange, getClinicInstructionLines } from '@/lib/clinicBooking';
 import type { Clinic, ClinicService, ClinicScheduleException, Appointment } from '@/types';
 
 // ============================================================================
@@ -100,6 +101,21 @@ const bookingSchema = z
   });
 
 type BookingFormValues = z.infer<typeof bookingSchema>;
+
+function renderAudiologyInstruction(line: string): React.ReactNode {
+  const phrase = 'كلورال هيدرات 10%';
+  const index = line.indexOf(phrase);
+  if (index < 0) return line;
+  return (
+    <>
+      {line.slice(0, index)}
+      <span className="inline-block font-sans font-black text-sm sm:text-base tracking-tight text-[#124E4A]">
+        {phrase}
+      </span>
+      {line.slice(index + phrase.length)}
+    </>
+  );
+}
 
 // ============================================================================
 // 2. MAIN PAGE WRAPPER (WITH SUSPENSE)
@@ -254,6 +270,8 @@ function NewAppointmentForm() {
   const activeService = useMemo(() => {
     return clinicServices.find((s) => s.id === selectedServiceId) || null;
   }, [clinicServices, selectedServiceId]);
+  const isAudiology = activeClinic?.id === 'audiology';
+  const isAudiologyFivePlusService = isAudiology && activeService?.id === 'audiology_tone_test';
 
   // Fetch clinic schedules (closures & capacity overrides)
   const [clinicSchedules, setClinicSchedules] = useState<ClinicScheduleException[]>([]);
@@ -289,7 +307,11 @@ function NewAppointmentForm() {
       isException: boolean;
       maxCapacity: number;
     }[] = [];
-    const baseDate = new Date(`${BOOKING_START_DATE}T12:00:00`);
+    const candidateDates = getClinicBookingDateRange(
+      getTodayCairoDateString(),
+      BOOKING_START_DATE,
+      activeClinic.bookingStartDate
+    );
     const dayNames = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 
     const allowedDays =
@@ -299,7 +321,8 @@ function NewAppointmentForm() {
 
     const hasServiceException = Boolean(activeService?.exceptionDate);
     const serviceExceptionOnly = Boolean(activeService?.exceptionOnly && hasServiceException);
-    if (serviceExceptionOnly && activeService?.exceptionDate && activeService.exceptionDate >= BOOKING_START_DATE) {
+    const earliestAllowedDate = activeClinic.bookingStartDate || BOOKING_START_DATE;
+    if (serviceExceptionOnly && activeService?.exceptionDate && activeService.exceptionDate >= earliestAllowedDate) {
       const exceptionDateObj = new Date(`${activeService.exceptionDate}T12:00:00Z`);
       const dayOfWeek = exceptionDateObj.getUTCDay();
       const [, mm, dd] = activeService.exceptionDate.split('-');
@@ -313,15 +336,12 @@ function NewAppointmentForm() {
       return dates;
     }
 
-    // Unified 30-day booking horizon
-    for (let i = 0; i <= 30 && dates.length < 14; i++) {
-      const d = new Date(baseDate);
-      d.setDate(baseDate.getDate() + i);
+    // Respect the existing 30-day limit while applying a clinic-specific first date.
+    for (const dateStr of candidateDates) {
+      if (dates.length >= 14) break;
+      const d = new Date(`${dateStr}T12:00:00`);
       const dayOfWeek = d.getDay();
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const dd = String(d.getDate()).padStart(2, '0');
-      const dateStr = `${yyyy}-${mm}-${dd}`;
+      const [, mm, dd] = dateStr.split('-');
 
       // Schedule exception precedence:
       const exception = clinicSchedules.find((s) => s.scheduleDate === dateStr);
@@ -348,7 +368,7 @@ function NewAppointmentForm() {
 
     // Keep regular clinic dates, but append a distant service exception so it
     // is visible even when it falls outside the normal 30-day list.
-    if (activeService?.exceptionDate && activeService.exceptionDate >= BOOKING_START_DATE && !dates.some((d) => d.dateStr === activeService.exceptionDate)) {
+    if (activeService?.exceptionDate && activeService.exceptionDate >= earliestAllowedDate && !dates.some((d) => d.dateStr === activeService.exceptionDate)) {
       const exceptionDateObj = new Date(`${activeService.exceptionDate}T12:00:00Z`);
       const dayOfWeek = exceptionDateObj.getUTCDay();
       const [, mm, dd] = activeService.exceptionDate.split('-');
@@ -366,10 +386,17 @@ function NewAppointmentForm() {
 
   // Default to first available date
   useEffect(() => {
+    if (activeClinic?.bookingStartDate) {
+      const selectionIsAvailable = availableDates.some((date) => date.dateStr === selectedDate);
+      if (!selectionIsAvailable) {
+        setValue('appointmentDate', availableDates[0]?.dateStr || '');
+      }
+      return;
+    }
     if (availableDates.length > 0 && !selectedDate) {
       setValue('appointmentDate', availableDates[0].dateStr);
     }
-  }, [availableDates, selectedDate, setValue]);
+  }, [activeClinic?.bookingStartDate, availableDates, selectedDate, setValue]);
 
   // Form Submit Handler
   const onSubmit = async (values: BookingFormValues) => {
@@ -922,16 +949,24 @@ function NewAppointmentForm() {
                           {activeClinic.instructions && (
                             <div>
                               <span className="font-bold text-slate-700 block mb-0.5 text-2xs sm:text-xs">إرشادات الحضور للعيادة:</span>
-                              <p className="text-slate-600 leading-relaxed font-medium text-xs">
-                                {activeClinic.instructions}
-                              </p>
+                              {isAudiology ? (
+                                <div className="space-y-1 text-slate-600 leading-relaxed font-medium text-xs">
+                                  {getClinicInstructionLines(activeClinic.instructions, isAudiologyFivePlusService).map((line, idx) => (
+                                    <p key={idx}>{renderAudiologyInstruction(line)}</p>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-slate-600 leading-relaxed font-medium text-xs">
+                                  {activeClinic.instructions}
+                                </p>
+                              )}
                             </div>
                           )}
                         </div>
                       )}
 
                       {/* 2. Service-Level Instructions & Documents */}
-                      {activeService && (
+                      {activeService && (!isAudiology || activeService.isWalkInOnly) && (
                         <div className="p-4 rounded-2xl bg-teal-50/90 border border-teal-200 text-teal-950 text-xs sm:text-sm shadow-2xs">
                           <div className="flex items-center justify-between gap-2 mb-2">
                             <h4 className="font-bold text-[#124E4A] text-xs sm:text-sm flex items-center gap-1.5">
@@ -999,6 +1034,18 @@ function NewAppointmentForm() {
                     {errors.appointmentDate && (
                       <p className="text-[11px] text-red-600 mt-1 font-medium">
                         {errors.appointmentDate.message}
+                      </p>
+                    )}
+
+                    {activeClinic?.bookingStartDate && (
+                      <p className="text-[10.5px] text-[#124E4A] font-semibold mt-1.5">
+                        أول موعد متاح للحجز في هذه العيادة هو {formatClinicBookingStartDate(activeClinic.bookingStartDate)}. يظهر التاريخ في القائمة عند دخوله ضمن نافذة الحجز الحالية (30 يومًا).
+                      </p>
+                    )}
+
+                    {activeClinic?.bookingStartDate && availableDates.length === 0 && (
+                      <p className="text-[10.5px] text-amber-700 mt-1">
+                        لا توجد مواعيد متاحة ضمن نافذة الحجز الحالية؛ سيظهر أول موعد عند دخوله ضمن الثلاثين يومًا التالية.
                       </p>
                     )}
 
