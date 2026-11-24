@@ -45,7 +45,9 @@ import {
   validateGuardianNationalId,
   formatArabicDate,
   getTodayCairoDateString,
+  BOOKING_START_DATE,
 } from '@/lib/rules';
+import { formatClinicBookingStartDate, getClinicBookingDateRange, getClinicInstructionLines } from '@/lib/clinicBooking';
 import type { Clinic, ClinicService, ClinicScheduleException, Appointment } from '@/types';
 
 // ============================================================================
@@ -99,6 +101,21 @@ const bookingSchema = z
   });
 
 type BookingFormValues = z.infer<typeof bookingSchema>;
+
+function renderAudiologyInstruction(line: string): React.ReactNode {
+  const phrase = 'كلورال هيدرات 10%';
+  const index = line.indexOf(phrase);
+  if (index < 0) return line;
+  return (
+    <>
+      {line.slice(0, index)}
+      <span className="inline-block font-sans font-black text-sm sm:text-base tracking-tight text-[#124E4A]">
+        {phrase}
+      </span>
+      {line.slice(index + phrase.length)}
+    </>
+  );
+}
 
 // ============================================================================
 // 2. MAIN PAGE WRAPPER (WITH SUSPENSE)
@@ -213,7 +230,8 @@ function NewAppointmentForm() {
     // Check if services are already pre-loaded on activeClinic
     if (activeClinic && activeClinic.services && activeClinic.services.length > 0) {
       setClinicServices(activeClinic.services);
-      setValue('serviceId', activeClinic.services[0].id);
+      const bookableService = activeClinic.services.find((service) => !service.isWalkInOnly);
+      setValue('serviceId', bookableService?.id || '');
       return;
     }
 
@@ -229,7 +247,8 @@ function NewAppointmentForm() {
         if (active && data.services) {
           setClinicServices(data.services);
           if (data.services.length > 0) {
-            setValue('serviceId', data.services[0].id);
+            const bookableService = data.services.find((service: ClinicService) => !service.isWalkInOnly);
+            setValue('serviceId', bookableService?.id || '');
           } else {
             setValue('serviceId', '');
           }
@@ -251,11 +270,14 @@ function NewAppointmentForm() {
   const activeService = useMemo(() => {
     return clinicServices.find((s) => s.id === selectedServiceId) || null;
   }, [clinicServices, selectedServiceId]);
+  const isAudiology = activeClinic?.id === 'audiology';
+  const isAudiologyFivePlusService = isAudiology && activeService?.id === 'audiology_tone_test';
 
   // Fetch clinic schedules (closures & capacity overrides)
   const [clinicSchedules, setClinicSchedules] = useState<ClinicScheduleException[]>([]);
   useEffect(() => {
     let active = true;
+    setClinicSchedules([]);
     if (!selectedClinicId) return;
     async function loadSchedules() {
       try {
@@ -278,8 +300,18 @@ function NewAppointmentForm() {
   const availableDates = useMemo(() => {
     if (!activeClinic) return [];
 
-    const dates: { dateStr: string; label: string; dayOfWeekName: string }[] = [];
-    const baseDate = new Date();
+    const dates: {
+      dateStr: string;
+      label: string;
+      dayOfWeekName: string;
+      isException: boolean;
+      maxCapacity: number;
+    }[] = [];
+    const candidateDates = getClinicBookingDateRange(
+      getTodayCairoDateString(),
+      BOOKING_START_DATE,
+      activeClinic.bookingStartDate
+    );
     const dayNames = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 
     const allowedDays =
@@ -287,15 +319,29 @@ function NewAppointmentForm() {
         ? activeClinic.daysOfWeek
         : [0, 1, 2, 3, 4, 6];
 
-    // Unified 30-day booking horizon
-    for (let i = 1; i <= 30 && dates.length < 14; i++) {
-      const d = new Date(baseDate);
-      d.setDate(baseDate.getDate() + i);
+    const hasServiceException = Boolean(activeService?.exceptionDate);
+    const serviceExceptionOnly = Boolean(activeService?.exceptionOnly && hasServiceException);
+    const earliestAllowedDate = activeClinic.bookingStartDate || BOOKING_START_DATE;
+    if (serviceExceptionOnly && activeService?.exceptionDate && activeService.exceptionDate >= earliestAllowedDate) {
+      const exceptionDateObj = new Date(`${activeService.exceptionDate}T12:00:00Z`);
+      const dayOfWeek = exceptionDateObj.getUTCDay();
+      const [, mm, dd] = activeService.exceptionDate.split('-');
+      dates.push({
+        dateStr: activeService.exceptionDate,
+        label: `${dayNames[dayOfWeek]} (${dd}/${mm}) — تشغيل استثنائي — السعة: ${activeService.exceptionCapacity ?? activeClinic.maxDailySlots} مريض`,
+        dayOfWeekName: dayNames[dayOfWeek],
+        isException: true,
+        maxCapacity: activeService.exceptionCapacity ?? activeClinic.maxDailySlots,
+      });
+      return dates;
+    }
+
+    // Respect the existing 30-day limit while applying a clinic-specific first date.
+    for (const dateStr of candidateDates) {
+      if (dates.length >= 14) break;
+      const d = new Date(`${dateStr}T12:00:00`);
       const dayOfWeek = d.getDay();
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const dd = String(d.getDate()).padStart(2, '0');
-      const dateStr = `${yyyy}-${mm}-${dd}`;
+      const [, mm, dd] = dateStr.split('-');
 
       // Schedule exception precedence:
       const exception = clinicSchedules.find((s) => s.scheduleDate === dateStr);
@@ -306,24 +352,51 @@ function NewAppointmentForm() {
         isOpen = allowedDays.includes(dayOfWeek);
       }
 
-      if (isOpen) {
+      const serviceException = activeService?.exceptionDate === dateStr ? activeService : undefined;
+      const dateAllowedByService = serviceExceptionOnly ? Boolean(serviceException) : (isOpen || Boolean(serviceException));
+      if (dateAllowedByService) {
+        const maxCapacity = serviceException?.exceptionCapacity ?? exception?.maxCapacity ?? activeClinic.maxDailySlots;
         dates.push({
           dateStr,
-          label: `${dayNames[dayOfWeek]} (${dd}/${mm})`,
+          label: `${dayNames[dayOfWeek]} (${dd}/${mm})${exception || serviceException ? ' — تشغيل استثنائي' : ''} — السعة: ${maxCapacity} مريض`,
           dayOfWeekName: dayNames[dayOfWeek],
+          isException: Boolean(exception),
+          maxCapacity,
         });
       }
     }
 
+    // Keep regular clinic dates, but append a distant service exception so it
+    // is visible even when it falls outside the normal 30-day list.
+    if (activeService?.exceptionDate && activeService.exceptionDate >= earliestAllowedDate && !dates.some((d) => d.dateStr === activeService.exceptionDate)) {
+      const exceptionDateObj = new Date(`${activeService.exceptionDate}T12:00:00Z`);
+      const dayOfWeek = exceptionDateObj.getUTCDay();
+      const [, mm, dd] = activeService.exceptionDate.split('-');
+      dates.push({
+        dateStr: activeService.exceptionDate,
+        label: `${dayNames[dayOfWeek]} (${dd}/${mm}) — تشغيل استثنائي — السعة: ${activeService.exceptionCapacity ?? activeClinic.maxDailySlots} مريض`,
+        dayOfWeekName: dayNames[dayOfWeek],
+        isException: true,
+        maxCapacity: activeService.exceptionCapacity ?? activeClinic.maxDailySlots,
+      });
+    }
+
     return dates;
-  }, [activeClinic, clinicSchedules]);
+  }, [activeClinic, activeService, clinicSchedules]);
 
   // Default to first available date
   useEffect(() => {
+    if (activeClinic?.bookingStartDate) {
+      const selectionIsAvailable = availableDates.some((date) => date.dateStr === selectedDate);
+      if (!selectionIsAvailable) {
+        setValue('appointmentDate', availableDates[0]?.dateStr || '');
+      }
+      return;
+    }
     if (availableDates.length > 0 && !selectedDate) {
       setValue('appointmentDate', availableDates[0].dateStr);
     }
-  }, [availableDates, selectedDate, setValue]);
+  }, [activeClinic?.bookingStartDate, availableDates, selectedDate, setValue]);
 
   // Form Submit Handler
   const onSubmit = async (values: BookingFormValues) => {
@@ -833,8 +906,8 @@ function NewAppointmentForm() {
                             <option value="">لا توجد خدمات محددة حالياً لهذه العيادة</option>
                           ) : (
                             clinicServices.map((srv) => (
-                              <option key={srv.id} value={srv.id}>
-                                {srv.name}
+                              <option key={srv.id} value={srv.id} disabled={Boolean(srv.isWalkInOnly)}>
+                                {srv.name}{srv.isWalkInOnly ? ' — حضور مباشر فقط' : ''}
                               </option>
                             ))
                           )}
@@ -847,7 +920,7 @@ function NewAppointmentForm() {
                       </p>
                     )}
                     <span className="block text-[10.5px] text-slate-400 mt-1">
-                      الخدمات تتغير تلقائياً وفقاً للعيادة التخصصية المختارة
+                      الخدمات تتغير تلقائياً وفقاً للعيادة التخصصية المختارة. الخدمة المعلّمة «حضور مباشر فقط» تظهر للتوضيح ولا يمكن حجزها إلكترونياً.
                     </span>
                   </div>
 
@@ -876,16 +949,24 @@ function NewAppointmentForm() {
                           {activeClinic.instructions && (
                             <div>
                               <span className="font-bold text-slate-700 block mb-0.5 text-2xs sm:text-xs">إرشادات الحضور للعيادة:</span>
-                              <p className="text-slate-600 leading-relaxed font-medium text-xs">
-                                {activeClinic.instructions}
-                              </p>
+                              {isAudiology ? (
+                                <div className="space-y-1 text-slate-600 leading-relaxed font-medium text-xs">
+                                  {getClinicInstructionLines(activeClinic.instructions, isAudiologyFivePlusService).map((line, idx) => (
+                                    <p key={idx}>{renderAudiologyInstruction(line)}</p>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-slate-600 leading-relaxed font-medium text-xs">
+                                  {activeClinic.instructions}
+                                </p>
+                              )}
                             </div>
                           )}
                         </div>
                       )}
 
                       {/* 2. Service-Level Instructions & Documents */}
-                      {activeService && (
+                      {activeService && (!isAudiology || activeService.isWalkInOnly) && (
                         <div className="p-4 rounded-2xl bg-teal-50/90 border border-teal-200 text-teal-950 text-xs sm:text-sm shadow-2xs">
                           <div className="flex items-center justify-between gap-2 mb-2">
                             <h4 className="font-bold text-[#124E4A] text-xs sm:text-sm flex items-center gap-1.5">
@@ -956,6 +1037,18 @@ function NewAppointmentForm() {
                       </p>
                     )}
 
+                    {activeClinic?.bookingStartDate && (
+                      <p className="text-[10.5px] text-[#124E4A] font-semibold mt-1.5">
+                        أول موعد متاح للحجز في هذه العيادة هو {formatClinicBookingStartDate(activeClinic.bookingStartDate)}. يظهر التاريخ في القائمة عند دخوله ضمن نافذة الحجز الحالية (30 يومًا).
+                      </p>
+                    )}
+
+                    {activeClinic?.bookingStartDate && availableDates.length === 0 && (
+                      <p className="text-[10.5px] text-amber-700 mt-1">
+                        لا توجد مواعيد متاحة ضمن نافذة الحجز الحالية؛ سيظهر أول موعد عند دخوله ضمن الثلاثين يومًا التالية.
+                      </p>
+                    )}
+
                     <p className="text-[10.5px] text-slate-400 mt-1">
                       تظهر فقط الأيام المعتمدة لعمل العيادة وتستثنى أيام العطلات. الكشف بأسبقية الحضور صباحاً.
                     </p>
@@ -996,12 +1089,19 @@ function NewAppointmentForm() {
                   </div>
                 </div>
 
+                {activeService?.isWalkInOnly && (
+                  <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-xs font-bold text-amber-800">
+                    الخدمة المختارة «{activeService.name}» حضور مباشر فقط، ولا يمكن إصدار تذكرة حجز إلكترونية لها. يرجى التوجه إلى الاستقبال أو مدير النظام.
+                  </div>
+                )}
                 <button
                   type="submit"
-                  disabled={submitting}
+                  disabled={submitting || Boolean(activeService?.isWalkInOnly)}
                   className={`w-full py-4 rounded-2xl text-white text-sm sm:text-base font-bold shadow-md transition-all flex items-center justify-center gap-2.5 ${
                     submitting
                       ? 'bg-[#066560] cursor-wait opacity-90'
+                      : activeService?.isWalkInOnly
+                        ? 'bg-slate-400 cursor-not-allowed opacity-80'
                       : 'bg-[#087F78] hover:bg-[#066560] active:scale-[0.99] cursor-pointer shadow-teal-900/10 hover:shadow-lg'
                   }`}
                 >
@@ -1009,6 +1109,11 @@ function NewAppointmentForm() {
                     <>
                       <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       <span>جاري إرسال طلب الحجز والتحقق...</span>
+                    </>
+                  ) : activeService?.isWalkInOnly ? (
+                    <>
+                      <AlertTriangle className="w-5 h-5" />
+                      <span>حضور مباشر فقط — لا يمكن إصدار تذكرة إلكترونية</span>
                     </>
                   ) : (
                     <>

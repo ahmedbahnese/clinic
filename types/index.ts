@@ -30,6 +30,9 @@ export interface ClinicService {
   requiredDocuments: string[];
   instructions: string;
   maxDailyCapacity?: number;
+  exceptionDate?: string;
+  exceptionCapacity?: number;
+  exceptionOnly?: boolean;
   isWalkInOnly?: boolean;
   isActive: boolean;
   displayOrder: number;
@@ -59,6 +62,7 @@ export interface Clinic {
   slotDurationMinutes: number;
   instructions?: string;
   requiredDocuments?: string[];
+  bookingStartDate?: string; // YYYY-MM-DD; earliest appointment date available for booking
   services?: ClinicService[];
   isActive: boolean;
   isHospitalConfirmed?: boolean;

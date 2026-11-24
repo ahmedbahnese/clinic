@@ -1,5 +1,7 @@
 import type { AppointmentStatus } from '../types/index.ts';
 
+export const BOOKING_START_DATE = '2026-12-14';
+
 /**
  * Redacts a child's name for privacy in public tracking (e.g. "أحمد كريم محمود" -> "أحمد ك*** م***").
  * Keeps the first name visible for the guardian's confirmation while masking patronymic names.

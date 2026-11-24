@@ -241,6 +241,9 @@ export default function StaffDashboardPage() {
   const [newServiceDocs, setNewServiceDocs] = useState('');
   const [newServiceInstructions, setNewServiceInstructions] = useState('');
   const [newServiceWalkInOnly, setNewServiceWalkInOnly] = useState(false);
+  const [newServiceExceptionDate, setNewServiceExceptionDate] = useState('');
+  const [newServiceExceptionCapacity, setNewServiceExceptionCapacity] = useState(20);
+  const [newServiceExceptionOnly, setNewServiceExceptionOnly] = useState(false);
   const [addingServiceLoading, setAddingServiceLoading] = useState(false);
   const [deletingServiceId, setDeletingServiceId] = useState<string | null>(null);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
@@ -389,7 +392,11 @@ export default function StaffDashboardPage() {
         const res = await fetch(`/api/clinics/${walkInClinicId}/services`);
         const data = await res.json();
         if (active && data.services) {
-          setWalkInServicesList(data.services.filter((s: ClinicService) => s.isActive !== false));
+          const services = data.services.filter((s: ClinicService) => s.isActive !== false);
+          setWalkInServicesList(services);
+          // Use the first real clinic service instead of leaving the required
+          // selector empty and causing a false validation error.
+          setWalkInServiceId(services[0]?.id || '');
         }
       } catch {
         if (active) setWalkInServicesList([]);
@@ -930,6 +937,9 @@ export default function StaffDashboardPage() {
           requiredDocuments: newServiceDocs.split('\n').map((s) => s.trim()).filter(Boolean),
           instructions: newServiceInstructions.trim(),
           isWalkInOnly: newServiceWalkInOnly,
+          exceptionDate: newServiceExceptionDate || undefined,
+          exceptionCapacity: newServiceExceptionDate ? Number(newServiceExceptionCapacity) || 1 : undefined,
+          exceptionOnly: newServiceExceptionOnly,
           isActive: true,
         }),
       });
@@ -941,6 +951,9 @@ export default function StaffDashboardPage() {
         setNewServiceDocs('');
         setNewServiceInstructions('');
         setNewServiceWalkInOnly(false);
+        setNewServiceExceptionDate('');
+        setNewServiceExceptionCapacity(20);
+        setNewServiceExceptionOnly(false);
         alert('تمت إضافة الخدمة للعيادة بنجاح');
       } else {
         alert(data.error || 'تعذر إضافة الخدمة');
@@ -990,6 +1003,9 @@ export default function StaffDashboardPage() {
     setNewServiceDocs((service.requiredDocuments || []).join('\n'));
     setNewServiceInstructions(service.instructions || '');
     setNewServiceWalkInOnly(Boolean(service.isWalkInOnly));
+    setNewServiceExceptionDate(service.exceptionDate || '');
+    setNewServiceExceptionCapacity(service.exceptionCapacity ?? service.maxDailyCapacity ?? 20);
+    setNewServiceExceptionOnly(Boolean(service.exceptionOnly));
   }
 
   // Cancel Edit Service Handler
@@ -1000,6 +1016,9 @@ export default function StaffDashboardPage() {
     setNewServiceDocs('');
     setNewServiceInstructions('');
     setNewServiceWalkInOnly(false);
+    setNewServiceExceptionDate('');
+    setNewServiceExceptionCapacity(20);
+    setNewServiceExceptionOnly(false);
   }
 
   // Save / Update Service Handler
@@ -1026,6 +1045,9 @@ export default function StaffDashboardPage() {
           requiredDocuments: newServiceDocs.split('\n').map((s) => s.trim()).filter(Boolean),
           instructions: newServiceInstructions.trim(),
           isWalkInOnly: newServiceWalkInOnly,
+          exceptionDate: newServiceExceptionDate || undefined,
+          exceptionCapacity: newServiceExceptionDate ? Number(newServiceExceptionCapacity) || 1 : undefined,
+          exceptionOnly: newServiceExceptionOnly,
           isActive: true,
         }),
       });
@@ -3897,6 +3919,11 @@ export default function StaffDashboardPage() {
                                 سعة: {service.maxDailyCapacity} مريض/يوم
                               </span>
                             )}
+                            {service.exceptionDate && (
+                              <span className="px-2 py-0.5 rounded-md bg-sky-50 text-sky-700 border border-sky-200 text-3xs font-bold">
+                                استثناء {service.exceptionDate}: {service.exceptionCapacity || service.maxDailyCapacity || 0} مريض
+                              </span>
+                            )}
                           </div>
                           {service.instructions && (
                             <p className="text-3xs text-slate-500 line-clamp-1">{service.instructions}</p>
@@ -4013,6 +4040,42 @@ export default function StaffDashboardPage() {
                       <span className="text-2xs">تظهر للمستخدم للتوضيح فقط، ولا يُسمح بالحجز بها إلكترونيًا. يسجلها موظف الاستقبال أو مدير النظام في نفس اليوم.</span>
                     </span>
                   </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
+                    <div>
+                      <label className="block text-3xs font-bold text-sky-900 mb-1">يوم الاستثناء لهذه الخدمة (اختياري)</label>
+                      <input
+                        type="date"
+                        value={newServiceExceptionDate}
+                        min={formatLocalDate()}
+                        onChange={(e) => setNewServiceExceptionDate(e.target.value)}
+                        className="w-full px-2.5 py-2 rounded-lg border border-sky-200 text-sm bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-3xs font-bold text-sky-900 mb-1">سعة الخدمة في يوم الاستثناء</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={newServiceExceptionCapacity}
+                        disabled={!newServiceExceptionDate}
+                        onChange={(e) => setNewServiceExceptionCapacity(Number(e.target.value))}
+                        className="w-full px-2.5 py-2 rounded-lg border border-sky-200 text-sm font-mono bg-white disabled:bg-slate-100"
+                      />
+                    </div>
+                    <p className="sm:col-span-2 text-3xs text-sky-800">
+                      عند اختيار يوم، تظهر هذه الخدمة في الحجز في ذلك اليوم بالسعة المحددة. اترك التاريخ فارغًا إذا لم يوجد استثناء.
+                    </p>
+                    <label className="sm:col-span-2 flex items-start gap-2 text-2xs font-bold text-sky-900 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newServiceExceptionOnly}
+                        disabled={!newServiceExceptionDate}
+                        onChange={(e) => setNewServiceExceptionOnly(e.target.checked)}
+                        className="mt-0.5 accent-sky-600"
+                      />
+                      <span>عرض يوم الاستثناء فقط في الحجز (بدون عرض باقي أيام العيادة)</span>
+                    </label>
+                  </div>
                   {editingServiceId ? (
                     <div className="flex items-center gap-2 pt-1">
                       <button
