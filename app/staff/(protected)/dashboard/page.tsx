@@ -91,15 +91,25 @@ function openWhatsAppTicket(appointment: Appointment): void {
     return;
   }
   const internationalPhone = `20${phoneCheck.normalized.slice(1)}`;
+  const trackingUrl = `${window.location.origin}/appointments/track?phone=${encodeURIComponent(phoneCheck.normalized)}`;
+  const documents = appointment.requiredDocuments?.length
+    ? appointment.requiredDocuments.map((document) => `- ${document}`).join('\n')
+    : 'لا توجد أوراق محددة حاليًا.';
+  const instructions = appointment.serviceInstructions?.trim() || 'يرجى الحضور في الموعد المحدد والالتزام بتعليمات العيادة.';
   const message = [
-    'تذكرة حجز بمستشفى الأطفال التخصصي بالبحيرة',
-    `اسم الطفل: ${appointment.patientName}`,
+    'مرحبًا بك في عيادات مستشفى الأطفال التخصصي بالبحيرة.',
+    'حالة الحجز: تم تأكيد حجز موعدك بنجاح',
+    `اسم المريض: ${appointment.patientName}`,
+    `العمر: ${appointment.patientAge || 'غير مسجل'}`,
     `العيادة: ${appointment.clinicName}`,
     `الخدمة: ${appointment.serviceName || 'كشف واستشارة طبية'}`,
-    `العمر: ${appointment.patientAge || 'غير مسجل'}`,
-    `تاريخ الحضور: ${formatArabicDate(appointment.appointmentDate)}`,
-    `الرقم المرجعي: ${appointment.referenceNumber}`,
-    'يرجى إبراز التذكرة عند الحضور والالتزام بتعليمات العيادة الظاهرة في الإيصال.',
+    `تاريخ وموعد الزيارة: ${formatArabicDate(appointment.appointmentDate)}${appointment.appointmentTime ? ` — الساعة ${appointment.appointmentTime}` : ''}`,
+    'الأوراق المطلوبة:',
+    documents,
+    'التعليمات:',
+    instructions,
+    'لمتابعة حالة الحجز والإيصال تلقائيًا برقم الهاتف المسجل، افتح الرابط التالي:',
+    trackingUrl,
   ].join('\n');
   window.open(`https://wa.me/${internationalPhone}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
 }
