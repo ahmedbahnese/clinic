@@ -2863,6 +2863,13 @@ class AppointmentServiceStore {
       effectiveClinicId = staffUser.clinicId;
     }
 
+    let serviceDetails: ClinicService[] = [];
+    try {
+      serviceDetails = await this.getClinicServices();
+    } catch (err) {
+      console.warn('getStaffAppointments: service details unavailable:', err);
+    }
+
     if (isSupabaseConfigured()) {
       try {
         const { client: supabase } = await getAuthenticatedServerClient(userToken);
@@ -2920,13 +2927,17 @@ class AppointmentServiceStore {
             throw new Error('فشل جلب قائمة الحجوزات من قاعدة البيانات المركزية');
           }
         } else if (data) {
-          return data.map((dbApt: any) => ({
+          return data.map((dbApt: any) => {
+            const service = serviceDetails.find((item) => item.id === dbApt.service_id);
+            return {
             id: dbApt.id,
             referenceNumber: dbApt.reference_number,
             clinicId: dbApt.clinic_id,
             clinicName: dbApt.clinic_name,
             serviceId: dbApt.service_id || undefined,
             serviceName: dbApt.service_name || undefined,
+            requiredDocuments: service?.requiredDocuments || [],
+            serviceInstructions: service?.instructions || '',
             patientName: dbApt.patient_name,
             phoneNumber: dbApt.phone_number,
             patientAge: dbApt.patient_age || undefined,
@@ -2946,7 +2957,8 @@ class AppointmentServiceStore {
             createdAt: dbApt.created_at,
             updatedAt: dbApt.updated_at,
             statusHistory: [],
-          }));
+            };
+          });
         }
       } catch (err: any) {
         console.error('Supabase fetch staff appointments exception:', err?.message || err);
