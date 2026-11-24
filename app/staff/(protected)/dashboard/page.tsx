@@ -48,7 +48,7 @@ import StaffManager from './components/StaffManager';
 import LiveQueueManager from '@/components/LiveQueueManager';
 import ReceiptCard from '@/components/ReceiptCard';
 import { Appointment, Clinic, ClinicService, ClinicScheduleException, AppointmentStatus, AuditLogItem, CancellationRequest } from '@/types';
-import { getStatusDisplay, formatArabicDate, formatLocalDate, isTodayLocalDate, calculateAgeFromDob, validateDateOfBirth, getTodayCairoDateString } from '@/lib/rules';
+import { getStatusDisplay, formatArabicDate, formatLocalDate, isTodayLocalDate, calculateAgeFromDob, validateDateOfBirth, getTodayCairoDateString, normalizeAndValidateEgyptianPhone } from '@/lib/rules';
 
 function formatSafeDateTime(dateStr?: string | null): string {
   if (!dateStr || typeof dateStr !== 'string') return '—';
@@ -82,6 +82,26 @@ function formatSafeTime(dateStr?: string | null): string {
   } catch {
     return String(dateStr);
   }
+}
+
+function openWhatsAppTicket(appointment: Appointment): void {
+  const phoneCheck = normalizeAndValidateEgyptianPhone(appointment.phoneNumber || '');
+  if (!phoneCheck.isValid) {
+    window.alert('رقم هاتف ولي الأمر المسجل غير صالح لمشاركة التذكرة عبر واتساب.');
+    return;
+  }
+  const internationalPhone = `20${phoneCheck.normalized.slice(1)}`;
+  const message = [
+    'تذكرة حجز بمستشفى الأطفال التخصصي بالبحيرة',
+    `اسم الطفل: ${appointment.patientName}`,
+    `العيادة: ${appointment.clinicName}`,
+    `الخدمة: ${appointment.serviceName || 'كشف واستشارة طبية'}`,
+    `العمر: ${appointment.patientAge || 'غير مسجل'}`,
+    `تاريخ الحضور: ${formatArabicDate(appointment.appointmentDate)}`,
+    `الرقم المرجعي: ${appointment.referenceNumber}`,
+    'يرجى إبراز التذكرة عند الحضور والالتزام بتعليمات العيادة الظاهرة في الإيصال.',
+  ].join('\n');
+  window.open(`https://wa.me/${internationalPhone}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
 }
 
 export default function StaffDashboardPage() {
@@ -1980,6 +2000,17 @@ export default function StaffDashboardPage() {
                                   <CheckCircle2 className="w-4 h-4" />
                                   <span>تأكيد الحجز</span>
                                 </button>
+                                {(isReceptionist || isAdmin) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openWhatsAppTicket(apt)}
+                                    className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center justify-center gap-1 shrink-0"
+                                    title="فتح رسالة واتساب جاهزة للإرسال"
+                                  >
+                                    <Phone className="w-4 h-4" />
+                                    <span>واتساب</span>
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => {
                                     const reason = window.prompt('يرجى إدخال سبب إلغاء الحجز (اختياري):', 'اعتذار من ولي الأمر');
@@ -2263,6 +2294,17 @@ export default function StaffDashboardPage() {
                                         <CheckCircle2 className="w-3 h-3" />
                                         <span>تأكيد الحجز</span>
                                       </button>
+                                      {(isReceptionist || isAdmin) && (
+                                        <button
+                                          type="button"
+                                          onClick={() => openWhatsAppTicket(apt)}
+                                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-2xs font-bold shadow-2xs"
+                                          title="فتح رسالة واتساب جاهزة للإرسال"
+                                        >
+                                          <Phone className="w-3 h-3" />
+                                          <span>واتساب</span>
+                                        </button>
+                                      )}
                                       <button
                                         onClick={() => {
                                           const reason = window.prompt('يرجى إدخال سبب إلغاء الحجز (اختياري):', 'اعتذار من ولي الأمر');

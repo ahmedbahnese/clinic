@@ -41,7 +41,8 @@ export async function GET(req: NextRequest) {
 
     const requests = await appointmentStore.getCancellationRequests(
       { clinicId, status },
-      staffUser
+      staffUser,
+      token
     );
 
     return NextResponse.json({
@@ -59,4 +60,3 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'تعذر جلب طلبات الإلغاء' }, { status: 500 });
   }
 }
-

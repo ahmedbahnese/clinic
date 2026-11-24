@@ -359,9 +359,14 @@ export default function ReceiptCard({
                 <Info className="w-3.5 h-3.5 text-[#087F78]" />
                 <span>تعليمات الخدمة والتحضير الطبي:</span>
               </p>
-              <p className="text-2xs leading-relaxed whitespace-pre-line font-medium">
-                {appointment.serviceInstructions}
-              </p>
+              <div className="text-2xs leading-relaxed font-medium space-y-1.5">
+                {appointment.serviceInstructions.split(/\n+/).filter(Boolean).map((instruction, idx) => (
+                  <p key={idx} className="flex items-start gap-1.5">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#087F78]" aria-hidden="true" />
+                    <span>{instruction.replace(/^[-•]\s*/, '')}</span>
+                  </p>
+                ))}
+              </div>
             </div>
           </div>
         )}

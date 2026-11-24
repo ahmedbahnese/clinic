@@ -15,7 +15,7 @@ const INITIAL_CLINICS: Clinic[] = [
   { id: 'nutrition', name: 'عيادة التغذية', description: 'متابعة التغذية والنمو وحالات سوء التغذية والنحافة والسمنة للأطفال.', location: 'مبنى العيادات الخارجية', workingHours: '08:30-14:00', daysOfWeek: [0, 3, 4], maxDailySlots: 50, slotDurationMinutes: 5, requiredDocuments: ['صورة بطاقة الأب والأم', 'شهادة ميلاد كمبيوتر', 'تقارير الطفل'], instructions: '', isActive: true, isHospitalConfirmed: true },
   { id: 'neuro', name: 'عيادة النفسية والعصبية', description: 'تقييم ومتابعة الحالات النفسية والعصبية وتأخر التطور والكلام.', location: 'مبنى العيادات الخارجية', workingHours: '08:30-14:00', daysOfWeek: [6], maxDailySlots: 15, slotDurationMinutes: 10, requiredDocuments: [], instructions: '', isActive: true, isHospitalConfirmed: true },
   { id: 'dentistry', name: 'عيادة الأسنان', description: 'خدمات خلع وحشو أسنان الأطفال.', location: 'مبنى العيادات الخارجية', workingHours: '08:30-14:00', daysOfWeek: [0, 1, 2, 3, 4, 6], maxDailySlots: 4, slotDurationMinutes: 15, requiredDocuments: ['صورة بطاقة الأب أو الأم'], instructions: '', isActive: true, isHospitalConfirmed: true },
-  { id: 'echo', name: 'عيادة الإيكو', description: 'فحص الإيكو للأطفال حسب تحويل وتقييم عيادة القلب.', location: 'أمام عيادة القلب بالدور الرابع', workingHours: '08:30-14:00', daysOfWeek: [0, 1, 2, 3, 4, 6], maxDailySlots: 5, slotDurationMinutes: 20, requiredDocuments: [], instructions: 'الحضور الساعة 8:30 صباحًا أمام عيادة القلب بالدور الرابع.\n\nللأطفال من 6 شهور حتى 3 سنوات: قد يُطلب تجهيز الطفل بمادة كلورال هيدرات تحت إشراف طبيب عيادة القلب حسب الحالة.\n\nيجب أن يكون الطفل خاليًا من أعراض البرد.\n\nإيقاظ الطفل مبكرًا وعدم السماح له بالنوم في الطريق حتى يمكنه النوم أثناء الفحص عند الحاجة.', isActive: true, isHospitalConfirmed: true },
+  { id: 'echo', name: 'عيادة الإيكو', description: 'فحص الإيكو للأطفال حسب تحويل وتقييم عيادة القلب.', location: 'أمام عيادة القلب بالدور الرابع', workingHours: '08:30-14:00', daysOfWeek: [0, 1, 2, 3, 4, 6], maxDailySlots: 5, slotDurationMinutes: 20, requiredDocuments: [], instructions: 'للأطفال من 6 شهور حتى 3 سنوات: يجب أن يكون الطفل خاليًا من أعراض البرد.\nالتأكد من عدم وجود كحة أو رشح/نزلة برد أو ارتفاع درجة الحرارة.\nليلة الاختبار: نوم الطفل الساعة 12 مساءً وإيقاظه الساعة 4 فجراً وعدم السماح له بالنوم حتى الوصول للمستشفى حتى يمكنه النوم أثناء الفحص عند الحاجة وتهيئته للاختبار.\nالحضور للمستشفى مبكرًا الساعة 8:30 صباحًا أمام عيادة القلب بالدور الرابع.\nإحضار كلورال هيدرات 10% إذا قرر الطبيب استخدامه، ويُعطى فقط تحت إشراف طبيب عيادة القلب حسب الحالة.', isActive: true, isHospitalConfirmed: true },
   { id: 'audiology', name: 'عيادة السمعيات', description: 'خدمات رسم السمع الإلكتروني وفحوصات ضغط الأذن وحالات مبادرة السمع.', location: 'مبنى العيادات الخارجية', workingHours: '08:30-14:00', daysOfWeek: [0, 1, 2, 3, 4, 6], maxDailySlots: 20, slotDurationMinutes: 15, requiredDocuments: [], instructions: 'الحضور للمستشفى مبكرًا وبحد أقصى الساعة 8:30 صباحًا.\n\nيجب التأكد من عدم وجود كحة أو رشح/نزلة برد أو ارتفاع درجة الحرارة.', isActive: true, isHospitalConfirmed: true },
 ];
 
@@ -32,8 +32,8 @@ const INITIAL_SERVICES: ClinicService[] = [
   { id: 'neuro_follow_up', clinicId: 'neuro', name: 'متابعة', requiredDocuments: [], instructions: 'لا توجد أوراق محددة حاليًا. الحضور في الموعد المحدد.', maxDailyCapacity: 15, isWalkInOnly: false, isActive: true, displayOrder: 2 },
   { id: 'dentistry_extraction', clinicId: 'dentistry', name: 'خلع', requiredDocuments: ['صورة بطاقة الأب أو الأم'], instructions: 'يرجى إحضار صورة بطاقة الأب أو الأم.', maxDailyCapacity: 4, isWalkInOnly: false, isActive: true, displayOrder: 1 },
   { id: 'dentistry_filling', clinicId: 'dentistry', name: 'حشو', requiredDocuments: ['صورة بطاقة الأب أو الأم'], instructions: 'يرجى إحضار صورة بطاقة الأب أو الأم.', maxDailyCapacity: 4, isWalkInOnly: false, isActive: true, displayOrder: 2 },
-  { id: 'echo_first_visit', clinicId: 'echo', name: 'كشف أول مرة', requiredDocuments: [], instructions: 'الحضور الساعة 8:30 صباحًا أمام عيادة القلب بالدور الرابع.\n\nللأطفال من 6 شهور حتى 3 سنوات: قد يُطلب تجهيز الطفل بمادة كلورال هيدرات تحت إشراف طبيب عيادة القلب حسب الحالة.\n\nيجب أن يكون الطفل خاليًا من أعراض البرد.\n\nإيقاظ الطفل مبكرًا وعدم السماح له بالنوم في الطريق حتى يمكنه النوم أثناء الفحص عند الحاجة.', maxDailyCapacity: 5, isWalkInOnly: false, isActive: true, displayOrder: 1 },
-  { id: 'echo_follow_up', clinicId: 'echo', name: 'متابعة', requiredDocuments: [], instructions: 'الحضور الساعة 8:30 صباحًا أمام عيادة القلب بالدور الرابع.\n\nللأطفال من 6 شهور حتى 3 سنوات: قد يُطلب تجهيز الطفل بمادة كلورال هيدرات تحت إشراف طبيب عيادة القلب حسب الحالة.\n\nيجب أن يكون الطفل خاليًا من أعراض البرد.\n\nإيقاظ الطفل مبكرًا وعدم السماح له بالنوم في الطريق حتى يمكنه النوم أثناء الفحص عند الحاجة.', maxDailyCapacity: 5, isWalkInOnly: false, isActive: true, displayOrder: 2 },
+  { id: 'echo_first_visit', clinicId: 'echo', name: 'كشف أول مرة', requiredDocuments: [], instructions: 'للأطفال من 6 شهور حتى 3 سنوات: يجب أن يكون الطفل خاليًا من أعراض البرد.\nالتأكد من عدم وجود كحة أو رشح/نزلة برد أو ارتفاع درجة الحرارة.\nليلة الاختبار: نوم الطفل الساعة 12 مساءً وإيقاظه الساعة 4 فجراً وعدم السماح له بالنوم حتى الوصول للمستشفى حتى يمكنه النوم أثناء الفحص عند الحاجة وتهيئته للاختبار.\nالحضور للمستشفى مبكرًا الساعة 8:30 صباحًا أمام عيادة القلب بالدور الرابع.\nإحضار كلورال هيدرات 10% إذا قرر الطبيب استخدامه، ويُعطى فقط تحت إشراف طبيب عيادة القلب حسب الحالة.', maxDailyCapacity: 5, isWalkInOnly: false, isActive: true, displayOrder: 1 },
+  { id: 'echo_follow_up', clinicId: 'echo', name: 'متابعة', requiredDocuments: [], instructions: 'للأطفال من 6 شهور حتى 3 سنوات: يجب أن يكون الطفل خاليًا من أعراض البرد.\nالتأكد من عدم وجود كحة أو رشح/نزلة برد أو ارتفاع درجة الحرارة.\nليلة الاختبار: نوم الطفل الساعة 12 مساءً وإيقاظه الساعة 4 فجراً وعدم السماح له بالنوم حتى الوصول للمستشفى حتى يمكنه النوم أثناء الفحص عند الحاجة وتهيئته للاختبار.\nالحضور للمستشفى مبكرًا الساعة 8:30 صباحًا أمام عيادة القلب بالدور الرابع.\nإحضار كلورال هيدرات 10% إذا قرر الطبيب استخدامه، ويُعطى فقط تحت إشراف طبيب عيادة القلب حسب الحالة.', maxDailyCapacity: 5, isWalkInOnly: false, isActive: true, displayOrder: 2 },
   { id: 'audiology_abr', clinicId: 'audiology', name: 'رسم سمع كمبيوتر عن طريق جذع المخ — 3 حالات', requiredDocuments: [], instructions: 'العمر أكبر من 3 شهور وأقل من 5 سنوات، مع استثناء حالات التأخر العقلي أو تأخر الكلام. يجب التأكد من عدم وجود كحة أو رشح/نزلة برد أو ارتفاع درجة الحرارة.\n\nليلة الاختبار: نوم الطفل الساعة 12 مساءً وإيقاظه الساعة 4 فجراً وعدم السماح له بالنوم حتى الوصول للمستشفى وتهيئته للاختبار.\n\nفي اليوم السابق للاختبار: غسل الرأس جيدًا بالماء والصابون. عدم وضع كريم على الشعر أو البشرة يوم الاختبار.\n\nالحضور للمستشفى مبكرًا وبحد أقصى الساعة 8:30 صباحًا. إحضار كلورال هيدرات إذا قرر الطبيب استخدامه، ويُعطى فقط تحت إشراف طبي.', maxDailyCapacity: 3, isWalkInOnly: false, isActive: true, displayOrder: 1 },
   { id: 'audiology_tone_test', clinicId: 'audiology', name: 'رسم سمع للسن 5 سنوات فأكثر — 5 حالات', requiredDocuments: [], instructions: 'يشترط أن يكون العمر 5 سنوات فأكثر. يجب التأكد من عدم وجود كحة أو رشح/نزلة برد أو ارتفاع درجة الحرارة.\n\nالحضور للمستشفى مبكرًا وبحد أقصى الساعة 8:30 صباحًا.', maxDailyCapacity: 5, isWalkInOnly: false, isActive: true, displayOrder: 2 },
   { id: 'audiology_ear_pressure', clinicId: 'audiology', name: 'حالات ضغط الأذن — حضور مباشر', requiredDocuments: [], instructions: 'هذه الخدمة بالحضور المباشر فقط ولا يتم الحجز الإلكتروني بها. يتم تسجيلها من موظف الاستقبال أو مدير النظام في نفس اليوم.', isWalkInOnly: true, isActive: true, displayOrder: 3 },
@@ -1464,7 +1464,7 @@ class AppointmentServiceStore {
         const { client, authenticated } = await getSystemSupabaseClient();
         if (client && authenticated) {
           const baseColumns =
-            'id, reference_number, clinic_id, clinic_name, patient_name, patient_age, patient_address, appointment_date, appointment_time, status, queue_number';
+            'id, reference_number, clinic_id, clinic_name, patient_name, patient_age, date_of_birth, patient_address, appointment_date, appointment_time, status, queue_number';
           let { data, error } = await (client as any)
             .from('appointments')
             .select(`${baseColumns}, service_id, service_name`)
@@ -1500,8 +1500,10 @@ class AppointmentServiceStore {
                 serviceName: dbApt.service_name || matchedService?.name || 'كشف واستشارة طبية',
                 patientName: dbApt.patient_name,
                 phoneNumber: cleanPhone,
+                patientAge: dbApt.patient_age || undefined,
+                dateOfBirth: dbApt.date_of_birth || undefined,
                 appointmentDate: dbApt.appointment_date,
-                appointmentTime: '',
+                appointmentTime: dbApt.appointment_time || '',
                 status: dbApt.status,
                 queueNumber: dbApt.queue_number ?? undefined,
                 hasPendingCancellation: this.cancellationRequests.some((r) => (r.referenceNumber === dbApt.reference_number || r.appointmentId === dbApt.id) && r.status === 'PENDING'),
@@ -1544,8 +1546,10 @@ class AppointmentServiceStore {
           serviceName: a.serviceName || matchedService?.name || 'كشف واستشارة طبية',
           patientName: a.patientName,
           phoneNumber: cleanPhone,
+          patientAge: a.patientAge,
+          dateOfBirth: a.dateOfBirth,
           appointmentDate: a.appointmentDate,
-          appointmentTime: '',
+          appointmentTime: a.appointmentTime,
           status: a.status,
           queueNumber: a.queueNumber,
           hasPendingCancellation: a.hasPendingCancellation || this.cancellationRequests.some((r) => (r.referenceNumber === a.referenceNumber || r.appointmentId === a.id) && r.status === 'PENDING'),
@@ -2480,7 +2484,8 @@ class AppointmentServiceStore {
 
   public async getCancellationRequests(
     filters?: { clinicId?: string; status?: string },
-    staffUser?: StaffUser
+    staffUser?: StaffUser,
+    userToken?: string
   ): Promise<CancellationRequest[]> {
     if (staffUser?.role === 'DOCTOR') {
       return [];
@@ -2503,7 +2508,7 @@ class AppointmentServiceStore {
 
     if (isSupabaseConfigured()) {
       try {
-        const { client: supabase } = await getAuthenticatedServerClient();
+        const { client: supabase } = await getAuthenticatedServerClient(userToken);
         let query = (supabase as any)
           .from('cancellation_requests')
           .select(`
@@ -2791,7 +2796,7 @@ class AppointmentServiceStore {
 
         let query = supabase
           .from('appointments')
-          .select('id, reference_number, clinic_id, clinic_name, patient_name, phone_number, patient_age, patient_address, appointment_date, appointment_time, status, queue_number, last_called_at, called_count, notes, fee_paid, created_at, updated_at')
+          .select('id, reference_number, clinic_id, clinic_name, service_id, service_name, patient_name, phone_number, patient_age, date_of_birth, patient_address, appointment_date, appointment_time, status, queue_number, last_called_at, called_count, notes, fee_paid, created_at, updated_at')
           .order('appointment_date', { ascending: true })
           .order('queue_number', { ascending: true });
 
@@ -2815,7 +2820,7 @@ class AppointmentServiceStore {
           const { client: systemClient, authenticated: systemAuthenticated } = await getSystemSupabaseClient();
           let fallbackQuery = systemClient
             .from('appointments')
-            .select('id, reference_number, clinic_id, clinic_name, patient_name, phone_number, patient_age, patient_address, appointment_date, appointment_time, status, queue_number, last_called_at, called_count, notes, fee_paid, created_at, updated_at')
+            .select('id, reference_number, clinic_id, clinic_name, service_id, service_name, patient_name, phone_number, patient_age, date_of_birth, patient_address, appointment_date, appointment_time, status, queue_number, last_called_at, called_count, notes, fee_paid, created_at, updated_at')
             .order('appointment_date', { ascending: true })
             .order('queue_number', { ascending: true });
           if (effectiveClinicId && effectiveClinicId !== 'ALL') fallbackQuery = fallbackQuery.eq('clinic_id', effectiveClinicId);
@@ -2847,9 +2852,12 @@ class AppointmentServiceStore {
             referenceNumber: dbApt.reference_number,
             clinicId: dbApt.clinic_id,
             clinicName: dbApt.clinic_name,
+            serviceId: dbApt.service_id || undefined,
+            serviceName: dbApt.service_name || undefined,
             patientName: dbApt.patient_name,
             phoneNumber: dbApt.phone_number,
             patientAge: dbApt.patient_age || undefined,
+            dateOfBirth: dbApt.date_of_birth || undefined,
             patientAddress: dbApt.patient_address || undefined,
             appointmentDate: dbApt.appointment_date,
             appointmentTime: dbApt.appointment_time,
